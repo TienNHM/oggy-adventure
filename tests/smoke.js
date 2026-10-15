@@ -388,6 +388,10 @@ async function main() {
   ['deedee', 'marky', 'joey', 'trio'].forEach((id) => check(OG.Bosses.has(id), 'Chưa đăng ký trùm ' + id));
   ['menu', 'charselect', 'settings', 'shop', 'worldmap', 'level', 'boss', 'pause', 'gameover', 'victory', 'leaderboard'].forEach((s) => check(OG.Scenes.has(s), 'Chưa đăng ký scene ' + s));
   check(OG.Progress.isFinal('lair') && !OG.Progress.isFinal('attic'), 'Màn final sai (lair phải là màn cuối)');
+  // v2: mặc định là chế độ 'kid'. Chiến dịch cổ điển bên dưới kiểm tra đúng số liệu v1 nên chạy ở 'challenge';
+  // phần hành trình (journeyChecks) chạy ở 'kid'.
+  check(OG.Difficulty && OG.Difficulty.mode() === 'kid', 'Độ khó mặc định phải là kid');
+  OG.Difficulty.set('challenge');
   await stepAsync(10);
   expectScene('menu', 'sau boot');
 
@@ -546,6 +550,7 @@ async function main() {
   }
 
   await qaChecks();
+  await journeyChecks();
 
   // ---- Quay lại menu, xoá dữ liệu (save:reset) và chạy lại boot ----
   stage = 'reset';
@@ -726,6 +731,221 @@ async function qaChecks() {
   OG.Scenes.go('menu'); await stepAsync(3);
   check(listenerCount() === l0, 'Số listener window/document tăng sau 3 lượt chơi lại: ' + l0 + ' → ' + listenerCount());
   check(intervalCount() <= 1, 'Còn ' + intervalCount() + ' setInterval sau khi chơi lại');
+}
+
+// ---------------------------------------------------------------------------
+// v2: Hành trình học tập (docs/STORY.md) — chạy ở chế độ 'kid'
+// ---------------------------------------------------------------------------
+const JOURNEYS = ['home', 'vietnam', 'world', 'science'];
+
+// Bỏ qua mọi truyện tranh đang chiếu (Esc) cho tới khi tới một trong các scene mong đợi.
+async function skipComics(targets, maxLoops) {
+  for (let i = 0; i < (maxLoops || 20); i++) {
+    if (targets.includes(cur())) return true;
+    if (cur() === 'comic') { await press('Escape'); await stepAsync(2); } else step(5);
+  }
+  if (!targets.includes(cur())) fail('Chờ ' + targets.join('|') + ' thất bại — đang ở ' + safeScene());
+  return targets.includes(cur());
+}
+
+// Trả lời câu đố đang mở: sai 1 lần (không bị phạt) rồi đúng. Hợp đồng phím: chọn bắt đầu ở 0, → để sang, Enter để chọn.
+async function answerQuizFlow() {
+  if (!expectScene('quiz', 'cổng câu đố')) return false;
+  const top = OG.Scenes.get('quiz');
+  const q = top.q, n = q.choices.length, ans = q.answer, wrong = (ans + 1) % n;
+  const lives = OG.Game.run.lives;
+  step(5);
+  for (let i = 0; i < wrong; i++) await press('ArrowRight');
+  await press('Enter');
+  check(evLast['quiz:answer'] && evLast['quiz:answer'].correct === false, 'Trả lời sai không phát quiz:answer{correct:false}');
+  check(cur() === 'quiz' && OG.Game.run.lives === lives, 'Trả lời sai bị phạt hoặc đóng câu đố');
+  for (let i = 0; i < (ans - wrong + n) % n; i++) await press('ArrowRight');
+  const passes = evCount['quiz:pass'] || 0;
+  await press('Enter');
+  check((evCount['quiz:pass'] || 0) === passes + 1, 'Trả lời đúng không phát quiz:pass');
+  step(40);
+  await press('Enter');
+  await stepAsync(2);
+  return expectScene('level', 'đóng câu đố sau khi đúng');
+}
+
+async function playJourney(jid, opts) {
+  opts = opts || {};
+  stage = 'journey:' + jid;
+  OG.Scenes.go('journeySelect', { back: 'menu' }); await stepAsync(3);
+  if (!click('#overlay [data-act="journey"][data-arg="' + jid + '"]', 'chọn hành trình ' + jid)) OG.Story.startJourney(jid);
+  await stepAsync(3);
+  check(evLast['journey:select'] && evLast['journey:select'].journeyId === jid, 'Không phát journey:select cho ' + jid);
+  check(OG.Game.run && OG.Game.run.journeyId === jid, 'Run không gắn journeyId');
+  if (expectScene('comic', 'truyện mở đầu ' + jid)) {
+    const ends = evCount['comic:end'] || 0;
+    step(20); await press('Enter'); step(20);
+    await press('Escape'); await stepAsync(3);
+    check((evCount['comic:end'] || 0) === ends + 1, 'comic:end không phát khi bỏ qua truyện');
+  }
+  if (!(await skipComics(['journeyMap']))) return;
+  const levelId = OG.Journeys.levelIds(jid)[0];
+  await press('Enter'); // ▶ CHƠI TIẾP (nút primary)
+  await stepAsync(3);
+  if (!(await skipComics(['level']))) return;
+  const st = OG.Level.state;
+  check(st.level.id === levelId && st.journeyId === jid, 'Màn hành trình sai: ' + st.level.id);
+  check(st.learn && st.learn.pages.length > 0, 'Màn ' + levelId + ' không có trang sách (OG.Learn hook)');
+  if (opts.pauseToMap) {
+    await press('Escape');
+    if (expectScene('pause', 'Esc trong màn hành trình')) {
+      click('#overlay [data-act="map"]', 'Bản đồ (hành trình)'); await stepAsync(3);
+      expectScene('journeyMap', 'pause → bản đồ hành trình');
+      await press('Enter'); await stepAsync(3);
+      await skipComics(['level']);
+    }
+  }
+  return playInLevel(jid, levelId);
+}
+
+async function playInLevel(jid, levelId) {
+  const st = OG.Level.state, p = st.player;
+  // Người dẫn đường
+  const spot = (st.guideSpots || [])[0];
+  if (spot) {
+    const talks = evCount['guide:talk'] || 0;
+    p.x = spot.x - 40; p.y = OG.FLOOR_Y - p.h - 1; p.vy = 0;
+    step(3);
+    check((evCount['guide:talk'] || 0) > talks, 'Đến gần người dẫn đường không phát guide:talk');
+    await press('KeyE');
+    check((evCount['guide:talk'] || 0) > talks + 1, 'Nhấn E gần người dẫn đường không sang câu tiếp');
+  }
+  // Rơi vực (kid): không mất mạng, hồi về chỗ cũ.
+  const lives0 = OG.Game.run.lives;
+  p.x = 200; p.y = OG.FLOOR_Y - p.h - 1; p.vy = 0; step(5);
+  p.y = OG.H + 100; p.vy = 300; step(2);
+  check(OG.Game.run.lives === lives0 && evLast['player:respawn'] && evLast['player:respawn'].cause === 'fall', 'Rơi vực ở chế độ kid vẫn mất mạng');
+  check(p.y < OG.H, 'Không hồi về chỗ đứng an toàn sau khi rơi');
+  // Trang sách -> thẻ kiến thức
+  for (const pg of st.learn.pages) {
+    const was = OG.Learn.hasCard(jid, pg.card);
+    p.x = pg.x - p.w / 2; p.y = pg.y - p.h / 2; p.vx = 0; p.vy = 0; p.inv = 2;
+    step(1);
+    check(OG.Learn.hasCard(jid, pg.card), 'Nhặt trang không mở khoá thẻ ' + pg.card);
+    if (!was && expectScene('card', 'thẻ mới ' + pg.card)) { step(30); await press('Enter'); await stepAsync(2); expectScene('level', 'đóng thẻ'); }
+  }
+  check(evLast['page:collect'] && evLast['page:collect'].journeyId === jid, 'Không phát page:collect');
+  // Hết mạng (kid): hồi đầy mạng tại checkpoint; thua 2 lần -> trợ giúp.
+  const assists = evCount['assist:on'] || 0;
+  for (let k = 0; k < 2; k++) {
+    for (let i = 0; i < 12 && OG.Game.run.lives > 0 && cur() === 'level'; i++) {
+      const before = OG.Game.run.lives;
+      p.inv = 0; p.shield = 0; OG.Player.hurt(p, 'enemy'); step(1);
+      if (OG.Game.run.lives > before) break; // vừa hồi đầy mạng
+    }
+    await stepAsync(2);
+    check(cur() === 'level' && OG.Game.run.lives > 0, 'Hết mạng ở chế độ kid lại game over (' + safeScene() + ')');
+  }
+  check(evLast['player:respawn'] && evLast['player:respawn'].cause === 'softfail', 'Không có player:respawn{softfail}');
+  check((evCount['assist:on'] || 0) > assists && OG.Difficulty.isAssist(levelId), 'Thua 2 lần không bật trợ giúp');
+  // Pizza + xu
+  for (const it of st.items) {
+    if (it.got) continue;
+    p.x = it.x - p.w / 2; p.y = it.y - p.h / 2; p.vx = 0; p.vy = 0; p.inv = 2;
+    step(1);
+  }
+  // Cổng câu đố giữa màn
+  for (const g of st.learn.gates) {
+    if (g.x === 'exit') continue;
+    p.x = g.x - 60; p.y = OG.FLOOR_Y - p.h - 1; p.vy = 0; p.inv = 2;
+    keyDown('ArrowRight');
+    for (let i = 0; i < 30 && cur() === 'level'; i++) step(1);
+    keyUp('ArrowRight'); await stepAsync(1);
+    check(p.x + p.w <= g.x, 'Cổng câu đố giữa màn không chặn đường');
+    await answerQuizFlow();
+    check(g.open, 'Cổng không mở sau khi trả lời đúng');
+  }
+  // Cửa EXIT (có thể kèm câu đố)
+  p.x = st.exit.x + 10; p.y = OG.FLOOR_Y - p.h - 1; p.vy = 0; p.inv = 2;
+  step(2);
+  if (st.learn.gates.some((g) => g.x === 'exit')) {
+    await answerQuizFlow();
+    p.x = st.exit.x + 10; p.y = OG.FLOOR_Y - p.h - 1; p.vy = 0; p.inv = 2;
+  }
+  for (let i = 0; i < 200 && cur() === 'level'; i++) { keepAlive(); step(1); }
+  await flush();
+  const L = OG.Journeys.getLevel(levelId);
+  if (L.boss && OG.Bosses.has(L.boss) && (await waitScene('boss', 60, 'trùm hành trình ' + jid))) {
+    const A = OG.BossScene.getArena();
+    check(A.journeyId === jid && A.theme === L.theme, 'Đấu trường trùm không theo chủ đề khu');
+    await fightBoss(L.boss);
+    stage = 'journey:' + jid;
+  }
+  await skipComics(['journeyMap', 'journeyEnd'], 40);
+  check(evLast['level:complete'] && evLast['level:complete'].journeyId === jid, 'level:complete không có journeyId');
+  check(OG.Progress.isCompleted(levelId), 'Tiến độ màn hành trình không được lưu');
+  if (OG.Journeys.isFinalLevel(levelId)) {
+    expectScene('journeyEnd', 'xong hành trình');
+    check(evLast['journey:complete'] && evLast['journey:complete'].journeyId === jid, 'Không phát journey:complete');
+  }
+  // Sổ tay
+  OG.Learn.openNotebook(jid, cur(), { journeyId: jid });
+  await stepAsync(3);
+  if (expectScene('notebook', 'mở sổ tay')) {
+    await press('Enter'); await stepAsync(2);
+    expectScene('card', 'mở thẻ trong sổ tay');
+    step(30); await press('Escape'); await stepAsync(2);
+    expectScene('notebook', 'đóng thẻ về sổ tay');
+    await press('Escape'); await stepAsync(2);
+    check(cur() !== 'notebook', 'Esc không rời sổ tay');
+  }
+}
+
+async function journeyChecks() {
+  stage = 'journey:setup';
+  ['Journeys', 'Scenery', 'Difficulty', 'Story', 'Learn', 'Guide'].forEach((ns) => check(!!OG[ns], 'Thiếu module OG.' + ns));
+  ['journeySelect', 'journeyMap', 'comic', 'card', 'quiz', 'notebook', 'journeyEnd'].forEach((s) => check(OG.Scenes.has(s), 'Chưa đăng ký scene ' + s));
+  JOURNEYS.forEach((id) => {
+    const r = OG.Journeys.validate(id);
+    check(r.ok, 'Hành trình ' + id + ' lỗi dữ liệu: ' + r.errors.join(' | '));
+    if (r.warnings.length) log('Cảnh báo dữ liệu ' + id + ' (' + r.warnings.length + '): ' + r.warnings.join(' | '));
+    check(OG.Journeys.get(id) && !OG.Journeys.get(id).invalid, 'Hành trình ' + id + ' bị đánh dấu invalid');
+  });
+  check(!OG.Journeys.validate({ id: 'Bad', areas: [] }).ok, 'Validator không bắt lỗi dữ liệu sai');
+  check(OG.Data.levels.every((l) => !l.journey), 'Màn hành trình lọt vào OG.Data.levels (chiến dịch cổ điển)');
+  // Font: cấm Trebuchet MS trong mọi file đã load (bỏ qua câu ghi chú "KHÔNG dùng Trebuchet").
+  scripts.concat(['index.html', 'src/ui/ui.css', 'src/social/social.css', 'src/story/story.css']).forEach((f) => {
+    const fp = path.join(ROOT, f);
+    if (!fs.existsSync(fp)) return;
+    const txt = fs.readFileSync(fp, 'utf8').replace(/không dùng trebuchet/gi, '');
+    if (/trebuchet/i.test(txt)) fail('Dùng font Trebuchet MS trong ' + f);
+  });
+
+  OG.Difficulty.set('kid');
+  check(evLast['difficulty:change'] && evLast['difficulty:change'].mode === 'kid', 'Không phát difficulty:change');
+  OG.Scenes.go('menu'); await stepAsync(3);
+  stage = 'journey:menu';
+  if (click('#overlay [data-act="journey"]', 'PHIÊU LƯU HỌC TẬP')) {
+    await stepAsync(3);
+    expectScene('journeySelect', 'menu → chọn hành trình');
+    await press('Escape'); await stepAsync(2);
+    expectScene('menu', 'Esc từ chọn hành trình');
+  }
+  for (let i = 0; i < JOURNEYS.length; i++) await playJourney(JOURNEYS[i], { pauseToMap: i === 0 });
+
+  // Chế độ thử thách trong hành trình: hết mạng -> game over -> THỬ LẠI về bản đồ hành trình.
+  stage = 'journey:challenge-gameover';
+  OG.Difficulty.set('challenge');
+  OG.Story.startJourney('vietnam', { skipIntro: true }); await stepAsync(2);
+  expectScene('journeyMap', 'bắt đầu hành trình bỏ qua truyện');
+  OG.Story.playLevel(OG.Journeys.levelIds('vietnam')[0]); await stepAsync(3);
+  await skipComics(['level']);
+  if (cur() === 'level') {
+    const p = OG.Level.state.player;
+    for (let i = 0; i < 20 && cur() === 'level'; i++) { p.inv = 0; p.shield = 0; OG.Player.hurt(p, 'enemy'); step(2); }
+    await waitScene('gameover', 30, 'hết mạng (challenge) trong hành trình');
+    check(evLast['game:over'] && evLast['game:over'].result.journeyId === 'vietnam', 'Kết quả game over thiếu journeyId');
+    await stepAsync(30);
+    click('#overlay [data-act="again"]', 'THỬ LẠI (hành trình)'); await stepAsync(5);
+    expectScene('journeyMap', 'thử lại hành trình → bản đồ hành trình');
+  }
+  OG.Difficulty.set('kid');
+  OG.Scenes.go('menu'); await stepAsync(3);
 }
 
 let doubleJumpDone = false;

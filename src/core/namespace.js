@@ -5,7 +5,12 @@
   'use strict';
   var OG = (window.OG = window.OG || {});
 
-  OG.VERSION = '1.0.0';
+  OG.VERSION = '2.0.0-dev';
+
+  // Font chuẩn (đủ glyph tiếng Việt). KHÔNG dùng Trebuchet MS.
+  OG.FONT = '"Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif';
+  // Tạo chuỗi ctx.font: OG.font(18, 'bold') -> 'bold 18px "Segoe UI", ...'
+  OG.font = function (px, weight) { return (weight ? weight + ' ' : '') + (px | 0) + 'px ' + OG.FONT; };
 
   // Kích thước logic của canvas (CSS sẽ co giãn, toạ độ game luôn là 960x540).
   OG.W = 960;

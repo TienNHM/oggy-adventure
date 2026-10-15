@@ -77,7 +77,76 @@
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // v2: Bộ vẽ CHUNG cho chủ đề đăng ký qua OG.Scenery.registerTheme (ThemeDef, docs/STORY.md mục 4).
+  // BẢN STUB — agent cảnh nền nâng cấp (thêm kind lớp/decor đẹp hơn) nhưng giữ cách đọc ThemeDef.
+  // ---------------------------------------------------------------------------
+  function themeDef(theme) { return OG.Scenery && OG.Scenery.getTheme ? OG.Scenery.getTheme(theme) : null; }
+
+  function drawThemeBackground(ctx, def, cam, t) {
+    var custom = def.drawCustom || {};
+    if (typeof custom.background === 'function') { custom.background(ctx, cam, t, def); return; }
+    var sky = def.sky || {};
+    var g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, sky.top || P.skyTop);
+    g.addColorStop(1, sky.bottom || P.skyBottom);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    if (sky.stars) {
+      ctx.fillStyle = 'rgba(255,255,255,0.8)';
+      for (var s = 0; s < 40; s++) {
+        var sx = wrap(s * 97 - cam * 0.05, W), sy = (s * 53) % 300;
+        if (Math.sin(t * 2 + s) > -0.6) ctx.fillRect(sx, sy, 2, 2);
+      }
+    }
+    if (sky.sun) {
+      var sun = sky.sun;
+      ctx.fillStyle = sun.color || '#fff1b8';
+      ctx.beginPath(); ctx.arc((sun.x || 780) - cam * 0.04, sun.y || 110, sun.r || 50, 0, TAU); ctx.fill();
+    }
+    if (sky.clouds !== false) {
+      var cc = (sky.clouds && sky.clouds.color) || P.cloud, n = (sky.clouds && sky.clouds.count) || 6;
+      for (var i = 0; i < n; i++) {
+        var x = wrap(i * 230 - cam * 0.2, W + 180) - 80, y = 60 + (i % 3) * 42;
+        ctx.fillStyle = cc; ctx.beginPath(); ctx.arc(x, y, 22, 0, TAU); ctx.arc(x + 24, y - 8, 28, 0, TAU); ctx.arc(x + 50, y, 20, 0, TAU); ctx.fill();
+      }
+    }
+    var layers = def.layers || [];
+    for (var k = 0; k < layers.length; k++) OG.Scenery.drawLayer(ctx, layers[k], cam, t, def);
+  }
+
+  function drawThemePlatform(ctx, a, def, t) {
+    var custom = def.drawCustom || {};
+    if (typeof custom.platform === 'function' && custom.platform(ctx, a, t, def) === true) return;
+    var floor = a.isFloor || a.y > 470;
+    var ps = def.platformStyle || {};
+    var st = (floor ? ps.floor : ps.ledge) || {};
+    fillRound(ctx, a.x, a.y, a.w, a.h, st.radius != null ? st.radius : (floor ? 0 : 8), st.fill || (floor ? P.floor : P.plank));
+    ctx.fillStyle = st.top || (floor ? P.grass : P.plankTop);
+    ctx.fillRect(a.x, a.y, a.w, st.topH || (floor ? 8 : 5));
+    if (ps.outline !== false && !floor) {
+      ctx.strokeStyle = 'rgba(23,35,61,0.35)'; ctx.lineWidth = 2;
+      OG.util.roundRectPath(ctx, a.x, a.y, a.w, a.h, st.radius != null ? st.radius : 8); ctx.stroke();
+    }
+  }
+
+  // decor: [{kind, every?, start?, at?:[x], y?, scale?, opts?}]  (y mặc định = mặt sàn 480)
+  function drawThemeDecor(ctx, def, worldW, t, front) {
+    var custom = def.drawCustom || {};
+    if (!front && typeof custom.decor === 'function') { custom.decor(ctx, worldW, t, def); return; }
+    var list = def.decor || [];
+    for (var i = 0; i < list.length; i++) {
+      var d = list[i];
+      if (!!d.front !== !!front) continue;
+      var y = d.y != null ? d.y : OG.FLOOR_Y, sc = d.scale || 1;
+      if (d.at) for (var j = 0; j < d.at.length; j++) OG.Scenery.drawDecor(ctx, d.kind, d.at[j], y, sc, t, d.opts);
+      else for (var x = d.start || 120; x < worldW; x += d.every || 400) OG.Scenery.drawDecor(ctx, d.kind, x, y, sc, t, d.opts);
+    }
+  }
+
   OG.Sprites.drawBackground = function (ctx, theme, cam, t) {
+    var def = themeDef(theme);
+    if (def && !(def.base && !def.sky && !def.layers && !def.drawCustom)) { drawThemeBackground(ctx, def, cam, t || 0); return; }
+    if (def) theme = OG.Scenery.baseOf(theme);
     if (theme === 'roof') { drawRoofBackground(ctx, cam, t || 0); return; }
     if (theme === 'lair') { drawLairBackground(ctx, cam, t || 0); return; }
     var g = ctx.createLinearGradient(0, 0, 0, H);
@@ -103,6 +172,9 @@
   };
 
   OG.Sprites.drawPlatform = function (ctx, a, theme, t) {
+    var def = themeDef(theme);
+    if (def && (def.platformStyle || (def.drawCustom && def.drawCustom.platform))) { drawThemePlatform(ctx, a, def, t || 0); return; }
+    if (def) theme = OG.Scenery.baseOf(theme);
     var floor = a.isFloor || a.y > 470;
     if (theme === 'roof') {
       if (floor) {
@@ -140,6 +212,9 @@
   };
 
   OG.Sprites.drawDecor = function (ctx, theme, worldW, t) {
+    var def = themeDef(theme);
+    if (def && (def.decor || (def.drawCustom && def.drawCustom.decor))) { drawThemeDecor(ctx, def, worldW, t || 0, false); return; }
+    if (def) theme = OG.Scenery.baseOf(theme);
     if (theme === 'roof') {
       // ống khói nhỏ + ăng-ten trên mái
       ctx.strokeStyle = '#5b3a33'; ctx.lineWidth = 2;
@@ -165,6 +240,26 @@
       return;
     }
     for (var x2 = 100; x2 < worldW; x2 += 300) fillRound(ctx, x2, 445, 55, 35, 8, theme === 'kitchen' ? P.kitchenDecor : P.gardenDecor);
+  };
+
+  // Lớp phủ MÀN HÌNH sau thế giới (tuỳ chọn, Level gọi nếu có): decor front + hạt không khí của chủ đề.
+  // ambient: {kind:'snow'|'leaves'|'bubbles'|'sparkle', color}
+  OG.Sprites.drawOverlay = function (ctx, theme, cam, t) {
+    var def = themeDef(theme);
+    if (!def) return;
+    if (def.decor && def.decor.some(function (d) { return d.front; })) {
+      ctx.save(); ctx.translate(-cam, 0); drawThemeDecor(ctx, def, (OG.Level.state && OG.Level.state.width) || W, t || 0, true); ctx.restore();
+    }
+    var amb = def.ambient;
+    if (!amb) return;
+    ctx.save();
+    ctx.fillStyle = amb.color || 'rgba(255,255,255,0.8)';
+    for (var i = 0; i < 26; i++) {
+      var x = wrap(i * 73 - cam * 0.6 + Math.sin(t + i) * 20, W);
+      var y = wrap(i * 41 + t * (amb.kind === 'bubbles' ? -40 : 40), H);
+      ctx.beginPath(); ctx.arc(x, y, amb.kind === 'snow' ? 2.5 : 3, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
   };
 
   // ---------------------------------------------------------------------------

@@ -34,7 +34,8 @@
       quests: []    // [{id, text, done, progress, target}] do OG.Quests cung cấp
     },
 
-    // Tạo run mới. opts: {charId, skinId}
+    // Tạo run mới. opts: {charId, skinId, journeyId}
+    // journeyId != null -> lượt chơi HÀNH TRÌNH v2 (OG.Story điều phối), null -> chiến dịch cổ điển v1.
     newRun: function (opts) {
       opts = opts || {};
       var save = OG.Save.data;
@@ -42,10 +43,12 @@
       if (!OG.Data.characters[charId] || save.unlockedChars.indexOf(charId) < 0) charId = 'oggy';
       var skinId = opts.skinId || save.equippedSkins[charId] || null;
       var runMods = mergeMods(baseMods(), OG.util.call('Shop', 'getRunModifiers', charId));
-      var lives = C.START_LIVES + (runMods.extraLives | 0);
+      var baseLives = OG.util.call('Difficulty', 'startLives') || C.START_LIVES;
+      var lives = baseLives + (runMods.extraLives | 0);
       Game.run = {
         charId: charId, skinId: skinId,
-        score: 0, lives: lives, maxLives: Math.max(lives, C.START_LIVES),
+        journeyId: opts.journeyId || null, levelId: null,
+        score: 0, lives: lives, maxLives: Math.max(lives, baseLives),
         coinsEarned: 0, startTime: OG.time, playTime: 0, nextLevel: 0,
         levelsCompleted: [], over: false, mods: runMods,
         stats: { stomps: 0, hurts: 0, pizzas: 0, coins: 0, bosses: 0 }
@@ -53,7 +56,7 @@
       save.stats.plays++;
       OG.Save.commit();
       Game.hud.score = 0; Game.hud.lives = lives; Game.hud.maxLives = Game.run.maxLives;
-      OG.Events.emit('game:start', { charId: charId, skinId: skinId, run: Game.run });
+      OG.Events.emit('game:start', { charId: charId, skinId: skinId, run: Game.run, journeyId: Game.run.journeyId });
       return Game.run;
     },
     ensureRun: function () { if (!Game.run || Game.run.over) Game.newRun(); return Game.run; },
@@ -82,7 +85,9 @@
         coins: 0, coinTotal: (level.coins || []).length,
         stomps: 0, hurts: 0, bossHurts: 0, bossId: level.boss || null, bossDefeated: false
       };
-      Game.run.nextLevel = OG.Data.levelIndex(level.id);
+      Game.run.levelId = level.id;
+      var idx = OG.Data.levelIndex(level.id);
+      if (idx >= 0) Game.run.nextLevel = idx; // màn hành trình không có chỉ số trong Data.levels
       return Game.stage;
     },
 
@@ -124,6 +129,12 @@
       OG.Events.emit('lives:change', { lives: run.lives, maxLives: run.maxLives });
       Game.refreshHud();
       if (run.lives <= 0) {
+        // Chế độ 'kid' trong hành trình: hồi đầy mạng tại checkpoint thay vì game over.
+        if (OG.util.call('Difficulty', 'softFail', { levelId: Game.stage ? Game.stage.levelId : null, cause: cause }) === true) {
+          Game.hud.lives = run.lives; Game.hud.maxLives = run.maxLives;
+          Game.refreshHud();
+          return run.lives;
+        }
         OG.Events.emit('player:die', { cause: cause });
         Game.gameOver();
       }
@@ -168,11 +179,22 @@
         time: st.playTime != null ? st.playTime : OG.time - st.startTime, stars: stars,
         isFinal: OG.Progress.isFinal(level.id), firstClear: false, newlyUnlocked: []
       };
+      if (level.journey) { result.journeyId = level.journey; result.areaId = level.areaId; result.isFinal = false; }
       var pr = OG.Progress.complete(level.id, result);
       result.firstClear = pr.firstClear;
       result.newlyUnlocked = pr.newlyUnlocked;
       result.charsUnlocked = pr.charsUnlocked;
       run.levelsCompleted.push(level.id);
+      if (level.journey) {
+        // Hành trình v2: OG.Story quyết định cảnh tiếp theo (truyện tranh, bản đồ hành trình, kết thúc).
+        OG.Save.addCoins(reward, 'level');
+        run.coinsEarned += reward;
+        OG.Save.submitBest(run.score);
+        OG.Events.emit('level:complete', result);
+        Game.stage = null;
+        if (OG.util.call('Story', 'afterLevel', result) !== true) Game.backToMap({ completed: level.id, result: result });
+        return result;
+      }
       var next = OG.Progress.nextLevelId(level.id);
       // Màn cuối (final) giữ nguyên chỉ số: buildResult('victory') phải ghi đúng màn vừa thắng
       // (danh sách còn màn phụ đăng ký SAU màn cuối, vd basement).
@@ -191,9 +213,9 @@
     buildResult: function (type) {
       var run = Game.run || { score: 0, charId: 'oggy', stats: {}, coinsEarned: 0, startTime: OG.time, levelsCompleted: [] };
       var idx = run.nextLevel | 0;
-      var level = OG.Data.getLevel(idx) || OG.Data.levels[0];
+      var level = (run.journeyId && run.levelId && OG.Data.getLevel(run.levelId)) || OG.Data.getLevel(idx) || OG.Data.levels[0];
       return {
-        type: type, score: run.score, bestScore: OG.Save.data.bestScore,
+        type: type, journeyId: run.journeyId || null, score: run.score, bestScore: OG.Save.data.bestScore,
         isNewBest: run.score > 0 && run.score >= OG.Save.data.bestScore,
         levelId: level.id, levelIndex: idx, levelName: level.name,
         levelsCompleted: run.levelsCompleted.slice(), charId: run.charId, skinId: run.skinId || null,
@@ -223,6 +245,31 @@
       var result = Game.buildResult('victory');
       OG.Events.emit('game:victory', { result: result });
       OG.Scenes.go('victory', { result: result });
+    },
+
+    // ---- Điều hướng dùng chung (Menus/Story gọi; hiểu cả cổ điển lẫn hành trình) ----
+    // Scene bản đồ của lượt hiện tại: 'journeyMap' (hành trình) hoặc 'worldmap' (cổ điển).
+    mapScene: function () {
+      return Game.run && Game.run.journeyId && OG.Scenes.has('journeyMap') ? 'journeyMap' : 'worldmap';
+    },
+    backToMap: function (params) {
+      params = params || {};
+      var sc = Game.mapScene();
+      if (sc === 'journeyMap' && !params.journeyId) params.journeyId = Game.run.journeyId;
+      OG.Scenes.go(sc, params);
+    },
+    // Chơi lại màn đang/vừa chơi.
+    restartLevel: function () {
+      var run = Game.run;
+      if (run && run.levelId && OG.Data.getLevel(run.levelId)) Game.startLevel(run.levelId);
+      else Game.startLevel(run ? (run.nextLevel | 0) : 0);
+    },
+    // Lượt mới cùng chế độ (sau game over / chiến thắng).
+    retryRun: function () {
+      var jid = Game.run && Game.run.journeyId;
+      if (jid && OG.Story && OG.Story.startJourney) { OG.Story.startJourney(jid, { skipIntro: true }); return; }
+      Game.newRun();
+      OG.Scenes.go('worldmap');
     },
 
     // Đẩy HUD state ra OG.Menus.

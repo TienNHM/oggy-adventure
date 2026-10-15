@@ -27,6 +27,7 @@
         score: T.score || 50, t: Math.random() * 3, deadT: 0
       };
       if (T.init) T.init(e, src);
+      OG.util.call('Difficulty', 'scaleEnemy', e); // tốc độ theo độ khó
       return e;
     },
 
@@ -44,7 +45,11 @@
     },
 
     // Hộp gây sát thương (thu nhỏ 3px cho công bằng).
-    hurtbox: function (e) { return { x: e.x + 3, y: e.y + 3, w: e.w - 6, h: e.h - 3 }; },
+    // OG.Difficulty có thể thu nhỏ thêm (chế độ 'kid').
+    hurtbox: function (e) {
+      var box = { x: e.x + 3, y: e.y + 3, w: e.w - 6, h: e.h - 3 };
+      return OG.util.call('Difficulty', 'enemyHurtbox', box) || box;
+    },
 
     // Bị giẫm.
     kill: function (e) { e.alive = false; e.deadT = 0; }

@@ -23,11 +23,13 @@
 
   function makeArena(level, bossId) {
     var def = OG.util.call('Bosses', 'getArena', bossId) || {};
+    // Hành trình v2: area.boss.arena (level.bossArena) ghi đè; cảnh nền mặc định theo chủ đề của khu.
+    var jd = level.journey ? (level.bossArena || {}) : {};
     var src = {
-      width: def.width || DEFAULT_ARENA.width,
-      platforms: def.platforms || DEFAULT_ARENA.platforms,
-      spawn: def.spawn || DEFAULT_ARENA.spawn,
-      theme: def.theme || level.theme || 'boss'
+      width: jd.width || def.width || DEFAULT_ARENA.width,
+      platforms: jd.platforms || def.platforms || DEFAULT_ARENA.platforms,
+      spawn: jd.spawn || def.spawn || DEFAULT_ARENA.spawn,
+      theme: jd.theme || (level.journey ? level.theme : def.theme) || level.theme || 'boss'
     };
     var run = OG.Game.ensureRun();
     var mods = OG.Game.levelMods(level.id);
@@ -46,7 +48,10 @@
       emit: function (name, payload) { OG.Events.emit(name, payload); },
       addScore: function (n) { OG.Game.addScore(n); },
       spawnEnemy: function (src) { var e = OG.Enemies.create(src, arena.enemies.length); arena.enemies.push(e); return e; },
-      enemies: []
+      enemies: [],
+      journeyId: level.journey || null,
+      // Tham số độ khó (OG.Difficulty.params) để trùm tự điều chỉnh nếu muốn: bossHpMul, bossSpeedMul, mode...
+      difficulty: OG.util.call('Difficulty', 'params', level.id) || null
     };
     return arena;
   }
@@ -69,6 +74,7 @@
       if (!OG.Game.stage) OG.Game.beginStage(level);
       var arena = makeArena(level, bossId);
       var boss = OG.util.call('Bosses', 'create', bossId, arena) || null;
+      if (boss) OG.util.call('Difficulty', 'setupBoss', boss, arena); // máu trùm theo độ khó
       S = { levelId: level.id, bossId: bossId, arena: arena, boss: boss, phase: boss ? 'fight' : 'skip', endT: 0 };
       var hud = OG.Game.hud;
       hud.scene = 'boss';
@@ -88,14 +94,17 @@
       A.t += dt;
       if (S.phase === 'fight') OG.Game.tickTime(dt);
       var res = OG.Player.update(p, dt, A);
-      if (p.y > OG.H + 80) {
+      if (p.y > OG.H + 80 && U.call('Difficulty', 'onFall', p, A) !== true) {
         OG.Player.hurt(p, 'fall');
         if (OG.Scenes.base() !== 'boss') return;
         p.x = 80; p.y = 300; p.vy = 0;
       }
 
       if (S.phase === 'fight') {
-        U.safe('boss.update', boss.update, boss, [dt, A]);
+        // Độ khó: nhịp đòn trùm chậm hơn ở chế độ 'kid'.
+        var bdt = dt * (U.call('Difficulty', 'bossTimeScale') || 1);
+        U.call('Difficulty', 'trackSafe', p);
+        U.safe('boss.update', boss.update, boss, [bdt, A]);
         if (OG.Scenes.base() !== 'boss') return;
         // Giẫm điểm yếu
         var weak = U.safe('boss.getWeakspot', boss.getWeakspot, boss, []) || null;

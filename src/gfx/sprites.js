@@ -178,7 +178,8 @@
     var memo = infoMemo[id];
     if (memo && memo.src === ch) return memo;
     var role = (ch && ch.role) || (b && b.role) || (/roach|gian/i.test(String(id)) ? 'enemy' : 'player');
-    var kind = (ch && ch.sprite) || (b && b.kind) || (role === 'player' ? 'cat' : role === 'enemy' ? 'crawler' : 'bug');
+    // NPC v2 (role 'npc') chưa có hình riêng -> vẽ dự phòng kiểu mèo theo màu.
+    var kind = (ch && ch.sprite) || (b && b.kind) || (role === 'player' || role === 'npc' ? 'cat' : role === 'enemy' ? 'crawler' : 'bug');
     var spec = null, dw, dh;
     if (kind === 'bug') {
       spec = BUG_SPECS[id] || BUG_SPECS[ch && ch.spriteBase] || BUG_SPECS.joey;

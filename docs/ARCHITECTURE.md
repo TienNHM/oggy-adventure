@@ -3,6 +3,10 @@
 Tài liệu này là **hợp đồng chung** giữa 7 agent: 1 agent Tích hợp và 6 agent tính năng làm việc song song.
 Ai cũng phải tuân theo. Nếu có mâu thuẫn giữa tài liệu này và chú thích trong code thì **tài liệu này được ưu tiên**.
 
+> **v2 — Hành trình học tập:** định dạng dữ liệu hành trình, API `OG.Journeys`, `OG.Scenery`, `OG.Difficulty`,
+> `OG.Story/Learn/Guide`, level hooks, scene và event mới, danh sách nhân vật cần vẽ và **quyền sở hữu file giai đoạn v2**
+> nằm trong **[`docs/STORY.md`](STORY.md)**. Với phần v2, `STORY.md` được ưu tiên (bảng sở hữu mục 1 dưới đây là của v1).
+
 ---
 
 ## 0. Ràng buộc kỹ thuật
@@ -94,8 +98,13 @@ Quy tắc:
                  src/ui/shop.js          OG.Shop
  9. Social       src/social/social.js    OG.Social
                  src/social/leaderboard.js
-10. Boot         src/core/main.js        LUÔN CUỐI
+10. Story (v2)   src/story/story.js, learn.js, guide.js, scenes.js   (+ <link> src/story/story.css)
+11. Journeys     src/journeys/<home|vietnam|world|science>/theme.js → content.js → extras.js → journey.js
+12. Boot         src/core/main.js        LUÔN CUỐI
 ```
+v2 thêm vào nhóm có sẵn: `src/core/scenery-registry.js` + `src/core/journeys.js` (sau loop.js), `src/gfx/decor.js`
+(sau scenery.js), `src/game/difficulty.js` (sau progress.js). Thứ tự init: `Difficulty, Audio, Sprites, Bosses, World,
+Quests, Menus, Shop, Social, Learn, Guide, Story`, rồi `OG.Journeys.init()` (kiểm tra dữ liệu). Chi tiết: `docs/STORY.md`.
 
 **Các giai đoạn chạy:**
 - *Thời điểm load*: file chỉ khai báo API và có thể gọi `OG.Bosses.register(...)` hoặc `OG.Data.register*`.

@@ -42,6 +42,7 @@ button:active{transform:translateY(3px);box-shadow:0 2px 0 #b74b2b}
 <!-- Style của module tính năng (load sau để có thể ghi đè) -->
 <link rel="stylesheet" href="src/ui/ui.css">
 <link rel="stylesheet" href="src/social/social.css">
+<link rel="stylesheet" href="src/story/story.css">
 </head>
 <body>
 <div id="wrap"><div id="gameShell">
@@ -72,6 +73,8 @@ button:active{transform:translateY(3px);box-shadow:0 2px 0 #b74b2b}
 <script src="src/core/dom.js"></script>
 <script src="src/core/scenes.js"></script>
 <script src="src/core/loop.js"></script>
+<script src="src/core/scenery-registry.js"></script>
+<script src="src/core/journeys.js"></script>
 <!-- 2. Dữ liệu (agent Tích hợp) -->
 <script src="src/data/characters.js"></script>
 <script src="src/data/levels.js"></script>
@@ -79,12 +82,14 @@ button:active{transform:translateY(3px);box-shadow:0 2px 0 #b74b2b}
 <script src="src/gfx/sprites.js"></script>
 <script src="src/gfx/skins.js"></script>
 <script src="src/gfx/scenery.js"></script>
+<script src="src/gfx/decor.js"></script>
 <!-- 4. Âm thanh (agent Audio) -->
 <script src="src/audio/audio.js"></script>
 <script src="src/audio/music.js"></script>
 <!-- 5. Gameplay (agent Tích hợp) — đăng ký scene mặc định -->
 <script src="src/game/particles.js"></script>
 <script src="src/game/progress.js"></script>
+<script src="src/game/difficulty.js"></script>
 <script src="src/game/game.js"></script>
 <script src="src/game/player.js"></script>
 <script src="src/game/enemies.js"></script>
@@ -109,7 +114,29 @@ button:active{transform:translateY(3px);box-shadow:0 2px 0 #b74b2b}
 <!-- 9. Xã hội (agent Social) -->
 <script src="src/social/social.js"></script>
 <script src="src/social/leaderboard.js"></script>
-<!-- 10. Khởi động (agent Tích hợp) — LUÔN CUỐI -->
+<!-- 10. Hành trình học tập v2 (agent story-ui) — docs/STORY.md -->
+<script src="src/story/story.js"></script>
+<script src="src/story/learn.js"></script>
+<script src="src/story/guide.js"></script>
+<script src="src/story/scenes.js"></script>
+<!-- 11. Dữ liệu hành trình (mỗi agent journey-<id> chỉ sửa thư mục của mình): theme → content → extras → journey -->
+<script src="src/journeys/home/theme.js"></script>
+<script src="src/journeys/home/content.js"></script>
+<script src="src/journeys/home/extras.js"></script>
+<script src="src/journeys/home/journey.js"></script>
+<script src="src/journeys/vietnam/theme.js"></script>
+<script src="src/journeys/vietnam/content.js"></script>
+<script src="src/journeys/vietnam/extras.js"></script>
+<script src="src/journeys/vietnam/journey.js"></script>
+<script src="src/journeys/world/theme.js"></script>
+<script src="src/journeys/world/content.js"></script>
+<script src="src/journeys/world/extras.js"></script>
+<script src="src/journeys/world/journey.js"></script>
+<script src="src/journeys/science/theme.js"></script>
+<script src="src/journeys/science/content.js"></script>
+<script src="src/journeys/science/extras.js"></script>
+<script src="src/journeys/science/journey.js"></script>
+<!-- 12. Khởi động (agent Tích hợp) — LUÔN CUỐI -->
 <script src="src/core/main.js"></script>
 </body>
 </html>

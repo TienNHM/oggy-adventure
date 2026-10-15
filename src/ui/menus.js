@@ -355,6 +355,8 @@
               '<span><small>Nhân vật</small><b>' + UI.esc(UI.charName(charId)) + '</b></span></button>' +
             '<button type="button" class="ui-btn-big" data-act="play" data-id="play" data-primary>▶ CHƠI</button>' +
           '</div>' +
+          // v2: Hành trình học tập (Tích hợp sẽ sắp xếp lại bố cục menu; xem docs/STORY.md mục 10).
+          (OG.Scenes.has('journeySelect') ? '<div class="ui-menu-main"><button type="button" class="ui-btn-big secondary" data-act="journey" data-id="journey">📖 PHIÊU LƯU HỌC TẬP</button></div>' : '') +
           '<div class="ui-menu-grid">' +
             '<button type="button" class="secondary" data-act="chars" data-id="chars">🐱 Nhân vật</button>' +
             '<button type="button" class="secondary" data-act="shop" data-id="shop">🛒 Cửa hàng</button>' +
@@ -368,6 +370,7 @@
           small: 'PC: A/D hoặc ←/→ đi · Space/W/↑ nhảy · E tương tác · Esc/P tạm dừng<br>Mobile: dùng nút trên màn hình · Game fan-made, không chính thức.',
           handlers: {
             play: function () { OG.Game.newRun(); OG.Scenes.go('worldmap'); },
+            journey: function () { OG.Scenes.go('journeySelect', { back: 'menu' }); },
             chars: function () { OG.Scenes.go('charselect', { back: 'menu' }); },
             shop: function () { if (OG.Scenes.has('shop')) OG.Scenes.go('shop', { back: 'menu' }); },
             lb: function () { OG.Scenes.go('leaderboard', { back: 'menu' }); },
@@ -753,11 +756,12 @@
           handlers: {
             resume: function () { OG.Scenes.pop(); },
             restart: function () {
+              if (OG.Game.restartLevel) { OG.Game.restartLevel(); return; }
               var run = OG.Game.run;
               OG.Game.startLevel(run ? (run.nextLevel | 0) : 0);
             },
             settings: function () { OG.Scenes.push('settings', { back: 'pause', overlay: true }); },
-            map: function () { OG.Scenes.go('worldmap'); },
+            map: function () { if (OG.Game.backToMap) OG.Game.backToMap(); else OG.Scenes.go('worldmap'); },
             quit: function () { OG.Scenes.go('menu'); }
           }
         });
@@ -830,7 +834,7 @@
           className: 'ui-result ' + (win ? 'ui-victory' : 'ui-gameover'),
           html: html,
           handlers: {
-            again: function () { OG.Game.newRun(); OG.Scenes.go('worldmap'); },
+            again: function () { if (OG.Game.retryRun) OG.Game.retryRun(); else { OG.Game.newRun(); OG.Scenes.go('worldmap'); } },
             shop: function () { OG.Scenes.go('shop', { back: 'menu' }); },
             menu: function () { OG.Scenes.go('menu'); }
           }

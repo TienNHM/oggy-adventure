@@ -21,6 +21,9 @@
  *   map: {x, y},                // vị trí nút trên bản đồ thế giới (toạ độ 960x540)
  *   quests: [{id, type, target, text, reward}] // nhiệm vụ của màn (OG.Quests diễn giải)
  * }
+ * Màn của HÀNH TRÌNH v2 dùng cùng định dạng + field mở rộng (journey, areaId, pages, quizGates,
+ * guideSpots, checkpoints, comicTriggers...) — xem docs/STORY.md. Chúng do OG.Journeys biên dịch,
+ * KHÔNG nằm trong Data.levels (Data.levelIndex trả -1).
  * Loại quest chuẩn: collect_all | no_damage | stomp_n | time_under | coins_n | boss_no_damage | complete
  */
 (function () {
@@ -93,9 +96,11 @@
   ];
 
   // Tra cứu theo id hoặc chỉ số.
+  // Màn của hành trình v2 (OG.Journeys) không nằm trong Data.levels nhưng vẫn tra được theo id.
   Data.getLevel = function (idOrIndex) {
     if (typeof idOrIndex === 'number') return Data.levels[idOrIndex] || null;
     for (var i = 0; i < Data.levels.length; i++) if (Data.levels[i].id === idOrIndex) return Data.levels[i];
+    if (OG.Journeys && OG.Journeys.getLevel) return OG.Journeys.getLevel(idOrIndex);
     return null;
   };
   Data.levelIndex = function (id) {

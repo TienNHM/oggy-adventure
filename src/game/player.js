@@ -7,6 +7,12 @@
   var OG = window.OG;
   var C = OG.Config;
 
+  // Đọc tham số độ khó (an toàn khi OG.Difficulty chưa có).
+  function diff(key, fallback) {
+    var v = OG.Difficulty && OG.Difficulty.get ? OG.util.safe('Difficulty.get', OG.Difficulty.get, OG.Difficulty, [key]) : undefined;
+    return typeof v === 'number' ? v : fallback;
+  }
+
   var Player = (OG.Player = {
     create: function (charId, x, y, mods, skinId) {
       var ch = OG.Data.getCharacter(charId);
@@ -17,7 +23,8 @@
         shield: mods.shield | 0, magnet: mods.magnet || 0,
         speed: (ch.speed || C.MOVE_SPEED) * (mods.speedMul || 1),
         jumpV: (ch.jump || C.JUMP_VELOCITY) * (mods.jumpMul || 1),
-        anim: 'idle', animT: 0, prevBottom: y + ch.h, celebrate: false, attackT: 0
+        anim: 'idle', animT: 0, prevBottom: y + ch.h, celebrate: false, attackT: 0,
+        coyote: 0, jumpBuf: 0, invMax: C.HURT_INVULN, safeX: x, safeY: y
       };
     },
 
@@ -29,9 +36,15 @@
       var move = p.celebrate ? 0 : (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
       p.vx = move * p.speed;
       if (move) p.face = move;
-      if (!p.celebrate && keys.jump && p.ground) {
+      // Coyote time + jump buffer (OG.Difficulty): nhảy dễ hơn cho trẻ nhỏ.
+      var coyoteT = diff('coyoteTime', 0), bufT = diff('jumpBuffer', 0);
+      p.coyote = p.ground ? coyoteT : Math.max(0, p.coyote - dt);
+      p.jumpBuf = OG.Input.pressed('jump') ? bufT : Math.max(0, p.jumpBuf - dt);
+      if (!p.celebrate && ((keys.jump && p.ground) || (p.jumpBuf > 0 && (p.ground || p.coyote > 0)))) {
+        if (!p.ground) OG.Input.consume('jump'); // nhảy coyote: không tính là nhảy đôi (Shop)
         p.vy = -p.jumpV;
         p.ground = false;
+        p.coyote = 0; p.jumpBuf = 0;
         OG.Events.emit('player:jump', { charId: p.charId, x: p.x, y: p.y });
       }
       if (!p.celebrate && OG.Input.pressed('action')) {
@@ -51,7 +64,7 @@
 
     animState: function (p) {
       if (p.celebrate) return 'victory';
-      if (p.inv > C.HURT_INVULN - 0.4) return 'hurt';
+      if (p.inv > (p.invMax || C.HURT_INVULN) - 0.4) return 'hurt';
       if (p.attackT > 0) return 'attack';
       if (!p.ground) return p.vy < 0 ? 'jump' : 'fall';
       if (Math.abs(p.vx) > 1) return 'run';
@@ -69,7 +82,7 @@
         OG.Game.refreshHud();
         return false;
       }
-      p.inv = C.HURT_INVULN;
+      p.inv = p.invMax = diff('hurtInvuln', C.HURT_INVULN);
       p.vy = -C.HURT_BOUNCE;
       p.vx = -p.face * C.HURT_KNOCKBACK;
       OG.Camera.shake(5, 0.25);
