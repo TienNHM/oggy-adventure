@@ -51,6 +51,8 @@
     }
   });
 
+  function hasSpriteFx() { return !!(OG.Sprites && OG.Sprites.fx); }
+
   function collect(st, it) {
     var stage = OG.Game.stage;
     it.got = true;
@@ -61,7 +63,8 @@
       OG.Game.hud.pizzas = stage.pizzas;
       OG.Game.addScore(100);
       OG.DOM.toast('Yum! +100 điểm 🍕');
-      OG.Particles.spawn(it.x, it.y - 10, { color: '#ffc94a', count: 10 });
+      // Sprites (nếu có) tự phát lấp lánh qua item:collect; chỉ dùng hạt vuông khi thiếu Sprites.fx.
+      if (!hasSpriteFx()) OG.Particles.spawn(it.x, it.y - 10, { color: '#ffc94a', count: 10 });
       if (stage.pizzas === st.level.goal) OG.DOM.toast('Đủ pizza rồi! Cửa EXIT đã mở 🚪');
     } else if (it.type === 'coin') {
       OG.Game.addScore(10);
@@ -130,7 +133,7 @@
           OG.Game.run.stats.stomps++;
           OG.Save.data.stats.stomps++;
           OG.Game.addScore(e.score);
-          OG.Particles.spawn(e.x + e.w / 2, e.y + e.h / 2, { color: '#b56bc7', count: 12 });
+          if (!hasSpriteFx()) OG.Particles.spawn(e.x + e.w / 2, e.y + e.h / 2, { color: '#b56bc7', count: 12 });
           OG.Particles.floatText(e.x + e.w / 2, e.y - 6, '+' + e.score);
           OG.Events.emit('enemy:stomp', { type: e.type, x: e.x, y: e.y, score: e.score });
         } else if (e.hurts && U.overlap(p, OG.Enemies.hurtbox(e))) {

@@ -71,6 +71,7 @@ Quy tắc:
  2. Data         src/data/characters.js  OG.Data.characters/skins/playable
                  src/data/levels.js      OG.Data.levels
  3. Sprites      src/gfx/sprites.js      OG.Sprites (nhân vật)
+                 src/gfx/skins.js        skin oggy_chef/oggy_super + phụ kiện skin (OG.Sprites.skinGfx)
                  src/gfx/scenery.js      OG.Sprites (nền, sàn, đạo cụ)
  4. Audio        src/audio/audio.js      OG.Audio
                  src/audio/music.js      OG.Audio.tracks
@@ -85,7 +86,8 @@ Quy tắc:
                  src/game/default-scenes.js  scene boot/menu/worldmap/pause/gameover/victory (MẶC ĐỊNH)
  6. Bosses       src/bosses/bosses.js    OG.Bosses (registry)
                  src/bosses/joey.js, marky.js, deedee.js, trio.js
- 7. World        src/world/world.js      OG.World
+ 7. World        src/world/extraLevels.js  3 màn phụ basement/bathroom/attic (registerLevel lúc load)
+                 src/world/world.js      OG.World
                  src/world/quests.js     OG.Quests
  8. UI           src/ui/menus.js         OG.Menus
                  src/ui/hud.js           OG.Menus.updateHud/drawHud
@@ -125,6 +127,9 @@ Quy tắc:
   | joey | boss | 30 × 40 (×scale) | — | — |
   | marky | boss | 30 × 60 (×scale) | — | — |
   | deedee | boss | 50 × 50 (×scale) | — | — |
+
+Bộ ba gián cũng xuất hiện như **kẻ địch thường** trong màn (`enemies[].type` = `joey | marky | deedee`, scale 1, hitbox như bảng trên):
+Joey chạy nhanh và thỉnh thoảng lao gấp đôi, Marky đi chậm và nhảy cò cò, Dee Dee đi chậm và dừng lại "ăn". Giẫm được mọi lúc: Joey/Marky +70, Dee Dee +80.
 
 - Vật lý lấy từ `OG.Config`: trọng lực 1500 px/s², rơi tối đa 900, nhảy 590 (đỉnh nhảy khoảng 116 px), di chuyển 255,
   bất tử 1,6 s sau khi bị thương, nảy khi giẫm địch 420. Platform là **một chiều**: chỉ đáp được từ trên xuống.
@@ -196,8 +201,11 @@ boot → menu → [newRun] → worldmap → level ─(đủ pizza + chạm EXIT,
    boss ─(isDefeated, 1.6s)→ completeLevel
    completeLevel → 'level:complete' → (level.final ? victory : worldmap{completed})
    hết mạng (ở level/boss) → 'game:over' → gameover
-   Esc/P/nút ⏸/mất focus → push pause
+   Esc/P/nút ⏸/mất focus → push pause  (pause → push settings{overlay} → pop)
+   gameover/victory → Social.mountResult (nhập tên, lưu điểm, chia sẻ) → leaderboard{back, backParams:{result}} → quay lại
 ```
+Menu chính: CHƠI (`newRun` → worldmap), Nhân vật (`charselect`), Cửa hàng (`shop`), Xếp hạng (`leaderboard`), Cài đặt (`settings`).
+Màn phụ (`basement`, `bathroom`, `attic`) là tuỳ chọn: lượt chơi kết thúc (victory) khi xong `lair`.
 
 ---
 
@@ -249,6 +257,18 @@ Hằng tên: OG.EV.*  (src/core/events.js)
 | `input:tap` | `{x, y}` (toạ độ logic) | Input | World map |
 | `input:firstGesture` | `{}` | Input (lần chạm/phím đầu tiên) | **Audio**: tạo hoặc resume AudioContext |
 | `save:reset` | `{}` | Save.reset | mọi module có cache |
+| `boss:heal` | `{bossId, hp, maxHp}` | Bosses (Dee Dee ăn bánh) | HUD |
+| `boss:foodStolen` | `{bossId}` | Bosses (người chơi giật bánh) | Audio |
+| `world:select` / `world:arrive` | `{levelId}` | World | Audio |
+| `shop:use` | `{itemId, levelId\|null}` | Shop (tiêu thụ vật phẩm khi vào màn / đầu lượt) | Audio |
+| `social:share` | `{method, ok}` | Social | Audio |
+| `social:nameChange` | `{name}` | Social | |
+| `social:onlineSubmit` | `{entry, ok, rank}` | Social (chỉ khi bật online) | |
+| `leaderboard:clear` | `{}` | Social | |
+
+Bổ sung payload: `player:jump` có `double:true` khi nhảy đôi (giày lò xo); `boss:hit` có `source:'reflect'` khi trúng đạn bị đánh bật;
+`quest:complete` có thêm `category` (`level|daily|achievement`) và `levelId`; `leaderboard:submit` có `rename:true` khi chỉ đổi tên.
+Hằng tên cho các event mở rộng cũng có trong `OG.EV` (`BOSS_HEAL, WORLD_SELECT, SHOP_USE, SOCIAL_SHARE...`).
 
 Muốn thêm event mới thì đặt tên theo dạng `<module>:<việc>`, ví dụ `world:select`, rồi ghi vào `INTEGRATION.md`.
 Event mới do module tự phát và tự nghe không cần sửa core.
@@ -288,7 +308,7 @@ Cấu trúc `OG.Save.data` (khoá localStorage `oggyAdventure.save.v1`; kỷ l�
 { v, coins, bestScore, playerName, selectedChar, unlockedChars:[charId],
   ownedSkins:[skinId], equippedSkins:{charId:skinId}, inventory:{itemId:count},
   progress:{ unlocked:[levelId], levels:{ levelId:{completed,bestScore,stars,bestTime,plays} } },
-  settings:{ musicVolume:0.6, sfxVolume:0.8, muted:false, touchControls:'auto'|'on'|'off' },
+  settings:{ masterVolume:1, musicVolume:0.6, sfxVolume:0.8, muted:false, touchControls:'auto'|'on'|'off' },
   stats:{ plays, deaths, stomps, pizzas, coins, bossesDefeated, victories },
   ext:{ quests:{...}, social:{...}, ... } }
 ```
@@ -305,6 +325,7 @@ pointer {x, y, down, justPressed, justReleased, inside}  (toạ độ logic 960�
 Phím: A/D/←/→ để đi; Space/W/↑ để nhảy (W/↑ cũng là `up`); S/↓ là `down`; E/J là `action`; Esc/P để tạm dừng (Esc cũng là `back`); Enter là `confirm`.
 Nút cảm ứng là mọi phần tử có thuộc tính `data-key="<phím logic>"`. Nếu tạo nút động, gọi `OG.Input.bindTouch(el)`.
 Khi đang gõ vào `<input>`, Input bỏ qua phím.
+`input:firstGesture` phát ở lần `pointerdown`/`touchstart`/`keydown` đầu tiên **ở bất kỳ đâu** (listener pha capture trên `window`), kể cả khi bấm nút DOM trong `#overlay`.
 
 ### OG.DOM
 ```
@@ -345,8 +366,12 @@ Bốn màn hiện có:
 | `garden` (Khu vườn bí mật) | `marky` | `garden` |
 | `roof` (Cuộc đua trên mái nhà) | `joey` | `roof` |
 | `lair` (Hang ổ bộ ba gián, `final`) | `trio` | `lair` |
+| `basement` (Tầng hầm tối om, phụ) | — | `lair` · `requires: ['kitchen']` |
+| `bathroom` (Phòng tắm trơn trượt, phụ) | — | `kitchen` · `requires: ['garden']` |
+| `attic` (Gác mái bụi bặm, phụ) | — | `roof` · `requires: ['roof']` |
 
-Mặc định mỗi màn chỉ mở khi màn liền trước đã hoàn thành.
+Mặc định mỗi màn chỉ mở khi màn liền trước đã hoàn thành. Ba màn phụ do `src/world/extraLevels.js` đăng ký, ghi `requires` tường minh và `final: false`
+(field mở rộng chỉ World đọc: `zone`, `mapStyle`, `bonus`). `Progress.maxStars()` = 7 × 3 = 21.
 
 ### OG.Progress
 `init() isUnlocked(id) isCompleted(id) getRecord(id) unlock(id) refreshUnlocks() complete(id, result) nextLevelId(id) firstIncomplete() allCompleted() totalStars() maxStars() isFinal(id)`
@@ -362,7 +387,11 @@ addScore(n)  pickupCoins(n)  loseLife(cause)  gainLife(n)  gameOver()  victory()
 Điểm số: pizza +100, xu +10 (kèm 1 xu vào ví), giẫm gián +50, đánh trúng trùm +100, hạ trùm +500.
 
 ### Khác
-`OG.Player.create/update/hurt/draw/animState`, `OG.Enemies.registerType(name, {w,h,score,stompable,init,update,draw}) / create / kill / hurtbox`,
+`OG.Player.create/update/hurt/draw/animState` — cuối `update` gọi `OG.util.call('Shop','tickPlayer', p, dt)` (nhảy đôi; Shop tự chống gọi trùng),
+`draw` truyền `worldX/worldY` (chân, toạ độ thế giới) cho Sprites để đặt bụi chạy.
+`OG.BossScene.isActive() / draw(ctx) / getPlayer() / getArena() / getBoss()` (trận đang diễn ra hoặc null).
+`OG.Enemies` có sẵn loại `roach, joey, marky, deedee`. `OG.Particles.spawn` nhận thêm `shape` (`dust|spark|star|circle`) và vẽ qua `OG.Sprites.drawParticle` nếu có.
+ `OG.Enemies.registerType(name, {w,h,score,stompable,init,update,draw}) / create / kill / hurtbox`,
 `OG.Collectibles.registerType(name, {emoji, score}) / create / touches / draw`, `OG.Particles.spawn(x,y,opts) / floatText(x,y,text,color)`,
 `OG.Level.state / drawWorld(ctx)`.
 
@@ -387,7 +416,7 @@ drawBackground(ctx, theme, camX, t)        // không gian MÀN HÌNH, phủ kín
 drawPlatform(ctx, plat{x,y,w,h,isFloor}, theme, t)   // không gian thế giới
 drawDecor(ctx, theme, worldW, t)           // không gian thế giới, sau sàn
 drawProp(ctx, propId, x, y, t, opts) -> bool   // pizza|coin (tâm) · exit (x=mép trái, y=mặt sàn, opts.open) · heart|shield|star
-   theme: kitchen | garden | roof | lair | boss
+   theme: kitchen | garden | roof | lair | boss   (roof: hoàng hôn + mái ngói; lair: hang tối + mắt gián)
 ```
 Trùm thường gọi `OG.Sprites.drawCharacter(ctx, 'joey', 'attack', t, {scale: 2.2, face: -1, flash})`.
 Sprites có thể cung cấp thêm hàm tuỳ chọn, ví dụ `drawPortrait(ctx, charId, x, y, size)` cho menu chọn nhân vật. **Bên gọi phải kiểm tra hàm tồn tại trước khi gọi.**
@@ -429,6 +458,8 @@ OG.World: init() (đăng ký scene 'worldmap'), enabled, focusLevel(levelId)
 OG.Quests: init(), list(), getForLevel(levelId), getHudLines(levelId) -> [{id,text,done,progress,target}], claim(questId)
 Quest = {id, levelId|null, type, text, target, reward, progress, done, claimed}
 type: collect_all | no_damage | stomp_n | time_under | coins_n | boss_no_damage | complete
+      (mở rộng cho nhiệm vụ ngày / thành tựu: pizza_n | boss_n | stars_n | levels_n | complete_n)
+getHudLines còn trả field 'failed' (không còn đạt được trong lượt này).
 ```
 Bản đồ thế giới đọc `OG.Data.levels[].map` và `OG.Progress`, điều khiển được bằng bàn phím lẫn chạm, rồi gọi `OG.Game.startLevel(id)`.
 Quests lưu trong `OG.Save.ns('quests')` và thưởng qua `OG.Save.addCoins(n, 'quest')`.
@@ -467,3 +498,16 @@ Leaderboard lưu trong `OG.Save.ns('social').leaderboard`, tối đa 10 mục. K
 5. Phải chơi được bằng bàn phím và bằng cảm ứng. Kích thước chạm tối thiểu khoảng 44 px.
 6. Chạy `node --check` cho mọi file JS đã sửa.
 7. Nếu cần agent Tích hợp làm gì, ghi vào `src/<dir>/INTEGRATION.md`.
+
+---
+
+## 10. Kiểm thử
+
+- `node --check <file>` cho mọi file JS.
+- **Smoke test**: `node tests/smoke.js` (thêm `--verbose` để xem từng bước). Không cần thư viện ngoài:
+  `tests/fake-dom.js` dựng window/document (parser HTML + selector đơn giản, event capture/bubble, form submit),
+  canvas 2D giả (Proxy, theo dõi cân bằng `save/restore`), `localStorage`, `AudioContext` giả và đồng hồ/timer ảo.
+  Test đọc `index.html`, load mọi `<script src>` theo đúng thứ tự bằng `vm`, rồi chơi qua: menu → cài đặt / nhân vật /
+  cửa hàng (mua giày lò xo) / xếp hạng → bản đồ (Enter) → 4 màn + 4 trùm (giẫm điểm yếu) → chiến thắng → nhập tên → bảng xếp hạng → chia sẻ;
+  tạm dừng (Esc, nút ⏸, P, cài đặt chồng lên pause), nhảy đôi, 3 màn phụ với Jack/Olivia và skin, game over, xoá dữ liệu.
+  Mọi `console.error`, ngoại lệ trong frame/listener/timer, `ctx.save/restore` lệch và lời gọi `alert/confirm/prompt` đều là lỗi (thoát mã 1).

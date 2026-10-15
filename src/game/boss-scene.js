@@ -119,6 +119,10 @@
           if (!e.alive) continue;
           if (OG.Physics.isStomp(p, res.prevBottom, e, 12)) {
             OG.Enemies.kill(e); p.vy = -C.STOMP_BOUNCE; OG.Game.addScore(e.score);
+            if (OG.Game.stage) OG.Game.stage.stomps++;
+            OG.Game.run.stats.stomps++;
+            OG.Save.data.stats.stomps++;
+            OG.Particles.floatText(e.x + e.w / 2, e.y - 6, '+' + e.score);
             OG.Events.emit('enemy:stomp', { type: e.type, x: e.x, y: e.y, score: e.score });
           } else if (U.overlap(p, OG.Enemies.hurtbox(e))) {
             OG.Player.hurt(p, 'enemy');
@@ -165,5 +169,12 @@
   });
 
   // Cho scene khác (pause/gameover) vẽ lại khung cảnh boss.
-  OG.BossScene = { isActive: function () { return !!S; }, draw: function (ctx) { var sc = OG.Scenes.get('boss'); if (S && sc) sc.draw(ctx); } };
+  OG.BossScene = {
+    isActive: function () { return !!S; },
+    draw: function (ctx) { var sc = OG.Scenes.get('boss'); if (S && sc) sc.draw(ctx); },
+    // Cho HUD/Shop (nhảy đôi dự phòng) và công cụ test truy cập trận đang diễn ra.
+    getPlayer: function () { return S ? S.arena.player : null; },
+    getArena: function () { return S ? S.arena : null; },
+    getBoss: function () { return S ? S.boss : null; }
+  };
 })();

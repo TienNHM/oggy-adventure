@@ -41,6 +41,8 @@
       var res = OG.Physics.moveBody(p, dt, world.platforms, { minX: 0, maxX: world.width });
       p.prevBottom = res.prevBottom;
       if (res.landed) OG.Events.emit('player:land', { x: p.x, y: p.y, vy: 0 });
+      // Vật phẩm cửa hàng cần chạy mỗi frame (Giày lò xo = nhảy đôi). Shop tự chống gọi trùng trong 1 frame.
+      OG.util.call('Shop', 'tickPlayer', p, dt);
       // animation state
       var a = Player.animState(p);
       if (a !== p.anim) { p.anim = a; p.animT = 0; } else p.animT += dt;
@@ -86,7 +88,8 @@
       var blink = p.inv > 0 && Math.floor(p.inv * 12) % 2 === 0;
       OG.Sprites.drawCharacter(ctx, p.charId, p.anim, p.animT, {
         face: p.face, skin: p.skin, w: p.w, h: p.h, alpha: blink ? 0.45 : 1,
-        flash: p.anim === 'hurt', vx: p.vx, vy: p.vy, time: t
+        flash: p.anim === 'hurt', vx: p.vx, vy: p.vy, time: t,
+        worldX: p.x + p.w / 2, worldY: p.y + p.h // vị trí chân trong thế giới (bụi chạy của Sprites)
       });
       if (p.shield > 0) {
         ctx.strokeStyle = '#7fe0ff'; ctx.lineWidth = 3; ctx.globalAlpha = 0.6 + Math.sin(t * 6) * 0.2;

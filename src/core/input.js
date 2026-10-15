@@ -52,6 +52,12 @@
 
     init: function (canvas) {
       Input.canvas = canvas;
+      // Cử chỉ đầu tiên ở BẤT KỲ đâu (kể cả nút DOM trong #overlay, hay Enter/Space bị panel UI chặn
+      // ở pha capture) → phát input:firstGesture để Audio mở khoá AudioContext. Đăng ký ở pha capture
+      // trên window và trước module UI nên luôn chạy trước.
+      window.addEventListener('pointerdown', firstGesture, true);
+      window.addEventListener('touchstart', firstGesture, true);
+      window.addEventListener('keydown', function (e) { if (!typing(e)) firstGesture(); }, true);
       window.addEventListener('keydown', function (e) {
         if (typing(e)) return;
         firstGesture();

@@ -192,7 +192,9 @@
     U.roundRectPath(ctx, x - 52, y - 26, W + 64, H + 38, 16); ctx.stroke();
 
     // Chân dung trùm
-    var ch = OG.Data.characters[b.id];
+    // Trận cuối "trio" không phải 1 nhân vật: dùng chân dung Joey (thủ lĩnh bộ ba).
+    var cid = OG.Data.characters[b.id] ? b.id : (b.id === 'trio' ? 'joey' : b.id);
+    var ch = OG.Data.characters[cid];
     var col = (ch && ch.colors && ch.colors.body) || OG.Palette.danger;
     ctx.fillStyle = col;
     ctx.beginPath(); ctx.arc(x - 26, y + 3, 21, 0, Math.PI * 2); ctx.fill();
@@ -204,7 +206,7 @@
       ctx.translate(x - 26, y + 20);
       ctx.scale(sc, sc);
       U.safe('Sprites.drawCharacter(bossHud)', OG.Sprites.drawCharacter, OG.Sprites,
-        [ctx, b.id, bossFx.flash > 0 ? 'hurt' : 'idle', t, { face: 1, w: ch.w, h: ch.h, time: t }]);
+        [ctx, cid, bossFx.flash > 0 ? 'hurt' : 'idle', t, { face: 1, w: ch.w, h: ch.h, time: t }]);
       ctx.restore();
     }
 

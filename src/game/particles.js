@@ -1,10 +1,17 @@
 /* OG.Particles — hạt hiệu ứng đơn giản (vụn khi giẫm gián, lấp lánh khi nhặt đồ).
  * Toạ độ thế giới; vẽ sau camera. Chủ sở hữu: agent Tích hợp.
- * spawn(x, y, {color, count, speed, life, size, gravity, text}) */
+ * spawn(x, y, {color, count, speed, life, size, gravity, lift, shape})
+ *   shape: 'dust' | 'spark' | 'star' | 'circle' — vẽ bằng OG.Sprites.drawParticle nếu có, không thì ô vuông. */
 (function () {
   'use strict';
   var OG = window.OG;
   var list = [];
+  var shapeBroken = false; // Sprites.drawParticle lỗi 1 lần -> quay về ô vuông
+
+  function drawShaped(ctx, p) {
+    if (shapeBroken) return false;
+    try { return !!OG.Sprites.drawParticle(ctx, p); } catch (e) { shapeBroken = true; console.error('[OG.Particles] drawParticle lỗi:', e); return false; }
+  }
 
   OG.Particles = {
     spawn: function (x, y, opts) {
@@ -15,7 +22,8 @@
         list.push({
           x: x, y: y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - (opts.lift || 80),
           life: opts.life || 0.6, max: opts.life || 0.6, size: opts.size || 4,
-          color: opts.color || '#ffffff', g: opts.gravity != null ? opts.gravity : 600, text: null
+          color: opts.color || '#ffffff', g: opts.gravity != null ? opts.gravity : 600, text: null,
+          shape: opts.shape || null, seed: Math.random() * 6
         });
       }
     },
@@ -41,6 +49,8 @@
           ctx.textAlign = 'center';
           ctx.strokeStyle = '#17233d'; ctx.lineWidth = 3;
           ctx.strokeText(p.text, p.x, p.y); ctx.fillText(p.text, p.x, p.y);
+        } else if (p.shape && OG.Sprites && OG.Sprites.drawParticle && drawShaped(ctx, p)) {
+          // đã vẽ bằng Sprites (bụi, lấp lánh, sao)
         } else {
           ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
         }

@@ -45,7 +45,18 @@
     UI_TOAST: 'ui:toast',               // {text}
     INPUT_TAP: 'input:tap',             // {x, y} toạ độ logic canvas
     INPUT_FIRST_GESTURE: 'input:firstGesture', // {} — để Audio mở khoá AudioContext
-    SAVE_RESET: 'save:reset'            // {}
+    SAVE_RESET: 'save:reset',           // {}
+
+    // ---- Event mở rộng do module tính năng tự phát (xem src/<module>/INTEGRATION.md) ----
+    BOSS_HEAL: 'boss:heal',             // {bossId, hp, maxHp} — Dee Dee ăn bánh hồi máu
+    BOSS_FOOD_STOLEN: 'boss:foodStolen', // {bossId} — người chơi giật bánh của Dee Dee
+    WORLD_SELECT: 'world:select',       // {levelId} — vào màn từ bản đồ
+    WORLD_ARRIVE: 'world:arrive',       // {levelId} — Oggy đi tới một nút trên bản đồ
+    SHOP_USE: 'shop:use',               // {itemId, levelId|null} — tiêu thụ vật phẩm
+    SOCIAL_SHARE: 'social:share',       // {method, ok}
+    SOCIAL_NAME_CHANGE: 'social:nameChange', // {name}
+    SOCIAL_ONLINE_SUBMIT: 'social:onlineSubmit', // {entry, ok, rank}
+    LEADERBOARD_CLEAR: 'leaderboard:clear' // {}
   };
 
   OG.Events = {

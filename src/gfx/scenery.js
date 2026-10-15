@@ -1,7 +1,8 @@
 /* OG.Sprites (phần cảnh vật) — nền, sàn, đạo cụ.
  * Chủ sở hữu: agent Sprites (src/gfx/). Load SAU src/gfx/sprites.js.
  * Đạo cụ (pizza, xu, tim, khiên, sao, cửa EXIT) vẽ hoàn toàn bằng Canvas (không emoji).
- * Nền/sàn/trang trí hiện vẫn giữ đồ hoạ MVP.
+ * Nền/sàn/trang trí: kitchen/garden giữ đồ hoạ MVP; roof (hoàng hôn, mái ngói) và lair (hang tối,
+ * mắt gián lấp ló) do agent Tích hợp bổ sung để mỗi khu vực/trận trùm có cảnh riêng.
  *
  * HỢP ĐỒNG:
  *   OG.Sprites.drawBackground(ctx, theme, camX, t)   — KHÔNG gian màn hình (trước camera), phủ kín 960x540
@@ -22,10 +23,66 @@
 
   function wrap(x, span) { return ((x % span) + span) % span; }
 
-  OG.Sprites.drawBackground = function (ctx, theme, cam, t) {
+  // Bảng màu riêng cho khu mái nhà và hang ổ (agent Tích hợp bổ sung để màn/trận trùm roof, lair
+  // không dùng chung nền vườn).
+  var ROOF = { skyTop: '#ff9f7c', skyBottom: '#ffe3a6', sun: '#fff1b8', house: '#c97a5e', houseDark: '#a65c47',
+    tile: '#b5523b', tileTop: '#de7a52', tileLine: '#8f3d2c', brick: '#9c4a3a', brickTop: '#f0a77e', chimney: '#8a3f33' };
+  var LAIR = { skyTop: '#241c3a', skyBottom: '#4d3d6b', rock: '#1b1530', eye: '#ffe35c',
+    floor: '#3d3352', floorTop: '#6d5c90', stone: '#594b78', stoneTop: '#9a89c0', moss: '#7fd08a' };
+
+  function drawRoofBackground(ctx, cam, t) {
     var g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, theme === 'lair' ? '#5d6f9a' : P.skyTop);
-    g.addColorStop(1, theme === 'lair' ? '#c8b9d8' : P.skyBottom);
+    g.addColorStop(0, ROOF.skyTop); g.addColorStop(1, ROOF.skyBottom);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    // mặt trời lặn + mây
+    ctx.fillStyle = ROOF.sun; ctx.beginPath(); ctx.arc(760 - cam * 0.05, 150, 58, 0, TAU); ctx.fill();
+    for (var i = 0; i < 6; i++) {
+      var x = wrap(i * 250 - cam * 0.18, W + 200) - 90, y = 70 + (i % 3) * 38;
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.beginPath(); ctx.arc(x, y, 22, 0, TAU); ctx.arc(x + 24, y - 8, 28, 0, TAU); ctx.arc(x + 52, y, 20, 0, TAU); ctx.fill();
+    }
+    // dãy nhà xa (parallax): thân, mái tam giác, ống khói, cửa sổ sáng đèn
+    for (var j = 0; j < 7; j++) {
+      var hx = wrap(j * 210 - cam * 0.3, W + 220) - 110, hh = 90 + (j % 3) * 35, top = 480 - hh;
+      ctx.fillStyle = j % 2 ? ROOF.house : ROOF.houseDark;
+      ctx.fillRect(hx, top, 170, hh);
+      ctx.beginPath(); ctx.moveTo(hx - 12, top); ctx.lineTo(hx + 85, top - 55); ctx.lineTo(hx + 182, top); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = ROOF.chimney; ctx.fillRect(hx + 120, top - 52, 20, 34);
+      ctx.fillStyle = 'rgba(255,240,200,0.75)'; ctx.fillRect(hx + 30, top + 25, 26, 22); ctx.fillRect(hx + 110, top + 25, 26, 22);
+    }
+  }
+
+  function drawLairBackground(ctx, cam, t) {
+    var g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, LAIR.skyTop); g.addColorStop(1, LAIR.skyBottom);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    // nhũ đá trên trần (parallax)
+    ctx.fillStyle = LAIR.rock;
+    for (var i = 0; i < 12; i++) {
+      var x = wrap(i * 110 - cam * 0.25, W + 120) - 60, len = 40 + ((i * 37) % 70);
+      ctx.beginPath(); ctx.moveTo(x - 26, 0); ctx.lineTo(x, len); ctx.lineTo(x + 26, 0); ctx.closePath(); ctx.fill();
+    }
+    // tảng đá xa
+    ctx.fillStyle = 'rgba(27,21,48,0.55)';
+    for (var k = 0; k < 6; k++) {
+      var rx = wrap(k * 240 - cam * 0.35, W + 260) - 120;
+      ctx.beginPath(); ctx.ellipse(rx, 480, 120, 70 + (k % 2) * 40, 0, Math.PI, TAU); ctx.fill();
+    }
+    // những đôi mắt gián lấp ló trong bóng tối (thỉnh thoảng chớp)
+    ctx.fillStyle = LAIR.eye;
+    for (var e = 0; e < 7; e++) {
+      if (Math.sin(t * 1.3 + e * 2.1) > 0.85) continue;
+      var ex = wrap(e * 170 + 60 - cam * 0.32, W + 140) - 70, ey = 170 + ((e * 53) % 200);
+      ctx.beginPath(); ctx.ellipse(ex, ey, 4, 3, 0, 0, TAU); ctx.ellipse(ex + 13, ey, 4, 3, 0, 0, TAU); ctx.fill();
+    }
+  }
+
+  OG.Sprites.drawBackground = function (ctx, theme, cam, t) {
+    if (theme === 'roof') { drawRoofBackground(ctx, cam, t || 0); return; }
+    if (theme === 'lair') { drawLairBackground(ctx, cam, t || 0); return; }
+    var g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, P.skyTop);
+    g.addColorStop(1, P.skyBottom);
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
     // mây trôi parallax
     for (var i = 0; i < 7; i++) {
@@ -47,13 +104,67 @@
 
   OG.Sprites.drawPlatform = function (ctx, a, theme, t) {
     var floor = a.isFloor || a.y > 470;
+    if (theme === 'roof') {
+      if (floor) {
+        // mái ngói: nền đỏ gạch + 3 hàng vảy ngói
+        ctx.fillStyle = ROOF.tile; ctx.fillRect(a.x, a.y, a.w, a.h);
+        ctx.fillStyle = ROOF.tileTop; ctx.fillRect(a.x, a.y, a.w, 8);
+        ctx.strokeStyle = ROOF.tileLine; ctx.lineWidth = 2;
+        var x0 = Math.floor(a.x / 30) * 30;
+        for (var row = 0; row < 3; row++) {
+          var ry = a.y + 18 + row * 16;
+          ctx.beginPath();
+          for (var x = x0 + (row % 2) * 15; x < a.x + a.w; x += 30) { ctx.moveTo(x + 30, ry); ctx.arc(x + 15, ry, 15, 0, Math.PI); }
+          ctx.stroke();
+        }
+      } else {
+        // bục gạch (như bờ tường/ống khói)
+        fillRound(ctx, a.x, a.y, a.w, a.h, 4, ROOF.brick);
+        ctx.fillStyle = ROOF.brickTop; ctx.fillRect(a.x, a.y, a.w, 5);
+        ctx.fillStyle = 'rgba(0,0,0,0.18)';
+        for (var bx = a.x + 20; bx < a.x + a.w - 4; bx += 26) ctx.fillRect(bx, a.y + 7, 2, a.h - 8);
+      }
+      return;
+    }
+    if (theme === 'lair') {
+      fillRound(ctx, a.x, a.y, a.w, a.h, floor ? 0 : 7, floor ? LAIR.floor : LAIR.stone);
+      ctx.fillStyle = floor ? LAIR.floorTop : LAIR.stoneTop; ctx.fillRect(a.x, a.y, a.w, floor ? 7 : 5);
+      // vệt rêu phát sáng
+      ctx.fillStyle = LAIR.moss;
+      for (var mx = a.x + 12; mx < a.x + a.w - 8; mx += floor ? 140 : 46) ctx.fillRect(mx, a.y - 2, 10, 3);
+      return;
+    }
     fillRound(ctx, a.x, a.y, a.w, a.h, 8, floor ? P.floor : P.plank);
     if (floor) { ctx.fillStyle = P.grass; ctx.fillRect(a.x, a.y, a.w, 8); }
     else { ctx.fillStyle = P.plankTop; ctx.fillRect(a.x, a.y, a.w, 5); }
   };
 
   OG.Sprites.drawDecor = function (ctx, theme, worldW, t) {
-    for (var x = 100; x < worldW; x += 300) fillRound(ctx, x, 445, 55, 35, 8, theme === 'kitchen' ? P.kitchenDecor : P.gardenDecor);
+    if (theme === 'roof') {
+      // ống khói nhỏ + ăng-ten trên mái
+      ctx.strokeStyle = '#5b3a33'; ctx.lineWidth = 2;
+      for (var x = 140; x < worldW; x += 420) {
+        fillRound(ctx, x, 430, 34, 50, 4, ROOF.chimney);
+        ctx.fillStyle = ROOF.brickTop; ctx.fillRect(x - 3, 428, 40, 6);
+        ctx.beginPath();
+        ctx.moveTo(x + 210, 480); ctx.lineTo(x + 210, 438);
+        ctx.moveTo(x + 198, 446); ctx.lineTo(x + 222, 446);
+        ctx.moveTo(x + 202, 455); ctx.lineTo(x + 218, 455);
+        ctx.stroke();
+      }
+      return;
+    }
+    if (theme === 'lair') {
+      // nấm phát sáng nhấp nháy
+      for (var m = 120; m < worldW; m += 330) {
+        var glow = 0.55 + 0.25 * Math.sin((t || 0) * 2 + m);
+        ctx.fillStyle = '#d9cfe8'; ctx.fillRect(m + 8, 462, 6, 18);
+        ctx.fillStyle = 'rgba(127,208,138,' + glow.toFixed(2) + ')';
+        ctx.beginPath(); ctx.ellipse(m + 11, 462, 16, 9, 0, Math.PI, TAU); ctx.fill();
+      }
+      return;
+    }
+    for (var x2 = 100; x2 < worldW; x2 += 300) fillRound(ctx, x2, 445, 55, 35, 8, theme === 'kitchen' ? P.kitchenDecor : P.gardenDecor);
   };
 
   // ---------------------------------------------------------------------------
