@@ -181,7 +181,7 @@
       ctx.fillStyle = P.ink || '#17233d'; ctx.beginPath(); ctx.arc(x + 24, y - 60, 1.8, 0, TAU); ctx.fill();
     }
     ctx.fillStyle = '#ffe9a8'; ctx.beginPath(); ctx.arc(x + 34, y - 52, 2.6, 0, TAU); ctx.fill();
-    ctx.fillStyle = 'white'; ctx.font = 'bold 13px Trebuchet MS, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillStyle = 'white'; ctx.font = 'bold 13px "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif'; ctx.textAlign = 'center';
     ctx.fillText('EXIT', x + 24, y - (open ? 158 : 135));
   }
 
