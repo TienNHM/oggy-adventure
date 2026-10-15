@@ -63,8 +63,13 @@
         firstGesture();
         var map = KEYMAP[e.code];
         if (PREVENT.indexOf(e.code) >= 0) e.preventDefault();
-        if (!map || e.repeat) return;
-        for (var i = 0; i < map.length; i++) setKey(map[i], 'kb', true);
+        if (!map) return;
+        for (var i = 0; i < map.length; i++) {
+          // Phím lặp (đang giữ): chỉ giữ lại trái/phải — sau reset() khi đổi scene (vd màn → trùm) người
+          // chơi đang giữ phím vẫn đi tiếp. Không lặp nhảy/tạm dừng để tránh bật-tắt liên tục.
+          if (e.repeat && map[i] !== 'left' && map[i] !== 'right') continue;
+          setKey(map[i], 'kb', true);
+        }
       });
       window.addEventListener('keyup', function (e) {
         var map = KEYMAP[e.code];

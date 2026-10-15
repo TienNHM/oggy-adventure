@@ -104,7 +104,7 @@
       var p = st.player, stage = OG.Game.stage;
       st.t += dt;
       st.lockedCooldown = Math.max(0, st.lockedCooldown - dt);
-      OG.Game.hud.time = st.t;
+      OG.Game.tickTime(dt);
 
       var res = OG.Player.update(p, dt, st);
 

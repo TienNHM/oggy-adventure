@@ -545,6 +545,8 @@ async function main() {
     expectScene('worldmap', 'thử lại sau game over');
   }
 
+  await qaChecks();
+
   // ---- Quay lại menu, xoá dữ liệu (save:reset) và chạy lại boot ----
   stage = 'reset';
   OG.Scenes.go('menu'); await stepAsync(5);
@@ -558,6 +560,172 @@ async function main() {
   for (let i = 0; i < 300; i++) step(1);
   await flush();
   return finish(t0);
+}
+
+// ---------------------------------------------------------------------------
+// Kiểm tra hồi quy (QA): các lỗi đã sửa + luồng ít được đi qua
+// ---------------------------------------------------------------------------
+function listenerCount() {
+  const count = (t) => Object.values(t._listeners || {}).reduce((n, arr) => n + arr.length, 0);
+  return count(winTarget) + count(doc);
+}
+function intervalCount() { return timers.filter((x) => x.every).length; }
+
+async function qaChecks() {
+  // 1) Thời gian tạm dừng KHÔNG được tính vào thời gian màn (nhiệm vụ "về đích dưới X giây").
+  stage = 'qa:pause-time';
+  OG.Scenes.go('menu'); await stepAsync(3);
+  OG.Game.newRun();
+  OG.Game.startLevel('kitchen'); await stepAsync(2);
+  if (expectScene('level')) {
+    step(60);
+    const t1 = OG.Game.stage.playTime;
+    await press('Escape');
+    expectScene('pause', 'Esc để đo thời gian');
+    step(600); // 10 giây đứng ở màn tạm dừng
+    await press('Escape');
+    expectScene('level', 'Esc để chơi tiếp');
+    const t2 = OG.Game.stage.playTime;
+    check(t2 - t1 < 1, 'Thời gian màn vẫn chạy khi tạm dừng (' + t1.toFixed(1) + 's → ' + t2.toFixed(1) + 's)');
+    check(Math.abs(OG.Game.hud.time - t2) < 0.05, 'Đồng hồ HUD lệch với thời gian màn');
+    const q = (OG.Quests.getHudLines('kitchen') || []).find((x) => /_auto_time$/.test(x.id) || /giây/.test(x.text));
+    check(q && !q.failed, 'Nhiệm vụ thời gian bị đánh trượt vì thời gian tạm dừng');
+
+    // 2) Pause → "Chơi lại màn" (từ trận trùm) → vào lại màn từ đầu.
+    stage = 'qa:restart';
+    OG.Game.finishStage('kitchen'); await stepAsync(5);
+    if (expectScene('boss', 'vào trùm để thử chơi lại')) {
+      await press('Escape');
+      click('#overlay [data-act="restart"]', 'Chơi lại màn'); await stepAsync(5);
+      expectScene('level', 'chơi lại màn từ trận trùm');
+      check(OG.Level.state && OG.Level.state.level.id === 'kitchen' && OG.Game.stage.pizzas === 0, 'Chơi lại màn không đặt lại màn kitchen');
+    }
+
+    // 3) Pause → Bản đồ → Về menu: không kẹt scene.
+    stage = 'qa:pause-nav';
+    await press('Escape');
+    click('#overlay [data-act="map"]', 'Bản đồ'); await stepAsync(5);
+    expectScene('worldmap', 'pause → bản đồ');
+    check(!OG.DOM.isPanelOpen(), 'Panel tạm dừng còn mở trên bản đồ');
+    await press('Escape'); await stepAsync(3);
+    expectScene('menu', 'Esc trên bản đồ → menu');
+  }
+
+  // 4) Tự tạm dừng khi rời tab (visibilitychange) và mất focus (blur).
+  stage = 'qa:autopause';
+  OG.Game.newRun(); OG.Game.startLevel('garden'); await stepAsync(3);
+  doc.hidden = true; doc.dispatchEvent(new D.FakeEvent('visibilitychange', {})); doc.hidden = false;
+  await stepAsync(2);
+  expectScene('pause', 'ẩn tab khi đang chơi');
+  OG.Scenes.pop(); await stepAsync(2);
+  win.dispatchEvent(new D.FakeEvent('blur', {})); await stepAsync(2);
+  expectScene('pause', 'mất focus cửa sổ');
+  OG.Scenes.pop(); await stepAsync(2);
+
+  // 5) Nhạc nền đổi theo scene, chỉ một bộ hẹn giờ sequencer.
+  stage = 'qa:audio';
+  if (OG.Audio.isReady()) {
+    check(OG.Audio.currentTrack === 'garden', 'Nhạc trong màn garden là ' + OG.Audio.currentTrack);
+    check(intervalCount() <= 1, 'Có ' + intervalCount() + ' setInterval đang chạy (nhạc phát chồng?)');
+    OG.Game.finishStage('garden'); await stepAsync(5);
+    check(OG.Audio.currentTrack === 'boss', 'Nhạc trận trùm là ' + OG.Audio.currentTrack);
+    check(intervalCount() <= 1, 'Nhiều sequencer chạy cùng lúc khi vào trùm');
+  } else warn('AudioContext giả chưa sẵn sàng — bỏ qua kiểm tra nhạc');
+
+  // 6) Thua trong trận trùm → game over → nhạc gameover → về menu.
+  stage = 'qa:boss-gameover';
+  if (cur() === 'boss') {
+    const p = OG.BossScene.getPlayer();
+    for (let i = 0; i < 20 && cur() === 'boss'; i++) { p.inv = 0; p.shield = 0; OG.Player.hurt(p, 'boss'); step(2); }
+    await waitScene('gameover', 30, 'hết mạng trong trận trùm');
+    if (OG.Audio.isReady()) check(OG.Audio.currentTrack === 'gameover', 'Nhạc game over là ' + OG.Audio.currentTrack);
+    click('#overlay [data-act="menu"]', 'Về menu'); await stepAsync(5);
+    expectScene('menu', 'game over → menu');
+    if (OG.Audio.isReady()) check(OG.Audio.currentTrack === 'menu', 'Nhạc menu là ' + OG.Audio.currentTrack);
+  }
+
+  // 7) Kết quả chiến thắng ghi đúng màn cuối (không phải màn phụ đăng ký sau nó).
+  stage = 'qa:victory-level';
+  const vr = evLast['game:victory'] && evLast['game:victory'].result;
+  check(vr && vr.levelId === 'lair', 'Kết quả chiến thắng ghi màn ' + (vr && vr.levelId) + ' thay vì lair');
+
+  // 8) Toast nhiệm vụ không bị lặp (Menus + Quests cùng hiện).
+  stage = 'qa:quest-toast';
+  const toasts = [];
+  const offToast = OG.Events.on('ui:toast', (e) => toasts.push(e.text));
+  OG.Events.emit('quest:complete', { questId: 'qa_fake', reward: 1, text: 'QA kiểm tra' });
+  step(2);
+  offToast();
+  check(toasts.length === 0, 'quest:complete tạo toast trùng ngoài hàng đợi của Quests: ' + JSON.stringify(toasts));
+
+  // 9) Vật phẩm cửa hàng có tác dụng: khiên chặn 1 đòn, nam châm hút đồ, tim +1 mạng.
+  stage = 'qa:items';
+  OG.Save.addCoins(500, 'test');
+  ['shield', 'magnet', 'heart'].forEach((id) => check(OG.Shop.buy(id), 'Không mua được ' + id));
+  OG.Save.data.selectedChar = 'oggy';
+  const run = OG.Game.newRun();
+  check(run.lives === OG.Config.START_LIVES + 1, 'Tim dự phòng không cộng mạng (lives=' + run.lives + ')');
+  OG.Game.startLevel('kitchen'); await stepAsync(3);
+  if (expectScene('level')) {
+    const p = OG.Level.state.player;
+    check(p.shield >= 1 && p.magnet > 0, 'Khiên/nam châm không áp vào người chơi');
+    const lives = OG.Game.run.lives;
+    p.inv = 0; OG.Player.hurt(p, 'enemy');
+    check(OG.Game.run.lives === lives && p.shield === 0, 'Khiên không chặn được đòn');
+    const it = OG.Level.state.items.find((x) => !x.got);
+    if (it) {
+      p.x = it.x - 120; p.y = it.y - p.h / 2; p.vx = 0;
+      const d0 = Math.abs(it.x - (p.x + p.w / 2));
+      OG.Collectibles.touches(it, p, 0.1, p.magnet);
+      check(Math.abs(it.x - (p.x + p.w / 2)) < d0, 'Nam châm không hút vật phẩm');
+    }
+  }
+
+  // 10) Giữ phím ←/→ qua lúc đổi scene (màn → trùm): phím lặp vẫn giữ được hướng đi.
+  stage = 'qa:held-key';
+  keyDown('ArrowRight');
+  OG.Input.reset(); // giống lúc Scenes.go()
+  (doc.activeElement || doc.body).dispatchEvent(new D.FakeEvent('keydown', { code: 'ArrowRight', key: 'ArrowRight', repeat: true }));
+  check(OG.Input.keys.right === true, 'Giữ → qua lúc đổi scene thì nhân vật đứng im');
+  (doc.activeElement || doc.body).dispatchEvent(new D.FakeEvent('keydown', { code: 'Escape', key: 'Escape', repeat: true }));
+  check(!OG.Input.pressed('pause'), 'Phím Esc lặp gây tạm dừng liên tục');
+  keyUp('ArrowRight'); keyUp('Escape'); step(1);
+
+  // 11) Enter khi đang focus một nút phụ trong panel không ép bấm nút chính.
+  stage = 'qa:enter-focus';
+  OG.Scenes.go('leaderboard', { back: 'menu' }); await stepAsync(3);
+  const clearBtn = findButton(/XOÁ BẢNG/);
+  if (check(!!clearBtn, 'Thiếu nút XOÁ BẢNG')) {
+    clearBtn.focus();
+    await press('Enter');
+    expectScene('leaderboard', 'Enter trên nút XOÁ BẢNG không được quay lại');
+  }
+  OG.Scenes.go('menu'); await stepAsync(3);
+
+  // 12) Tiến độ & xu được lưu bền vững (đọc lại từ localStorage).
+  stage = 'qa:persist';
+  OG.Save.commit();
+  const before = { coins: OG.Save.getCoins(), done: OG.Progress.isCompleted('lair'), lb: OG.Social.getLeaderboard(10).length };
+  const reloaded = JSON.parse(storage.getItem('oggyAdventure.save.v1') || '{}');
+  check(reloaded.coins === before.coins, 'Xu không được lưu (' + reloaded.coins + ' ≠ ' + before.coins + ')');
+  check(!!(reloaded.progress && reloaded.progress.levels.lair && reloaded.progress.levels.lair.completed) === before.done, 'Tiến độ màn không được lưu');
+  check(((reloaded.ext && reloaded.ext.social && reloaded.ext.social.leaderboard) || []).length === before.lb, 'Bảng xếp hạng không được lưu');
+
+  // 13) Không rò rỉ listener khi chơi lại nhiều lượt (menu → bản đồ → màn → game over → thử lại).
+  stage = 'qa:leaks';
+  const l0 = listenerCount();
+  for (let k = 0; k < 3; k++) {
+    OG.Scenes.go('menu'); await stepAsync(2);
+    click('#overlay [data-act="play"]', 'CHƠI'); await stepAsync(3);
+    OG.Game.startLevel('kitchen'); await stepAsync(3);
+    const p = OG.Level.state.player;
+    for (let i = 0; i < 20 && cur() === 'level'; i++) { p.inv = 0; p.shield = 0; OG.Player.hurt(p, 'enemy'); step(2); }
+    await waitScene('gameover', 30, 'game over lượt ' + k);
+    click('#overlay [data-act="again"]', 'THỬ LẠI'); await stepAsync(3);
+  }
+  OG.Scenes.go('menu'); await stepAsync(3);
+  check(listenerCount() === l0, 'Số listener window/document tăng sau 3 lượt chơi lại: ' + l0 + ' → ' + listenerCount());
+  check(intervalCount() <= 1, 'Còn ' + intervalCount() + ' setInterval sau khi chơi lại');
 }
 
 let doubleJumpDone = false;

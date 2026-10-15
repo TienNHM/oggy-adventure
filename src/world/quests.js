@@ -134,7 +134,8 @@
   function liveLevelProgress(def, level) {
     var G = OG.Game, st = G && G.stage;
     if (!st || st.levelId !== level.id) return { progress: 0, failed: false, live: false };
-    var elapsed = Math.max(0, (OG.time || 0) - (st.startTime || 0));
+    // Thời gian chơi thật (không tính lúc tạm dừng); dự phòng bằng đồng hồ tổng nếu thiếu.
+    var elapsed = typeof st.playTime === 'number' ? st.playTime : Math.max(0, (OG.time || 0) - (st.startTime || 0));
     switch (def.type) {
       case 'collect_all': return { progress: st.pizzas | 0, failed: false, live: true };
       case 'stomp_n': return { progress: st.stomps | 0, failed: false, live: true };

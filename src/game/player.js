@@ -77,7 +77,13 @@
       var predicted = Math.max(0, (OG.Game.run ? OG.Game.run.lives : 1) - 1);
       OG.Events.emit('player:hurt', { lives: predicted, cause: cause, shielded: false });
       var lives = OG.Game.loseLife(cause);
-      if (lives > 0) OG.DOM.toast(cause === 'fall' ? 'Ối! Oggy rơi mất rồi!' : 'Ôi! Cẩn thận mấy chú gián!');
+      if (lives > 0) {
+        var name = OG.Data.getCharacter(p.charId).name;
+        OG.DOM.toast(cause === 'fall' ? 'Ối! ' + name + ' rơi mất rồi!'
+          : cause === 'boss' ? 'Ối! Trúng đòn của trùm!'
+          : cause === 'projectile' ? 'Ối! Coi chừng đồ bay tới!'
+          : 'Ôi! Cẩn thận mấy chú gián!');
+      }
       return true;
     },
 

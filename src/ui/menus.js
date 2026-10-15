@@ -885,9 +885,10 @@
       OG.Events.on('char:unlock', function (e) {
         if (e && e.reason === 'level') UI.toast('🎉 Đã mở khoá ' + UI.charName(e.charId) + '! Đổi ở mục Nhân vật.', 2.6);
       });
-      // Thông báo hoàn thành nhiệm vụ.
+      // Thông báo hoàn thành nhiệm vụ — chỉ khi thiếu OG.Quests (Quests tự xếp hàng toast của nó;
+      // toast thêm ở đây sẽ đè lên và làm mất/lặp thông báo khi nhiều nhiệm vụ xong cùng lúc).
       OG.Events.on('quest:complete', function (e) {
-        if (!e) return;
+        if (!e || OG.Quests) return;
         UI.toast('✅ Nhiệm vụ: ' + (e.text || '') + (e.reward ? ' · +' + e.reward + ' 🪙' : ''), 2.4);
       });
     }

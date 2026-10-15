@@ -11,7 +11,7 @@
 *{box-sizing:border-box}
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#10192b;font-family:"Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",Arial,sans-serif;color:white}
 #wrap{height:100%;display:grid;place-items:center;padding:12px}
-#gameShell{width:min(1100px,100%);position:relative;aspect-ratio:16/9;max-height:calc(100vh - 24px);border:5px solid #fff0c9;border-radius:20px;overflow:hidden;box-shadow:0 18px 60px #0009;background:#8adcf4}
+#gameShell{width:min(1100px,100%,calc((100vh - 24px) * 16 / 9));position:relative;aspect-ratio:16/9;max-height:calc(100vh - 24px);border:5px solid #fff0c9;border-radius:20px;overflow:hidden;box-shadow:0 18px 60px #0009;background:#8adcf4}
 canvas{display:block;width:100%;height:100%;touch-action:none}
 #hud{position:absolute;inset:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:12px 16px;pointer-events:none;text-shadow:0 2px 3px #26334c}
 .pill{background:#17233ddd;border:2px solid #fff4d6;border-radius:99px;padding:7px 12px;font-weight:900;font-size:clamp(11px,1.5vw,16px)}
@@ -32,6 +32,8 @@ button:active{transform:translateY(3px);box-shadow:0 2px 0 #b74b2b}
 .touch{pointer-events:auto;width:58px;height:58px;padding:0;border-radius:18px;background:#17233dbb;border:2px solid #fff;color:white;font-size:25px;box-shadow:0 4px 0 #080e1c88;touch-action:none;user-select:none;-webkit-user-select:none}
 .touch.held{background:#f27a43cc}
 @media(pointer:coarse),(max-width:700px){#mobileControls{display:flex}#gameShell{border-width:3px;border-radius:12px}#hud{padding:7px}.pill{padding:5px 8px}}
+/* Điện thoại dựng đứng: khung 16:9 rất nhỏ → gợi ý xoay ngang (game vẫn chơi được). */
+@media(orientation:portrait) and (max-width:700px){#wrap{align-content:center;gap:14px}#wrap::after{content:"📱 Xoay ngang điện thoại để chơi dễ hơn";font-weight:800;font-size:14px;opacity:.85;text-align:center}}
 #gameShell.touch-on #mobileControls{display:flex}
 #gameShell.touch-off #mobileControls,#mobileControls.hidden{display:none!important}
 .small{font-size:12px;opacity:.8}

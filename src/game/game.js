@@ -46,7 +46,7 @@
       Game.run = {
         charId: charId, skinId: skinId,
         score: 0, lives: lives, maxLives: Math.max(lives, C.START_LIVES),
-        coinsEarned: 0, startTime: OG.time, nextLevel: 0,
+        coinsEarned: 0, startTime: OG.time, playTime: 0, nextLevel: 0,
         levelsCompleted: [], over: false, mods: runMods,
         stats: { stomps: 0, hurts: 0, pizzas: 0, coins: 0, bosses: 0 }
       };
@@ -77,13 +77,21 @@
     // Gọi bởi scene level khi bắt đầu màn — reset thống kê màn.
     beginStage: function (level) {
       Game.stage = {
-        levelId: level.id, startTime: OG.time, levelScore: 0,
+        levelId: level.id, startTime: OG.time, playTime: 0, levelScore: 0,
         pizzas: 0, pizzaTotal: level.pizzas.length, goal: level.goal,
         coins: 0, coinTotal: (level.coins || []).length,
         stomps: 0, hurts: 0, bossHurts: 0, bossId: level.boss || null, bossDefeated: false
       };
       Game.run.nextLevel = OG.Data.levelIndex(level.id);
       return Game.stage;
+    },
+
+    // Cộng thời gian chơi thật (scene level/boss gọi mỗi frame; KHÔNG tính lúc tạm dừng hay ở menu).
+    // stage.playTime dùng cho đồng hồ HUD, nhiệm vụ "về đích dưới X giây" và kỷ lục thời gian màn.
+    tickTime: function (dt) {
+      if (Game.stage) Game.stage.playTime = (Game.stage.playTime || 0) + dt;
+      if (Game.run) Game.run.playTime = (Game.run.playTime || 0) + dt;
+      Game.hud.time = Game.stage ? Game.stage.playTime : 0;
     },
 
     addScore: function (n, x, y) {
@@ -157,7 +165,7 @@
         coins: st.coins, coinTotal: st.coinTotal, coinsReward: reward,
         stomps: st.stomps, hurts: st.hurts, noDamage: noDamage,
         bossId: st.bossId, bossDefeated: st.bossDefeated, bossNoDamage: st.bossDefeated && st.bossHurts === 0,
-        time: OG.time - st.startTime, stars: stars,
+        time: st.playTime != null ? st.playTime : OG.time - st.startTime, stars: stars,
         isFinal: OG.Progress.isFinal(level.id), firstClear: false, newlyUnlocked: []
       };
       var pr = OG.Progress.complete(level.id, result);
@@ -166,7 +174,9 @@
       result.charsUnlocked = pr.charsUnlocked;
       run.levelsCompleted.push(level.id);
       var next = OG.Progress.nextLevelId(level.id);
-      run.nextLevel = next ? OG.Data.levelIndex(next) : OG.Data.levelIndex(level.id);
+      // Màn cuối (final) giữ nguyên chỉ số: buildResult('victory') phải ghi đúng màn vừa thắng
+      // (danh sách còn màn phụ đăng ký SAU màn cuối, vd basement).
+      run.nextLevel = next && !result.isFinal ? OG.Data.levelIndex(next) : OG.Data.levelIndex(level.id);
       OG.Save.addCoins(reward, 'level');
       run.coinsEarned += reward;
       OG.Save.submitBest(run.score);
@@ -187,7 +197,7 @@
         isNewBest: run.score > 0 && run.score >= OG.Save.data.bestScore,
         levelId: level.id, levelIndex: idx, levelName: level.name,
         levelsCompleted: run.levelsCompleted.slice(), charId: run.charId, skinId: run.skinId || null,
-        coinsEarned: run.coinsEarned, time: OG.time - run.startTime, stats: run.stats,
+        coinsEarned: run.coinsEarned, time: run.playTime != null ? run.playTime : OG.time - run.startTime, stats: run.stats,
         date: new Date().toISOString()
       };
     },

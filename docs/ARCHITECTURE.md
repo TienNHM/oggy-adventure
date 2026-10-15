@@ -282,11 +282,13 @@ Event mới do module tự phát và tự nghe không cần sửa core.
   isFinal, firstClear, newlyUnlocked:[levelId], charsUnlocked:[charId] }
 stars = 1 + (ăn hết pizza) + (không bị thương ở cả màn và trùm)
 coinsReward = 5 + 5*stars (đã cộng vào ví trước khi phát event)
+time = stage.playTime: giây chơi thật của màn + trùm, KHÔNG tính lúc tạm dừng/menu
 ```
 **RunResult** (`game:over`, `game:victory`, `params.result` của gameover và victory):
 ```
 { type:'gameover'|'victory', score, bestScore, isNewBest, levelId, levelIndex, levelName,
   levelsCompleted:[levelId], charId, skinId, coinsEarned, time, stats:{stomps,hurts,pizzas,coins,bosses}, date }
+time = run.playTime (không tính lúc tạm dừng). Với victory, levelId là màn final vừa thắng.
 ```
 
 ---
@@ -378,11 +380,11 @@ Mặc định mỗi màn chỉ mở khi màn liền trước đã hoàn thành. 
 
 ### OG.Game
 ```
-run: { charId, skinId, score, lives, maxLives, coinsEarned, startTime, nextLevel(index), levelsCompleted, over, mods, stats }
-stage: { levelId, levelScore, pizzas, pizzaTotal, goal, coins, coinTotal, stomps, hurts, bossHurts, bossId, bossDefeated, startTime }
+run: { charId, skinId, score, lives, maxLives, coinsEarned, startTime, playTime, nextLevel(index), levelsCompleted, over, mods, stats }
+stage: { levelId, levelScore, pizzas, pizzaTotal, goal, coins, coinTotal, stomps, hurts, bossHurts, bossId, bossDefeated, startTime, playTime }
 hud: HudState (mục 8, UI)
 newRun({charId?, skinId?})  ensureRun()  startLevel(idOrIndex)  finishStage(levelId)  completeLevel(levelId)
-addScore(n)  pickupCoins(n)  loseLife(cause)  gainLife(n)  gameOver()  victory()  buildResult(type)  refreshHud()  levelMods(levelId)
+tickTime(dt) /* scene level|boss gọi mỗi frame: cộng playTime, cập nhật hud.time */  addScore(n)  pickupCoins(n)  loseLife(cause)  gainLife(n)  gameOver()  victory()  buildResult(type)  refreshHud()  levelMods(levelId)
 ```
 Điểm số: pizza +100, xu +10 (kèm 1 xu vào ví), giẫm gián +50, đánh trúng trùm +100, hạ trùm +500.
 
@@ -510,4 +512,8 @@ Leaderboard lưu trong `OG.Save.ns('social').leaderboard`, tối đa 10 mục. K
   Test đọc `index.html`, load mọi `<script src>` theo đúng thứ tự bằng `vm`, rồi chơi qua: menu → cài đặt / nhân vật /
   cửa hàng (mua giày lò xo) / xếp hạng → bản đồ (Enter) → 4 màn + 4 trùm (giẫm điểm yếu) → chiến thắng → nhập tên → bảng xếp hạng → chia sẻ;
   tạm dừng (Esc, nút ⏸, P, cài đặt chồng lên pause), nhảy đôi, 3 màn phụ với Jack/Olivia và skin, game over, xoá dữ liệu.
+  Phần `qaChecks()` kiểm tra hồi quy: thời gian tạm dừng không tính vào màn, chơi lại màn từ trận trùm, pause → bản đồ,
+  tự tạm dừng khi ẩn tab/mất focus, nhạc đổi theo scene (một sequencer), thua trong trận trùm, kết quả chiến thắng ghi đúng màn,
+  toast nhiệm vụ không lặp, khiên/nam châm/tim có tác dụng, giữ phím ←/→ qua lúc đổi scene, Enter trên nút đang focus,
+  dữ liệu lưu vào localStorage, và số listener/setInterval không tăng sau nhiều lượt chơi lại.
   Mọi `console.error`, ngoại lệ trong frame/listener/timer, `ctx.save/restore` lệch và lời gọi `alert/confirm/prompt` đều là lỗi (thoát mã 1).

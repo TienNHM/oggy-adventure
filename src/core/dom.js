@@ -19,7 +19,10 @@
       DOM.toastEl = $('toast');
       DOM.controls = $('mobileControls');
       window.addEventListener('keydown', function (e) {
-        if ((e.code === 'Enter' || e.code === 'NumpadEnter') && DOM.isPanelOpen() && primaryBtn && document.activeElement && document.activeElement.tagName !== 'INPUT') {
+        var ae = document.activeElement;
+        // Đang focus một nút trong panel → để trình duyệt tự kích hoạt đúng nút đó (không ép nút chính).
+        var focusedBtn = ae && ae.tagName === 'BUTTON' && DOM.overlay && DOM.overlay.contains(ae);
+        if ((e.code === 'Enter' || e.code === 'NumpadEnter') && DOM.isPanelOpen() && primaryBtn && ae && ae.tagName !== 'INPUT' && !focusedBtn) {
           e.preventDefault();
           primaryBtn.click();
         }

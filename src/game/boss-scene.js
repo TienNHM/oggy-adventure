@@ -86,6 +86,7 @@
       if (OG.Input.pressed('pause')) { OG.Input.consume('pause'); OG.Scenes.push('pause', { from: 'boss' }); return; }
       var A = S.arena, p = A.player, boss = S.boss;
       A.t += dt;
+      if (S.phase === 'fight') OG.Game.tickTime(dt);
       var res = OG.Player.update(p, dt, A);
       if (p.y > OG.H + 80) {
         OG.Player.hurt(p, 'fall');
