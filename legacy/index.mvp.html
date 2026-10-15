@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#17233d"><title>Oggy Adventure — Browser Game</title>
+<style>
+:root{--ink:#17233d;--cream:#fff6df;--gold:#ffc94a;--blue:#52c5ee}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#10192b;font-family:Trebuchet MS,system-ui,sans-serif;color:white}
+#wrap{height:100%;display:grid;place-items:center;padding:12px}
+#gameShell{width:min(1100px,100%);position:relative;aspect-ratio:16/9;max-height:calc(100vh - 24px);border:5px solid #fff0c9;border-radius:20px;overflow:hidden;box-shadow:0 18px 60px #0009;background:#8adcf4}
+canvas{display:block;width:100%;height:100%;touch-action:none}
+#hud{position:absolute;inset:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:12px 16px;pointer-events:none;text-shadow:0 2px 3px #26334c}
+.pill{background:#17233ddd;border:2px solid #fff4d6;border-radius:99px;padding:7px 12px;font-weight:900;font-size:clamp(11px,1.5vw,16px)}
+#hudLeft,#hudRight{display:flex;gap:8px;align-items:center}
+#overlay{position:absolute;inset:0;display:grid;place-items:center;background:linear-gradient(#15213b88,#15213bcc);padding:18px}
+.panel{width:min(520px,94%);background:#fff6df;color:#25314a;border:5px solid #fff;border-radius:24px;padding:clamp(18px,3vw,30px);text-align:center;box-shadow:0 12px 0 #b87542}
+.panel h1{font-size:clamp(27px,5vw,48px);margin:0 0 8px;color:#ed713c;text-shadow:2px 3px #ffd36b}
+.panel p{line-height:1.5;margin:8px 0 18px;font-weight:700}
+button{border:0;border-radius:14px;padding:12px 20px;background:#f27a43;color:white;font-size:17px;font-weight:900;cursor:pointer;box-shadow:0 5px 0 #b74b2b}
+button:active{transform:translateY(3px);box-shadow:0 2px 0 #b74b2b}
+.secondary{background:#52b9df;box-shadow:0 5px 0 #2582aa}
+.actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+#toast{position:absolute;top:22%;left:50%;transform:translateX(-50%);background:#17233ddd;border:2px solid white;border-radius:14px;padding:10px 16px;font-weight:900;opacity:0;transition:opacity .2s;pointer-events:none;text-align:center}
+#mobileControls{position:absolute;bottom:12px;left:12px;right:12px;display:none;justify-content:space-between;pointer-events:none}
+.pad{display:flex;gap:10px}.touch{pointer-events:auto;width:58px;height:58px;border-radius:18px;background:#17233dbb;border:2px solid #fff;color:white;font-size:25px;box-shadow:0 4px 0 #080e1c88;touch-action:none}
+@media(pointer:coarse),(max-width:700px){#mobileControls{display:flex}#gameShell{border-width:3px;border-radius:12px}#hud{padding:7px}.pill{padding:5px 8px}}
+.small{font-size:12px;opacity:.8}
+</style></head>
+<body><div id="wrap"><div id="gameShell">
+<canvas id="game" width="960" height="540" aria-label="Oggy Adventure game"></canvas>
+<div id="hud"><div id="hudLeft"><div class="pill" id="level">🏡 Nhà Oggy</div><div class="pill" id="objective">🍕 0/5</div></div><div id="hudRight"><div class="pill" id="lives">❤️❤️❤️</div><div class="pill" id="score">⭐ 0</div></div></div>
+<div id="toast"></div>
+<div id="mobileControls"><div class="pad"><button class="touch" data-key="left">◀</button><button class="touch" data-key="right">▶</button></div><div class="pad"><button class="touch" data-key="jump">⬆</button><button class="touch" data-key="action">✦</button></div></div>
+<div id="overlay"><div class="panel"><h1>OGGY ADVENTURE!</h1><p>Ba chú gián tinh nghịch đã lấy mất đồ ăn của Oggy!<br>Khám phá ngôi nhà, thu thập pizza và bắt những tên gián quậy phá.</p><p class="small">PC: A/D hoặc ←/→ để đi · Space/W/↑ để nhảy · E để tương tác<br>Mobile: dùng các nút điều khiển trên màn hình</p><div class="actions"><button id="start">BẮT ĐẦU CHƠI</button></div><p class="small">Game fan-made, không chính thức.</p></div></div>
+</div></div>
+<script>
+(()=>{
+const c=document.getElementById('game'),ctx=c.getContext('2d'),W=960,H=540;
+const $=id=>document.getElementById(id);
+const keys={left:false,right:false,jump:false,action:false};let state='menu',level=0,score=0,lives=3,items=0,cam=0,last=0,toastTimer=0,worldW=1900;
+let player,platforms,foods,bugs,goal,particles=[],checkpoint=0,levelName='';
+const levels=[
+ {name:'Nhà bếp náo loạn',width:1900,goal:5,plats:[[0,480,1900,60],[260,405,150,18],[500,345,160,18],[760,415,170,18],[1030,350,160,18],[1300,410,180,18],[1570,340,160,18]],food:[[180,440],[315,365],[555,305],[820,375],[1090,310],[1370,370],[1630,300]],bugs:[[620,450],[1120,450],[1490,450]],exit:1780},
+ {name:'Khu vườn bí mật',width:2100,goal:6,plats:[[0,480,2100,60],[230,395,160,18],[490,330,170,18],[770,395,180,18],[1050,320,170,18],[1330,390,180,18],[1610,315,180,18],[1870,390,130,18]],food:[[160,440],[280,355],[550,290],[830,355],[1110,280],[1390,350],[1670,275],[1910,350]],bugs:[[400,450],[900,450],[1260,450],[1740,450]],exit:1980},
+ {name:'Cuộc đua trên mái nhà',width:2300,goal:7,plats:[[0,480,2300,60],[260,400,150,18],[520,335,160,18],[790,400,160,18],[1060,330,160,18],[1330,390,170,18],[1620,320,170,18],[1900,390,170,18],[2160,320,120,18]],food:[[170,440],[310,360],[580,295],[850,360],[1120,290],[1390,350],[1680,280],[1960,350],[2190,280]],bugs:[[450,450],[970,450],[1460,450],[1810,450],[2080,450]],exit:2210}
+];
+function resetLevel(){let d=levels[level];worldW=d.width;levelName=d.name;items=0;cam=0;player={x:70,y:420,w:34,h:52,vx:0,vy:0,ground:false,face:1,inv:0};platforms=d.plats.map(a=>({x:a[0],y:a[1],w:a[2],h:a[3]}));foods=d.food.map(a=>({x:a[0],y:a[1],got:false,bob:Math.random()*6}));bugs=d.bugs.map((a,i)=>({x:a[0],y:a[1],base:a[0],dir:i%2?1:-1,alive:true}));goal={x:d.exit,y:400};$('level').textContent='📍 '+d.name;updateHud();}
+function updateHud(){$('objective').textContent='🍕 '+items+'/'+levels[level].goal;$('lives').textContent='❤️'.repeat(lives)+'🖤'.repeat(3-lives);$('score').textContent='⭐ '+score;}
+function toast(t){$('toast').textContent=t;$('toast').style.opacity=1;toastTimer=1.7;}
+function start(){level=0;score=0;lives=3;resetLevel();state='play';$('overlay').style.display='none';}
+$('start').onclick=start;
+function showPanel(title,msg,btn,fn){state='panel';$('overlay').style.display='grid';$('overlay').innerHTML=`<div class="panel"><h1>${title}</h1><p>${msg}</p><div class="actions"><button id="panelBtn">${btn}</button></div></div>`;$('panelBtn').onclick=fn;}
+function nextLevel(){if(level<2){level++;resetLevel();state='play';toast('Màn mới! Cố lên Oggy!');}else{localStorage.setItem('oggyBest',Math.max(score,+(localStorage.getItem('oggyBest')||0)));showPanel('CHIẾN THẮNG! 🏆',`Oggy đã lấy lại đồ ăn! Điểm: ${score} · Kỷ lục: ${localStorage.getItem('oggyBest')}`,'CHƠI LẠI',start);}}
+function hurt(){if(player.inv>0)return;lives--;updateHud();player.inv=1.6;player.vy=-330;player.vx=-player.face*220;toast('Ôi! Cẩn thận mấy chú gián!');if(lives<=0)showPanel('HẾT LƯỢT! 💫',`Oggy cần nghỉ một chút. Điểm của bạn: ${score}`,'THỬ LẠI',start);}
+function keySet(k,v){keys[k]=v;}
+window.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight','ArrowUp',' ','KeyA','KeyD','KeyW','KeyE'].includes(e.code))e.preventDefault();if(e.code==='ArrowLeft'||e.code==='KeyA')keySet('left',true);if(e.code==='ArrowRight'||e.code==='KeyD')keySet('right',true);if(['ArrowUp','KeyW','Space'].includes(e.code))keySet('jump',true);if(e.code==='KeyE')keySet('action',true);});
+window.addEventListener('keyup',e=>{if(e.code==='ArrowLeft'||e.code==='KeyA')keySet('left',false);if(e.code==='ArrowRight'||e.code==='KeyD')keySet('right',false);if(['ArrowUp','KeyW','Space'].includes(e.code))keySet('jump',false);if(e.code==='KeyE')keySet('action',false);});
+document.querySelectorAll('.touch').forEach(b=>{let k=b.dataset.key;const on=e=>{e.preventDefault();keySet(k,true)},off=e=>{e.preventDefault();keySet(k,false)};b.addEventListener('pointerdown',on);b.addEventListener('pointerup',off);b.addEventListener('pointerleave',off);b.addEventListener('pointercancel',off);});
+function update(dt){if(state!=='play')return;let p=player;p.inv=Math.max(0,p.inv-dt);let move=(keys.right?1:0)-(keys.left?1:0);p.vx=move*255;if(move)p.face=move;if(keys.jump&&p.ground){p.vy=-590;p.ground=false;}p.vy=Math.min(900,p.vy+1500*dt);let oldY=p.y;p.x=Math.max(0,Math.min(worldW-p.w,p.x+p.vx*dt));p.y+=p.vy*dt;p.ground=false;
+ for(let a of platforms){if(p.vy>=0&&oldY+p.h<=a.y+8&&p.y+p.h>=a.y&&p.x+p.w>a.x&&p.x<a.x+a.w){p.y=a.y-p.h;p.vy=0;p.ground=true;}}
+ if(p.y>H+80){hurt();p.y=350;p.x=Math.max(20,p.x-100);}
+ for(let f of foods)if(!f.got&&Math.abs((p.x+p.w/2)-f.x)<29&&Math.abs((p.y+p.h/2)-f.y)<38){f.got=true;items++;score+=100;updateHud();toast('Yum! +100 điểm 🍕');}
+ for(let b of bugs)if(b.alive){b.x+=b.dir*(75+level*12)*dt;if(Math.abs(b.x-b.base)>100)b.dir*=-1;if(p.x+p.w>b.x-13&&p.x<b.x+35&&p.y+p.h>b.y-34&&p.y<b.y+12){hurt();}}
+ if(p.x>goal.x&&p.y+p.h>goal.y-100){if(items>=levels[level].goal)nextLevel();else toastTimer=Math.max(toastTimer,.1),toast('Cần thu thập đủ pizza trước khi qua cửa!');}
+ cam=Math.max(0,Math.min(worldW-W,p.x-W*.38));if(toastTimer>0){toastTimer-=dt;if(toastTimer<=0)$('toast').style.opacity=0;}
+}
+function rounded(x,y,w,h,r,color){ctx.fillStyle=color;ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fill();}
+function drawBg(){let g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#76d8f2');g.addColorStop(1,'#e8f6c7');ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+ // soft clouds and scenery
+ for(let i=0;i<7;i++){let x=((i*230-cam*.22)%(W+180)+W+180)%(W+180)-80,y=65+(i%3)*45;ctx.fillStyle='#ffffff99';ctx.beginPath();ctx.arc(x,y,25,0,7);ctx.arc(x+25,y-9,31,0,7);ctx.arc(x+55,y,23,0,7);ctx.fill();}
+ if(level===0){rounded(40-cam*.1,120,210,250,16,'#f4a66f');rounded(65-cam*.1,150,160,90,10,'#9ce7f1');rounded(700-cam*.12,130,190,250,15,'#f6c36a');}
+ else {for(let i=0;i<8;i++){let x=((i*260-cam*.3)%(W+200)+W+200)%(W+200)-80;rounded(x,285,24,195,10,'#4a9d62');ctx.fillStyle='#328454';ctx.beginPath();ctx.arc(x+10,270,48,0,7);ctx.fill();}}
+}
+function drawOggy(x,y){ctx.save();ctx.translate(x,y);if(player.inv>0&&Math.floor(player.inv*12)%2===0){ctx.globalAlpha=.45}
+ // tail/feet
+ rounded(5,43,13,10,5,'#263b9b');rounded(20,43,13,10,5,'#263b9b');
+ // body
+ rounded(3,16,31,32,13,'#2877d5');
+ // ears
+ ctx.fillStyle='#2471cb';ctx.beginPath();ctx.arc(4,8,9,0,7);ctx.arc(32,8,9,0,7);ctx.fill();
+ // head
+ ctx.fillStyle='#328be7';ctx.beginPath();ctx.ellipse(18,14,21,19,0,0,7);ctx.fill();
+ // muzzle and eyes
+ ctx.fillStyle='#d9f0ff';ctx.beginPath();ctx.ellipse(18,20,13,8,0,0,7);ctx.fill();
+ ctx.fillStyle='white';ctx.beginPath();ctx.ellipse(12,9,6,8,0,0,7);ctx.ellipse(24,9,6,8,0,0,7);ctx.fill();
+ ctx.fillStyle='#17233d';ctx.beginPath();ctx.arc(13,10,2.5,0,7);ctx.arc(25,10,2.5,0,7);ctx.fill();
+ ctx.fillStyle='#17233d';ctx.beginPath();ctx.arc(18,20,2,0,7);ctx.fill();
+ ctx.strokeStyle='#17233d';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(18,23,5,.15,2.8);ctx.stroke();ctx.restore();}
+function drawBug(b){let x=b.x,y=b.y-25;ctx.save();ctx.translate(x,y);rounded(0,8,34,21,11,'#7d3e9b');ctx.fillStyle='#b56bc7';ctx.beginPath();ctx.arc(16,10,13,Math.PI,0);ctx.fill();ctx.fillStyle='white';ctx.beginPath();ctx.arc(11,9,5,0,7);ctx.arc(23,9,5,0,7);ctx.fill();ctx.fillStyle='#222';ctx.beginPath();ctx.arc(12,10,2,0,7);ctx.arc(24,10,2,0,7);ctx.fill();ctx.strokeStyle='#4b285d';ctx.lineWidth=2;for(let i=0;i<3;i++){ctx.beginPath();ctx.moveTo(4+i*3,26);ctx.lineTo(-3+i*3,33);ctx.moveTo(24+i*3,26);ctx.lineTo(31+i*3,33);ctx.stroke();}ctx.restore();}
+function draw(){ctx.save();drawBg();ctx.translate(-cam,0);
+ // floor
+ for(let a of platforms){rounded(a.x,a.y,a.w,a.h,8,a.y>470?'#e9a34f':'#b97945');if(a.y>470){ctx.fillStyle='#75bd59';ctx.fillRect(a.x,a.y,a.w,8);}else{ctx.fillStyle='#f5d28b';ctx.fillRect(a.x,a.y,a.w,5);}}
+ // decor
+ for(let x=100;x<worldW;x+=300){rounded(x,445,55,35,8,level===0?'#f5c75f':'#6dbd69');}
+ for(let f of foods)if(!f.got){let yy=f.y+Math.sin(performance.now()/230+f.bob)*5;ctx.font='30px sans-serif';ctx.textAlign='center';ctx.fillText('🍕',f.x,yy);}
+ for(let b of bugs)if(b.alive)drawBug(b);
+ // exit portal
+ rounded(goal.x,355,48,125,20,'#f4d45b');rounded(goal.x+8,365,32,115,16,'#5b9be8');ctx.fillStyle='white';ctx.font='bold 13px sans-serif';ctx.fillText('EXIT',goal.x+24,345);
+ drawOggy(player.x,player.y);
+ ctx.restore();
+ // subtle vignette and start prompt
+ ctx.fillStyle='#17233d22';ctx.fillRect(0,0,W,5);
+}
+function loop(t){let dt=Math.min(.033,(t-last)/1000||0);last=t;update(dt);draw();requestAnimationFrame(loop);}
+resetLevel();requestAnimationFrame(loop);
+})();
+</script></body></html>

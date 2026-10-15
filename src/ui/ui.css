@@ -1,0 +1,4 @@
+/* Style bổ sung cho menu, cửa hàng, HUD. [STUB — agent Menus & Shop sẽ viết]
+ * Chủ sở hữu: agent Menus & Shop (src/ui/). Được load SAU style nội tuyến của index.html,
+ * nên có thể ghi đè. Quy ước: tiền tố class .ui- để tránh đụng module khác.
+ * Biến màu có sẵn trên :root: --ink --cream --gold --blue --orange --secondary. */
