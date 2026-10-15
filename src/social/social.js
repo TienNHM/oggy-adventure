@@ -184,7 +184,7 @@
   // ---------------------------------------------------------------------------
   // Thẻ thành tích (canvas 1200×630, tỉ lệ ảnh xem trước mạng xã hội)
   // ---------------------------------------------------------------------------
-  var FONT = '"Trebuchet MS", system-ui, sans-serif';
+  var FONT = '"Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif';
 
   function roundRect(ctx, x, y, w, h, r) {
     if (OG.util && OG.util.roundRectPath) { OG.util.roundRectPath(ctx, x, y, w, h, r); return; }

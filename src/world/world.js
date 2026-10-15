@@ -20,7 +20,7 @@
   var U = OG.util;
   var World = (OG.World = OG.World || {}); // giữ extraLevels nếu extraLevels.js load trước
 
-  var FONT = '"Trebuchet MS", "Segoe UI", sans-serif';
+  var FONT = '"Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif';
   var NODE_R = 28;           // bán kính nút màn
   var HIT_R = 46;            // bán kính vùng chạm nút (≥ 44px)
   var WALK_SPEED = 300;      // px/s khi Oggy đi giữa các nút

@@ -61,7 +61,7 @@
   border-radius: 14px;
   background: #fff;
   color: var(--ink, #17233d);
-  font: 900 17px "Trebuchet MS", system-ui, sans-serif;
+  font: 900 17px "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
   outline: none;
 }
 .social-input:focus { border-color: var(--orange, #f27a43); }
