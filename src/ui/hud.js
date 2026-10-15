@@ -133,7 +133,7 @@
   // ---------------------------------------------------------------------
   // HUD canvas
   // ---------------------------------------------------------------------
-  var FONT = 'Trebuchet MS, system-ui, sans-serif';
+  var FONT = '"Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif';
   var bossFx = { id: null, lagHp: 0, shownHp: 0, flash: 0, lastT: 0 };
   var phaseBanner = { text: '', t: 0 };
 

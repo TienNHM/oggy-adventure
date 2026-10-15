@@ -232,7 +232,7 @@
     ctx.strokeStyle = '#17233d'; ctx.lineWidth = 2;
     U.roundRectPath(ctx, -16, -30, 32, 30, 10); ctx.stroke();
     ctx.fillStyle = color || '#e5484d';
-    ctx.font = 'bold 22px Trebuchet MS, sans-serif';
+    ctx.font = 'bold 22px "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(text || '!', 0, -14);
     ctx.restore();
@@ -283,7 +283,7 @@
     ctx.moveTo(-7, -18); ctx.lineTo(7, -18); ctx.lineTo(7, -8); ctx.lineTo(14, -8);
     ctx.lineTo(0, 4); ctx.lineTo(-14, -8); ctx.lineTo(-7, -8); ctx.closePath();
     ctx.fill(); ctx.stroke();
-    ctx.font = 'bold 12px Trebuchet MS, sans-serif'; ctx.textAlign = 'center';
+    ctx.font = 'bold 12px "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif'; ctx.textAlign = 'center';
     ctx.lineWidth = 3; ctx.strokeText('GIẪM!', 0, -23);
     ctx.fillStyle = '#ffffff'; ctx.fillText('GIẪM!', 0, -23);
     ctx.restore();
@@ -326,7 +326,7 @@
     U.fillRound(ctx, x - 2, y - 2, w + 4, 10, 5, '#17233dcc');
     var ratio = b.maxHp ? Math.max(0, b.hp / b.maxHp) : 0;
     if (ratio > 0) U.fillRound(ctx, x, y, Math.max(6, w * ratio), 6, 3, '#e5484d');
-    ctx.font = 'bold 11px Trebuchet MS, sans-serif'; ctx.textAlign = 'center';
+    ctx.font = 'bold 11px "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif'; ctx.textAlign = 'center';
     ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#17233d'; ctx.lineWidth = 3;
     ctx.strokeText(b.name, b.x + b.w / 2, y - 5); ctx.fillText(b.name, b.x + b.w / 2, y - 5);
     ctx.restore();

@@ -238,7 +238,7 @@
         K.drawBubble(ctx, b.cx(), b.y - 10, t, '📣', '#17233d');
         ctx.save();
         ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#17233d'; ctx.lineWidth = 3;
-        ctx.font = 'bold 18px Trebuchet MS, sans-serif'; ctx.textAlign = 'center';
+        ctx.font = 'bold 18px "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif'; ctx.textAlign = 'center';
         var nx = b.cx() + b.face * (30 + b.stateT * 50), ny = b.y + 6 - b.stateT * 30;
         ctx.strokeText('♪', nx, ny); ctx.fillText('♪', nx, ny);
         ctx.restore();

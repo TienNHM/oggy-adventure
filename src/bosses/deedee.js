@@ -64,7 +64,7 @@
     // lấp lánh để người chơi chú ý
     if (Math.floor(t * 4) % 2 === 0) {
       ctx.fillStyle = '#ffc94a';
-      ctx.font = 'bold 14px Trebuchet MS, sans-serif'; ctx.textAlign = 'center';
+      ctx.font = 'bold 14px "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif'; ctx.textAlign = 'center';
       ctx.fillText('✦', 16, -30);
     }
     ctx.restore();
@@ -329,7 +329,7 @@
         ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(0, 0, 15, 0, Math.PI * 2); ctx.fill();
         ctx.strokeStyle = '#3fbf6f'; ctx.lineWidth = 4;
         ctx.beginPath(); ctx.arc(0, 0, 12, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k); ctx.stroke();
-        ctx.font = '14px Trebuchet MS, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.font = '14px "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillStyle = '#17233d'; ctx.fillText('😋', 0, 1);
         ctx.restore();
       } else if (s === 'eatWalk') {
