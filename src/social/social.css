@@ -1,2 +1,188 @@
-/* Style cho nhập tên, leaderboard, chia sẻ. [STUB — agent Social sẽ viết]
- * Chủ sở hữu: agent Social (src/social/). Quy ước: tiền tố class .social- */
+/* Style cho nhập tên, khối kết quả, bảng xếp hạng, chia sẻ.
+ * Chủ sở hữu: agent Social (src/social/). Quy ước: tiền tố class .social-
+ * Biến màu trên :root: --ink --cream --gold --blue --orange --secondary */
+
+/* ---------- Khối kết quả trong panel gameover/victory ---------- */
+.social-result {
+  margin: 4px 0 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: center;
+}
+
+.social-preview {
+  align-self: center;
+  max-width: 100%;
+  cursor: zoom-in;
+  border-radius: 12px;
+  line-height: 0;
+  outline: none;
+}
+.social-preview:focus-visible { box-shadow: 0 0 0 3px var(--secondary, #52b9df); }
+.social-card {
+  display: block;
+  height: 92px;
+  width: auto;
+  max-width: 100%;
+  border-radius: 12px;
+  border: 3px solid #fff;
+  box-shadow: 0 4px 0 #b8754266;
+  transition: height .18s ease;
+}
+.social-preview-big { cursor: zoom-out; }
+.social-preview-big .social-card { height: auto; width: 100%; }
+
+/* Hàng nhập tên */
+.social-name-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin: 0;
+}
+.social-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 200px;
+  font-weight: 900;
+  font-size: 14px;
+  color: var(--ink, #17233d);
+  text-align: left;
+}
+.social-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 3px solid #e6cfa3;
+  border-radius: 14px;
+  background: #fff;
+  color: var(--ink, #17233d);
+  font: 900 17px "Trebuchet MS", system-ui, sans-serif;
+  outline: none;
+}
+.social-input:focus { border-color: var(--orange, #f27a43); }
+
+.social-btn {
+  min-height: 44px;
+  padding: 10px 14px;
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+.social-status {
+  min-height: 1.3em;
+  font-size: 14px;
+  font-weight: 700;
+  color: #25314a;
+}
+.social-ok { color: #23864a; }
+.social-warn { color: #c2363b; }
+
+.social-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.social-subtitle {
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #8a6a48;
+  margin: 2px 0 4px;
+}
+
+/* ---------- Danh sách xếp hạng (dùng chung) ---------- */
+.social-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.social-row,
+.social-board-head {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 76px 52px 84px 84px;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  font-weight: 800;
+  font-size: 15px;
+  text-align: left;
+}
+.social-row { background: #f3e3bf; color: var(--ink, #17233d); }
+.social-row:nth-child(even) { background: #f7ebcf; }
+.social-row-me {
+  background: var(--gold, #ffc94a) !important;
+  box-shadow: inset 0 0 0 2px #c98a12;
+}
+.social-list-compact .social-row { grid-template-columns: 38px minmax(0, 1fr) auto; padding: 4px 10px; font-size: 14px; }
+.social-rank { text-align: center; font-weight: 900; }
+.social-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.social-char, .social-date { font-size: 13px; opacity: .8; }
+.social-stars { color: #b07a0c; font-size: 14px; }
+.social-score { text-align: right; font-weight: 900; font-variant-numeric: tabular-nums; }
+.social-empty { font-size: 14px; opacity: .85; margin: 10px 0; }
+
+/* ---------- Scene bảng xếp hạng ---------- */
+.panel.social-board-panel { width: min(640px, 96%); }
+.social-board-head {
+  background: transparent;
+  font-size: 12px;
+  text-transform: uppercase;
+  color: #8a6a48;
+  padding-top: 0;
+  padding-bottom: 2px;
+}
+.social-board-head span:last-child { text-align: right; }
+.social-board-head .social-stars, .social-board-head .social-char, .social-board-head .social-date { color: inherit; font-size: 12px; opacity: 1; }
+.social-board {
+  max-height: 42vh;
+  overflow-y: auto;
+  margin-bottom: 12px;
+  -webkit-overflow-scrolling: touch;
+}
+.social-board-panel .social-name-row { margin-bottom: 14px; }
+
+.social-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin: 0 0 10px;
+}
+.social-tab {
+  min-height: 44px;
+  padding: 8px 16px;
+  font-size: 15px;
+  background: #e6d6b4;
+  color: var(--ink, #17233d);
+  box-shadow: 0 4px 0 #b8954f;
+}
+.social-tab-on {
+  background: var(--orange, #f27a43);
+  color: #fff;
+  box-shadow: 0 4px 0 #b74b2b;
+}
+
+/* ---------- Màn hình nhỏ ---------- */
+@media (max-width: 640px), (max-height: 480px) {
+  .social-card { height: 64px; }
+  .social-row, .social-board-head { grid-template-columns: 32px minmax(0, 1fr) 46px 72px; font-size: 13px; padding: 5px 8px; }
+  .social-char, .social-date { display: none; }
+  .social-btn { font-size: 13px; padding: 8px 10px; }
+  .social-label { font-size: 13px; }
+}
+@media (max-height: 380px) {
+  .social-preview { display: none; }
+  .social-list-compact { display: none; }
+  .social-result .social-subtitle { display: none; }
+}
