@@ -7,7 +7,7 @@
 <style>
   :root { --ink:#17233d; --cream:#fff6df; --gold:#ffc94a; --blue:#52c5ee; --bg:#10192b; }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--cream); font: 15px/1.4 "Trebuchet MS", sans-serif; }
+  body { margin: 0; background: var(--bg); color: var(--cream); font: 15px/1.4 "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif; }
   header { padding: 14px 16px 6px; }
   h1 { margin: 0 0 4px; font-size: 22px; color: var(--gold); }
   p.note { margin: 0; opacity: .8; font-size: 13px; }
@@ -15,7 +15,7 @@
   .bar label { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; cursor: pointer; }
   .bar input[type=checkbox] { width: 20px; height: 20px; }
   button { min-height: 44px; padding: 0 14px; border: 0; border-radius: 12px; background: #f27a43; color: #fff;
-    font: bold 14px "Trebuchet MS", sans-serif; box-shadow: 0 4px 0 #b74b2b; cursor: pointer; }
+    font: bold 14px "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif; box-shadow: 0 4px 0 #b74b2b; cursor: pointer; }
   button.sec { background: #52b9df; box-shadow: 0 4px 0 #2582aa; }
   button:active { transform: translateY(2px); box-shadow: 0 2px 0 #b74b2b; }
   #stats { font-family: monospace; font-size: 12px; opacity: .85; }
@@ -106,7 +106,7 @@
     var z = opt.zoom * (window.devicePixelRatio || 1);
     gctx.setTransform(z, 0, 0, z, 0, 0);
     gctx.clearRect(0, 0, grid.width, grid.height);
-    gctx.font = 'bold 13px Trebuchet MS, sans-serif';
+    gctx.font = 'bold 13px "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif';
     gctx.textAlign = 'center'; gctx.fillStyle = '#17233d';
     for (var c = 0; c < STATES.length; c++) gctx.fillText(STATES[c], LABEL_W + CELL_W * c + CELL_W / 2, 20);
     for (var r = 0; r < ROWS.length; r++) {
@@ -222,7 +222,7 @@
       if (!S.drawParticle(lctx, p)) lctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
     }
     lctx.globalAlpha = 1;
-    lctx.fillStyle = '#17233d'; lctx.font = 'bold 14px Trebuchet MS, sans-serif'; lctx.textAlign = 'left';
+    lctx.fillStyle = '#17233d'; lctx.font = 'bold 14px "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif'; lctx.textAlign = 'left';
     lctx.fillText('Skin: ' + skins[skinIdx], 12, 22);
   }
 
