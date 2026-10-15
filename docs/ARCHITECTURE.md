@@ -156,7 +156,7 @@ Quy tắc:
 | jack / olivia / oliviaAccent | `#58b84a` / `#f7f1ea` / `#f29bb8` | nhân vật phụ |
 | danger / success | `#e5484d` / `#3fbf6f` | trạng thái |
 
-Phong cách chung: hoạt hình phẳng, bo góc lớn, viền tối `ink` khi cần, chữ Trebuchet MS đậm.
+Phong cách chung: hoạt hình phẳng, bo góc lớn, viền tối `ink` khi cần, chữ đậm dùng font hệ thống hỗ trợ đầy đủ tiếng Việt: `"Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif`. KHÔNG dùng Trebuchet MS (thiếu glyph tiếng Việt có dấu thanh như ạ, ữ, ỳ → vỡ font). Trên canvas: `ctx.font = "bold 14px \"Segoe UI\", system-ui, Roboto, Arial, sans-serif"`.
 
 ---
 

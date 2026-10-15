@@ -37,7 +37,7 @@
         ctx.globalAlpha = Math.max(0, p.life / p.max);
         ctx.fillStyle = p.color;
         if (p.text) {
-          ctx.font = 'bold ' + p.size + 'px Trebuchet MS, sans-serif';
+          ctx.font = 'bold ' + p.size + 'px "Segoe UI", system-ui, Roboto, Arial, sans-serif';
           ctx.textAlign = 'center';
           ctx.strokeStyle = '#17233d'; ctx.lineWidth = 3;
           ctx.strokeText(p.text, p.x, p.y); ctx.fillText(p.text, p.x, p.y);
