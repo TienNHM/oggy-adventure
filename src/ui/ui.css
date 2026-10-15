@@ -1,4 +1,261 @@
-/* Style bổ sung cho menu, cửa hàng, HUD. [STUB — agent Menus & Shop sẽ viết]
- * Chủ sở hữu: agent Menus & Shop (src/ui/). Được load SAU style nội tuyến của index.html,
- * nên có thể ghi đè. Quy ước: tiền tố class .ui- để tránh đụng module khác.
- * Biến màu có sẵn trên :root: --ink --cream --gold --blue --orange --secondary. */
+/* Style cho menu, cửa hàng, HUD — agent Menus & Shop (src/ui/).
+ * Load SAU style nội tuyến của index.html. Mọi class có tiền tố .ui-
+ * Biến màu trên :root: --ink --cream --gold --blue --orange --secondary. */
+
+:root {
+  --ui-ink: var(--ink, #17233d);
+  --ui-cream: var(--cream, #fff6df);
+  --ui-gold: var(--gold, #ffc94a);
+  --ui-orange: var(--orange, #f27a43);
+  --ui-blue: var(--secondary, #52b9df);
+  --ui-text: #25314a;
+  --ui-shadow: #b87542;
+  --ui-success: #3fbf6f;
+  --ui-danger: #e5484d;
+}
+
+/* ===================== Panel chung ===================== */
+#overlay:has(> .ui-panel) { padding: 10px; }
+.panel.ui-panel {
+  max-height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  position: relative;
+  animation: ui-pop .22s ease-out;
+}
+.panel.ui-panel h1 { font-size: clamp(24px, 4.4vw, 44px); margin-bottom: 4px; letter-spacing: .5px; }
+.panel.ui-panel p { margin: 6px 0 12px; }
+.panel.ui-wide { width: min(880px, 98%); padding: clamp(12px, 2.2vw, 24px); }
+.panel.ui-wide h1 { font-size: clamp(22px, 3.6vw, 36px); }
+.ui-panel h3 { margin: 10px 0 6px; font-size: 16px; color: var(--ui-ink); text-align: left; }
+.ui-panel h3 small { font-weight: 700; opacity: .65; }
+
+.ui-panel button { min-height: 44px; touch-action: manipulation; }
+.ui-panel button:focus { outline: none; }
+.ui-panel button:focus-visible,
+.ui-panel [tabindex="0"]:focus-visible {
+  outline: 4px solid var(--ui-gold);
+  outline-offset: 3px;
+  position: relative;
+  z-index: 1;
+}
+.ui-panel button.is-dim { opacity: .65; }
+.ui-panel button.is-on { background: var(--ui-success); box-shadow: 0 5px 0 #2a8a4f; }
+.ui-panel button.is-confirm { background: var(--ui-danger); box-shadow: 0 5px 0 #a3282c; animation: ui-pulse .8s ease-in-out infinite; }
+.ui-panel .actions { margin-top: 10px; }
+
+@keyframes ui-pop { from { transform: scale(.94); } to { transform: none; } }
+@keyframes ui-pulse { 50% { transform: scale(1.04); } }
+
+.ui-note { font-size: 13px; opacity: .8; margin: 6px 0 !important; }
+.ui-tagline { max-width: 440px; margin-left: auto !important; margin-right: auto !important; }
+
+/* Thanh thống kê dạng pill */
+.ui-stats { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 6px 0 12px; }
+.ui-stats > span {
+  background: var(--ui-ink); color: #fff; border-radius: 99px; padding: 5px 12px;
+  font-weight: 900; font-size: 15px; box-shadow: 0 3px 0 #0b1222;
+}
+.ui-topbar { position: absolute; top: 12px; right: 14px; }
+.ui-topbar > span {
+  display: inline-block; background: var(--ui-ink); color: var(--ui-gold); border-radius: 99px;
+  padding: 6px 12px; font-weight: 900; font-size: 15px; box-shadow: 0 3px 0 #0b1222;
+}
+
+/* ===================== Menu chính ===================== */
+.ui-menu-main { display: flex; gap: 12px; justify-content: center; align-items: stretch; flex-wrap: wrap; margin: 4px 0 12px; }
+.ui-btn-big { font-size: clamp(20px, 2.6vw, 26px) !important; padding: 14px 38px !important; min-width: 180px; }
+.ui-hero-chip {
+  display: flex; align-items: center; gap: 8px; padding: 4px 14px 4px 6px !important; text-align: left;
+}
+.ui-hero-chip .ui-preview { background: #ffffff33; border-radius: 12px; }
+.ui-hero-chip small { display: block; font-size: 11px; opacity: .85; }
+.ui-hero-chip b { font-size: 17px; }
+.ui-menu-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; max-width: 420px; margin: 0 auto; }
+.ui-menu-grid button { font-size: 16px; padding: 10px 12px; }
+
+/* ===================== Thẻ (card) ===================== */
+.ui-card {
+  background: #fff; color: var(--ui-text); border-radius: 18px; padding: 8px 8px 10px;
+  box-shadow: 0 5px 0 #e2c9a3; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  border: 3px solid transparent; font-family: inherit; font-weight: 700; min-width: 0;
+}
+button.ui-card { cursor: pointer; font-size: 14px; }
+button.ui-card:active { transform: translateY(3px); box-shadow: 0 2px 0 #e2c9a3; }
+.ui-card.is-selected { border-color: var(--ui-success); background: #f0fff4; }
+.ui-card.is-viewing { box-shadow: 0 5px 0 var(--ui-gold); }
+.ui-card.is-locked { background: #ece6db; }
+.ui-card-name { font-size: 17px; color: var(--ui-ink); }
+.ui-preview { display: block; flex: none; }
+.ui-preview.is-locked { filter: grayscale(1) brightness(.55); opacity: .8; }
+
+.ui-perk {
+  font-size: 12px; background: var(--ui-gold); color: var(--ui-ink); border-radius: 99px; padding: 2px 9px; font-weight: 900;
+}
+.ui-perk-desc { color: #9a5a23; }
+.ui-tag { font-size: 12px; font-weight: 900; padding: 3px 9px; border-radius: 99px; background: #e9eef7; color: var(--ui-text); }
+.ui-tag-ok { background: var(--ui-success); color: #fff; }
+.ui-tag-lock { background: var(--ui-ink); color: var(--ui-gold); }
+
+/* Thanh chỉ số */
+.ui-stats-bars { width: 100%; display: flex; flex-direction: column; gap: 3px; padding: 0 2px; }
+.ui-stat { display: grid; grid-template-columns: 56px 1fr 52px; align-items: center; gap: 5px; font-size: 11px; text-align: left; }
+.ui-stat i { display: block; height: 8px; background: #e6dccb; border-radius: 99px; overflow: hidden; }
+.ui-stat b { display: block; height: 100%; background: linear-gradient(90deg, var(--ui-orange), var(--ui-gold)); border-radius: 99px; }
+.ui-stat em { font-style: normal; font-weight: 900; text-align: right; white-space: nowrap; }
+
+/* ===================== Chọn nhân vật ===================== */
+.ui-char-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+.ui-detail { background: #fff3d6; border-radius: 16px; padding: 8px 12px 10px; margin-top: 10px; text-align: left; }
+.ui-detail .ui-desc { margin: 2px 0 6px !important; font-size: 14px; line-height: 1.4; }
+.ui-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.ui-skin-row { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 8px; scrollbar-width: thin; }
+.ui-skin {
+  flex: none; display: flex; flex-direction: column; align-items: center; gap: 2px; width: 104px;
+  padding: 6px 4px !important; background: #fff !important; color: var(--ui-text) !important;
+  box-shadow: 0 4px 0 #e2c9a3 !important; border: 3px solid transparent !important; font-size: 12px !important;
+}
+.ui-skin b { font-size: 12px; line-height: 1.15; }
+.ui-skin small { font-size: 11px; font-weight: 900; color: #9a5a23; }
+.ui-skin.is-on { border-color: var(--ui-success) !important; }
+.ui-skin.is-on small { color: var(--ui-success); }
+.ui-skin.is-confirm { border-color: var(--ui-danger) !important; animation: none; }
+.ui-skin.is-confirm small { color: var(--ui-danger); }
+
+/* ===================== Cửa hàng ===================== */
+.ui-tabs { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 4px 0 10px; }
+.ui-tab { padding: 8px 16px !important; font-size: 15px !important; }
+.ui-shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+.ui-item { justify-content: flex-start; text-align: center; }
+.ui-item-icon {
+  font-size: 34px; width: 60px; height: 60px; display: grid; place-items: center;
+  background: #fff3d6; border-radius: 50%; box-shadow: inset 0 -4px 0 #f1d9a6;
+}
+.ui-item-desc { font-size: 12px !important; line-height: 1.35 !important; margin: 0 !important; font-weight: 700; min-height: 32px; }
+.ui-item-own { font-size: 12px; }
+.ui-item-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: auto; padding-top: 4px; width: 100%; }
+.ui-item-actions button { font-size: 14px; padding: 8px 12px; flex: 1 1 auto; }
+.ui-mini-toggle { font-size: 12px !important; padding: 6px 8px !important; }
+.ui-price { white-space: nowrap; }
+.ui-price.is-poor { opacity: .7; text-decoration: line-through 2px; }
+
+/* ===================== Cài đặt ===================== */
+.ui-settings .ui-setting {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+  background: #fff; border-radius: 14px; padding: 6px 10px; margin: 0 0 8px; box-shadow: 0 3px 0 #e2c9a3;
+}
+.ui-setting-label { font-weight: 900; text-align: left; }
+.ui-slider-wrap { display: flex; align-items: center; gap: 8px; flex: 1 1 220px; justify-content: flex-end; }
+.ui-slider-wrap em { font-style: normal; font-weight: 900; width: 42px; text-align: right; }
+.ui-mini { width: 44px; padding: 0 !important; font-size: 22px !important; }
+.ui-slider {
+  flex: 1 1 auto; max-width: 220px; height: 18px; background: #e6dccb; border-radius: 99px; overflow: hidden;
+  cursor: pointer; touch-action: none; position: relative; box-shadow: inset 0 2px 0 #0002;
+}
+.ui-slider::before { content: ''; position: absolute; inset: -13px 0; } /* vùng chạm cao 44px */
+.ui-slider b { display: block; height: 100%; background: linear-gradient(90deg, var(--ui-blue), var(--ui-success)); border-radius: 99px; }
+.ui-toggle { min-width: 110px; }
+.ui-seg { display: flex; gap: 6px; flex-wrap: wrap; }
+.ui-seg button { padding: 8px 12px; font-size: 14px; }
+.ui-danger { background: var(--ui-danger) !important; box-shadow: 0 5px 0 #a3282c !important; font-size: 14px !important; }
+.ui-help { text-align: left; margin: 4px 0 8px; font-size: 13px; }
+.ui-help summary { cursor: pointer; font-weight: 900; padding: 6px 0; }
+.ui-help p { margin: 4px 0 !important; }
+
+/* ===================== Tạm dừng ===================== */
+.ui-pause-level { font-size: 18px; color: var(--ui-ink); }
+.ui-pause-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.ui-pause-actions [data-act="resume"] { grid-column: 1 / -1; font-size: 20px; }
+.ui-quest-list { list-style: none; padding: 0; margin: 0 0 10px; text-align: left; font-size: 14px; font-weight: 700; }
+.ui-quest-list li { padding: 3px 0; }
+.ui-quest-list li.is-done { opacity: .6; text-decoration: line-through; }
+.ui-quest-list li.is-failed, .ui-quests li.is-failed { opacity: .55; }
+
+/* ===================== Kết quả ===================== */
+.ui-result-score { display: flex; flex-direction: column; align-items: center; gap: 2px; margin: 4px 0 10px; }
+.ui-big-score { font-size: clamp(34px, 5vw, 52px); font-weight: 900; color: var(--ui-orange); text-shadow: 2px 3px #ffd36b; line-height: 1; }
+.ui-result-score small { font-weight: 900; opacity: .7; }
+.ui-badge {
+  background: var(--ui-gold); color: var(--ui-ink); font-weight: 900; padding: 4px 12px; border-radius: 99px;
+  animation: ui-pulse 1s ease-in-out infinite; margin-top: 4px;
+}
+.ui-best { font-size: 13px; font-weight: 900; opacity: .75; }
+.ui-result-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0 0 8px; }
+.ui-result-grid > span { background: #fff; border-radius: 12px; padding: 6px 4px; font-size: 13px; font-weight: 700; box-shadow: 0 3px 0 #e2c9a3; }
+.ui-result-grid b { color: var(--ui-ink); font-size: 15px; }
+.ui-victory h1 { color: #e3a91c !important; }
+
+/* ===================== HUD ===================== */
+#hud.ui-hud { align-items: flex-start; gap: 8px; }
+.ui-hud-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ui-hud-left { align-items: flex-start; }
+.ui-hud-right { align-items: flex-end; }
+.ui-hud-row { display: flex; gap: 8px; align-items: center; }
+.ui-pill { white-space: nowrap; transition: background .2s; }
+.ui-pill-level { max-width: 32vw; overflow: hidden; text-overflow: ellipsis; }
+.ui-goal { display: flex; align-items: center; gap: 7px; }
+.ui-goal-bar { display: inline-block; width: 48px; height: 7px; background: #ffffff33; border-radius: 99px; overflow: hidden; }
+.ui-goal-bar b { display: block; height: 100%; width: 0; background: var(--ui-gold); border-radius: 99px; transition: width .25s; }
+.ui-goal.is-done { background: #2a8a4fdd; }
+.ui-goal.is-done .ui-goal-bar b { background: #fff; }
+.ui-lives .ui-heart { display: inline-block; }
+.ui-lives .ui-heart.is-empty { opacity: .55; }
+.ui-lives.is-low { background: #a3282cdd; }
+.ui-x { margin-left: 2px; }
+.ui-items { display: flex; gap: 6px; }
+.ui-items:empty { display: none; }
+.ui-chip {
+  background: #17233dcc; border: 2px solid #7fe0ff; border-radius: 99px; padding: 2px 8px;
+  font-weight: 900; font-size: clamp(10px, 1.3vw, 14px); display: inline-flex; gap: 3px; align-items: center;
+}
+.ui-quests {
+  list-style: none; margin: 0; padding: 6px 10px; background: #17233daa; border-radius: 12px;
+  font-size: clamp(10px, 1.2vw, 13px); font-weight: 700; max-width: 34vw; text-align: left;
+}
+.ui-quests:empty { display: none; }
+.ui-quests li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 1px 0; }
+.ui-quests li.is-done { opacity: .65; }
+.ui-quests small { color: var(--ui-gold); font-weight: 900; }
+
+.ui-bump { animation: ui-bump .35s ease-out; }
+.ui-hurt { animation: ui-hurt .45s ease-out; }
+@keyframes ui-bump { 40% { transform: scale(1.18); } }
+@keyframes ui-hurt { 20%, 60% { transform: translateX(-5px); background: #e5484d; } 40%, 80% { transform: translateX(5px); } }
+
+/* ===================== Responsive ===================== */
+@media (max-width: 760px) {
+  .ui-menu-grid button { font-size: 14px; }
+  .ui-char-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 6px; }
+  .ui-shop-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+  .ui-topbar { position: static; margin-bottom: 4px; }
+  .ui-pill-level { max-width: 24vw; }
+  .ui-goal-bar { width: 30px; }
+}
+/* Màn hình thấp (điện thoại xoay ngang): thu gọn */
+@media (max-height: 520px) {
+  .panel.ui-panel { padding: 10px 14px; border-width: 3px; box-shadow: 0 6px 0 #b87542; }
+  .panel.ui-panel h1 { font-size: 22px !important; margin-bottom: 2px; }
+  .panel.ui-panel p { margin: 4px 0 6px; line-height: 1.3; font-size: 13px; }
+  .panel.ui-panel .small { display: none; }
+  .ui-btn-big { padding: 8px 26px !important; font-size: 20px !important; }
+  .ui-stats { margin: 2px 0 6px; }
+  .ui-stats > span { font-size: 12px; padding: 3px 9px; }
+  .ui-card .ui-preview { width: 54px !important; height: 54px !important; }
+  .ui-skin .ui-preview { width: 40px !important; height: 40px !important; }
+  .ui-hero-chip .ui-preview { width: 38px !important; height: 38px !important; }
+  .ui-card-name { font-size: 14px; }
+  .ui-item-icon { width: 44px; height: 44px; font-size: 26px; }
+  .ui-item-desc { min-height: 0; }
+  .ui-quests { display: none; }
+  .ui-result-grid > span { padding: 3px; font-size: 12px; }
+  .ui-panel h3 { margin: 4px 0; }
+}
+@media (max-width: 480px) {
+  .ui-menu-grid { grid-template-columns: 1fr 1fr; gap: 6px; }
+  .ui-result-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ui-pause-actions { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .panel.ui-panel, .ui-bump, .ui-hurt, .ui-badge, .ui-panel button.is-confirm { animation: none !important; }
+}

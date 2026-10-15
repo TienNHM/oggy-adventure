@@ -22,3 +22,12 @@ Game phiêu lưu 2D chạy trực tiếp trên trình duyệt, không cần cài
 Đưa thư mục này lên Cloudflare Pages (Direct Upload) hoặc bất kỳ static hosting nào. Build command và output directory không cần cấu hình; thư mục gốc chứa `index.html`.
 
 Lưu ý: Đây là bản fan-made không chính thức; nếu phát hành công khai/thương mại, hãy thay nhân vật, tên và tài sản có bản quyền bằng thiết kế được cấp phép hoặc nguyên bản.
+
+## Cấu trúc mã nguồn
+- `index.html`: khung HTML/CSS và danh sách `<script>` theo thứ tự load. Không dùng ES modules nên game chạy được qua `file://`.
+- `src/core/`: namespace `OG`, event bus, lưu trữ, input, camera, vật lý, scene, vòng lặp, khởi động.
+- `src/data/`: dữ liệu màn chơi và nhân vật/skin.
+- `src/game/`: gameplay (player, kẻ địch, vật phẩm, màn, trận trùm, scene mặc định).
+- `src/gfx/`, `src/audio/`, `src/bosses/`, `src/world/`, `src/ui/`, `src/social/`: các module tính năng.
+- `legacy/index.mvp.html`: bản MVP gốc một file (lưu tham khảo).
+- Hợp đồng API, danh sách event và quyền sở hữu file: xem `docs/ARCHITECTURE.md`.
