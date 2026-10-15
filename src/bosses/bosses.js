@@ -470,6 +470,49 @@
     }
   };
 
+  // ---------- Độ khó (arena.difficulty = OG.Difficulty.params) ----------
+  var STUN_STATES = ['stuck', 'dizzy', 'rest'];   // trạng thái sơ hở của marky / deedee / joey
+  var CALM_ACTIONS = ['walk', 'idle'];            // không cần nghỉ sau những "đòn" này
+  K.diffOf = function (arena) {
+    var d = (arena && arena.difficulty) || {};
+    return {
+      kid: d.mode === 'kid',
+      hpMul: typeof d.bossHpMul === 'number' ? d.bossHpMul : 1,
+      telegraph: typeof d.bossTelegraphMul === 'number' ? d.bossTelegraphMul : 1,
+      stun: typeof d.bossStunMul === 'number' ? d.bossStunMul : 1,
+      rest: typeof d.bossRest === 'number' ? d.bossRest : 0
+    };
+  };
+
+  // Báo trước đòn rõ hơn (kid): vòng sáng vàng nhấp nháy quanh trùm + vòng đếm ngược trên đầu.
+  K.drawTelegraph = function (ctx, b, t, k) {
+    k = Math.max(0, Math.min(1, k));
+    ctx.save();
+    ctx.globalAlpha = 0.35 + 0.35 * Math.abs(Math.sin(t * 9));
+    ctx.strokeStyle = '#ffc94a'; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.ellipse(b.cx(), b.y + b.h / 2, b.w * 0.75, b.h * 0.62, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = 1;
+    var x = b.cx() + b.w * 0.55, y = b.y - 22;
+    ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#17233d'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(x, y, 12, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = '#e5484d'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(x, y, 8, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - k)); ctx.stroke();
+    ctx.restore();
+  };
+  // Nghỉ thở: bong bóng "phù phù" mờ dần bay lên.
+  K.drawPant = function (ctx, b, t) {
+    ctx.save();
+    for (var i = 0; i < 3; i++) {
+      var ph = (t * 1.2 + i / 3) % 1;
+      ctx.globalAlpha = 0.8 * (1 - ph);
+      ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#17233d'; ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(b.cx() + b.face * (b.w * 0.35 + ph * 18), b.y + b.h * 0.25 - ph * 26, 4 + ph * 5, 0, Math.PI * 2);
+      ctx.fill(); ctx.stroke();
+    }
+    ctx.restore();
+  };
+
   // ---------------------------------------------------------------------------
   // Khung trùm dùng chung. spec = {id, name, charId, maxHp, scale, phaseAt:[hp ngưỡng], phaseLines:{2:'..',3:'..'}}
   // cfg (tuỳ chọn) = {maxHp, scale, phaseAt, emitPhase, speedMul, ctrl, root, x, patterns, miniBar, onDeath}
@@ -482,12 +525,22 @@
     var baseW = (ch && ch.w) || spec.baseW || 40;
     var baseH = (ch && ch.h) || spec.baseH || 40;
     var scale = cfg.scale || spec.scale || 2;
+    var dz = K.diffOf(arena);
     var maxHp = cfg.maxHp || spec.maxHp || 5;
+    var phaseAt = cfg.phaseAt || spec.phaseAt || [];
+    // Độ khó: máu ít hơn (tối thiểu 2), ngưỡng pha co theo. Thành viên trùm ghép (cfg.maxHp) do trùm ghép tự tính.
+    if (!cfg.maxHp && dz.hpMul < 1) {
+      var hp0 = maxHp;
+      maxHp = Math.max(2, Math.round(hp0 * dz.hpMul));
+      phaseAt = phaseAt.map(function (v) { return Math.round(v * maxHp / hp0); })
+        .filter(function (v, i, a) { return v > 0 && v < maxHp && a.indexOf(v) === i; });
+    }
     var floorY = K.floorY(arena);
     var b = {
       id: spec.id, name: cfg.name || spec.name, charId: spec.charId,
       hp: maxHp, maxHp: maxHp, phase: 1,
-      phaseAt: cfg.phaseAt || spec.phaseAt || [],
+      phaseAt: phaseAt,
+      diff: dz, diffApplied: !!arena && !!arena.difficulty, _acted: false,
       phaseLines: spec.phaseLines || {},
       emitPhase: cfg.emitPhase !== false,
       baseW: baseW, baseH: baseH, scale: scale,
@@ -511,7 +564,13 @@
 
     b.cx = function () { return b.x + b.w / 2; };
     b.setAnim = function (a) { if (a !== b.anim) { b.anim = a; b.animT = 0; } };
-    b.setState = function (s, dur) { b.state = s; b.stateT = 0; b.stateDur = dur || 0; };
+    b.setState = function (s, dur) {
+      dur = dur || 0;
+      // Độ khó: báo trước đòn (…Wind) lâu hơn, sơ hở (choáng/kẹt búa/nghỉ) lâu hơn.
+      if (/Wind$/.test(s)) dur *= dz.telegraph;
+      else if (STUN_STATES.indexOf(s) >= 0) dur *= dz.stun;
+      b.state = s; b.stateT = 0; b.stateDur = dur;
+    };
     b.stateDone = function () { return b.stateT >= b.stateDur; };
     b.faceToPlayer = function (arena) { b.face = K.pcx(arena) < b.cx() ? -1 : 1; };
     b.dirToPlayer = function (arena) { return K.pcx(arena) < b.cx() ? -1 : 1; };
@@ -530,14 +589,22 @@
     // Chọn đòn tiếp theo theo pattern của pha hiện tại. Trận bộ ba: phải đến lượt mới được đánh.
     b.choose = function (arena) {
       arena = arena || b.arena;
+      if (b.ctrl && b.hasTurn) { b.ctrl.release(b); b.hasTurn = false; }
+      // Chế độ kid: nghỉ thở một chút sau mỗi đòn (đứng yên, giẫm được). Trùm ghép nhường lượt trước khi nghỉ.
+      if (b._acted && dz.rest > 0) {
+        b._acted = false;
+        b.vx = 0;
+        b.setState('breather', dz.rest);
+        return;
+      }
       if (b.ctrl) {
-        if (b.hasTurn) { b.ctrl.release(b); b.hasTurn = false; }
         if (!b.ctrl.request(b)) { b.setState('wait', 0.5); return; }
         b.hasTurn = true;
       }
       var list = b.patterns[b.p()] || b.patterns[1] || ['idle'];
       var a = list[b.step % list.length];
       b.step++;
+      b._acted = CALM_ACTIONS.indexOf(a) < 0;
       if (typeof b.startAction === 'function') b.startAction(a, arena);
       else b.setState('idle', 1);
     };
@@ -599,7 +666,8 @@
     b.getWeakspot = function () {
       if (b.dead || b.inv > 0) return null;
       if (b.state === 'roar' || b.state === 'recoil' || b.state === 'intro') return null;
-      if (typeof b.isVulnerable === 'function' && !b.isVulnerable()) return null;
+      var breathing = b.state === 'breather' && b.ground;
+      if (!breathing && typeof b.isVulnerable === 'function' && !b.isVulnerable()) return null;
       return { x: b.x + b.w * 0.1, y: b.y - 6, w: b.w * 0.8, h: Math.max(16, b.h * 0.35) + 6 };
     };
 
@@ -661,6 +729,13 @@
         b.setAnim('hurt');
         if (b.ground) b.vx *= Math.pow(0.02, dt);
         if (b.stateDone() && b.ground) { b.vx = 0; b.choose(arena); }
+      } else if (b.state === 'breather') {
+        // Nghỉ thở (kid): đứng yên thở hổn hển, quay về phía người chơi.
+        if (b.ground) b.vx *= Math.pow(0.02, dt);
+        b.faceToPlayer(arena);
+        b.setAnim('idle');
+        if (typeof b.onBreather === 'function') b.onBreather(dt, arena);
+        if (b.stateDone()) { b.vx = 0; b.choose(arena); }
       } else if (b.state === 'wait') {
         // Trận bộ ba: chưa đến lượt — đi lững thững tại chỗ.
         b.faceToPlayer(arena);
@@ -697,6 +772,8 @@
       if (!b.dead) {
         if (typeof b.drawFront === 'function') b.drawFront(ctx, arena, t);
         if (b.state === 'roar') K.drawBubble(ctx, b.cx(), b.y - 12, t, '💢', '#e5484d');
+        else if (b.state === 'breather') K.drawPant(ctx, b, t);
+        if (dz.kid && /Wind$/.test(b.state)) K.drawTelegraph(ctx, b, t, b.stateT / Math.max(0.01, b.stateDur));
         if (b.getWeakspot()) K.drawStompHint(ctx, b.cx(), b.y, t);
         if (b.miniBar) K.drawMiniBar(ctx, b);
       }

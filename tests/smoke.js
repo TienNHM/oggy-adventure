@@ -551,6 +551,7 @@ async function main() {
 
   await qaChecks();
   await journeyChecks();
+  await difficultyChecks();
 
   // ---- Quay lại menu, xoá dữ liệu (save:reset) và chạy lại boot ----
   stage = 'reset';
@@ -945,6 +946,150 @@ async function journeyChecks() {
     expectScene('journeyMap', 'thử lại hành trình → bản đồ hành trình');
   }
   OG.Difficulty.set('kid');
+  OG.Scenes.go('menu'); await stepAsync(3);
+}
+
+// ---------------------------------------------------------------------------
+// v2: Độ khó cho trẻ em (OG.Difficulty, docs/STORY.md mục 5) + các lỗi tồn đọng đã sửa
+// ---------------------------------------------------------------------------
+async function difficultyChecks() {
+  const Dif = OG.Difficulty;
+  // 1) Pause → "Chơi lại màn" KHÔNG tiêu thêm vật phẩm cửa hàng.
+  stage = 'difficulty:restart-items';
+  Dif.set('challenge');
+  OG.Scenes.go('menu'); await stepAsync(2);
+  OG.Save.addItem('shield', 3 - OG.Save.getItemCount('shield'));
+  OG.Shop.setLoadout('shield', true);
+  OG.Game.newRun();
+  OG.Game.startLevel('kitchen'); await stepAsync(2);
+  const n0 = OG.Save.getItemCount('shield');
+  check(n0 === 2 && OG.Level.state.player.shield >= 1, 'Vào màn không dùng khiên từ kho (kho=' + n0 + ')');
+  for (let k = 0; k < 2; k++) {
+    await press('Escape');
+    if (!expectScene('pause', 'pause để chơi lại')) break;
+    click('#overlay [data-act="restart"]', 'Chơi lại màn'); await stepAsync(3);
+    expectScene('level', 'chơi lại màn');
+  }
+  check(OG.Save.getItemCount('shield') === n0, 'Chơi lại màn từ pause tiêu thêm khiên (' + n0 + ' → ' + OG.Save.getItemCount('shield') + ')');
+  check(OG.Level.state.player.shield >= 1, 'Chơi lại màn mất khiên đã mang theo');
+  OG.Shop.setLoadout('shield', false);
+
+  // 2) Marky đang nhảy cò cò (bay lên) vẫn giẫm được — cả 'challenge' lẫn 'kid'.
+  for (const m of ['challenge', 'kid']) {
+    stage = 'difficulty:marky-' + m;
+    Dif.set(m);
+    const e = OG.Enemies.create({ type: 'marky', x: 400 }, 0);
+    e.y = 380; e.prevY = 392; // vừa bay lên 12px trong frame này
+    const p = { x: 398, y: 380 - 52 + 14, w: 34, h: 52, vy: 240 };
+    const prevBottom = 380 + 16; // đáy frame trước: thấp hơn đỉnh HIỆN TẠI 16px, nhưng vẫn trên đỉnh cũ
+    check(OG.Level.stompOk(p, prevBottom, e, 12, e.prevY), 'Không giẫm được Marky đang nhảy lên (' + m + ')');
+  }
+
+  // 3) Chạm sượt: kid bỏ qua, challenge vẫn tính.
+  stage = 'difficulty:graze';
+  const pl = { x: 100, y: 100, w: 34, h: 52 };
+  const box = { x: 131, y: 120, w: 30, h: 30 }; // chồng lấn 3px theo chiều ngang
+  Dif.set('kid');
+  check(!Dif.touches(pl, box), 'Chế độ kid: chạm sượt 3px vẫn bị thương');
+  check(Dif.touches(pl, { x: 110, y: 120, w: 30, h: 30 }), 'Chế độ kid: chạm thật không tính');
+  Dif.set('challenge');
+  check(Dif.touches(pl, box), 'Chế độ challenge: chạm sượt phải tính như v1');
+
+  // 4) Kid: giữ nút nhảy -> nhảy cao hơn; challenge giữ nguyên v1 (~116px).
+  stage = 'difficulty:jump';
+  const apex = (mode, hold) => {
+    Dif.set(mode);
+    OG.Input.reset();
+    const world = { platforms: [{ x: 0, y: 480, w: 2000, h: 60 }], width: 2000 };
+    const p = OG.Player.create('oggy', 100, 480 - 52, {}, null);
+    OG.Physics.moveBody(p, 0.016, world.platforms, {});
+    let minY = p.y;
+    OG.Input.setKey('jump', true);
+    for (let i = 0; i < 90; i++) {
+      if (!hold && i === 2) OG.Input.setKey('jump', false);
+      OG.Player.update(p, 1 / 60, world);
+      OG.Input.endFrame();
+      minY = Math.min(minY, p.y);
+      if (i > 5 && p.ground) break;
+    }
+    OG.Input.setKey('jump', false);
+    OG.Input.reset();
+    return 428 - minY;
+  };
+  const kidHold = apex('kid', true), kidTap = apex('kid', false), chHold = apex('challenge', true);
+  check(kidHold > kidTap + 15, 'Kid: giữ nút nhảy không cao hơn (' + kidHold.toFixed(0) + ' vs ' + kidTap.toFixed(0) + ')');
+  check(kidTap >= 105, 'Kid: nhảy chạm nhẹ thấp hơn v1 (' + kidTap.toFixed(0) + 'px)');
+  check(Math.abs(chHold - 116) < 10, 'Challenge: độ cao nhảy khác v1 (' + chHold.toFixed(0) + 'px)');
+  log('độ cao nhảy: kid giữ=' + kidHold.toFixed(0) + ' kid chạm=' + kidTap.toFixed(0) + ' challenge=' + chHold.toFixed(0));
+
+  // 5) Trùm kid: máu ít hơn, có nghỉ thở; trùm ghép 2 máu/tên.
+  stage = 'difficulty:boss';
+  const mk = (id, mode) => {
+    Dif.set(mode);
+    const arena = { difficulty: Dif.params('kitchen'), platforms: [{ x: 0, y: 480, w: 960, h: 60, isFloor: true }] };
+    return OG.Bosses.create(id, arena);
+  };
+  ['deedee', 'marky', 'joey'].forEach((id) => {
+    const a = mk(id, 'challenge'), b = mk(id, 'kid');
+    check(a && b && b.maxHp < a.maxHp && b.maxHp >= 2, 'Trùm ' + id + ' ở kid không ít máu hơn (' + (b && b.maxHp) + ' / ' + (a && a.maxHp) + ')');
+    check(b && b.diffApplied, 'Trùm ' + id + ' không đánh dấu diffApplied');
+  });
+  const trio = mk('trio', 'kid');
+  check(trio && trio.members.every((m) => m.maxHp === 2), 'Trùm ghép trio ở kid: mỗi tên phải 2 máu');
+  {
+    const b = mk('deedee', 'kid');
+    let rested = false;
+    const A = b.arena;
+    for (let i = 0; i < 60 * 12 && !rested; i++) { A.t += 1 / 60; b.update(1 / 60, A); if (b.state === 'breather') rested = true; }
+    check(rested, 'Trùm ở kid không có khoảng nghỉ thở sau đòn');
+  }
+
+  // 6) Chạm nửa phải màn chơi = nhảy (cảm ứng); nút cảm ứng to hơn.
+  stage = 'difficulty:touch';
+  Dif.set('kid');
+  OG.Game.newRun();
+  OG.Game.startLevel('kitchen'); await stepAsync(2);
+  if (expectScene('level', 'màn thử chạm nhảy')) {
+    const cv = doc.getElementById('game');
+    cv.dispatchEvent(new D.FakeEvent('pointerdown', { clientX: 800, clientY: 300, pointerType: 'touch', pointerId: 7 }));
+    check(OG.Input.keys.jump === true, 'Chạm nửa phải màn hình không nhảy');
+    win.dispatchEvent(new D.FakeEvent('pointerup', { pointerId: 7 }));
+    check(OG.Input.keys.jump === false, 'Thả tay không nhả nút nhảy');
+    cv.dispatchEvent(new D.FakeEvent('pointerdown', { clientX: 200, clientY: 300, pointerType: 'touch', pointerId: 8 }));
+    check(OG.Input.keys.jump === false, 'Chạm nửa trái lại nhảy');
+    win.dispatchEvent(new D.FakeEvent('pointerup', { pointerId: 8 }));
+    step(2);
+  }
+  const jb = doc.querySelector('#mobileControls [data-key="jump"]');
+  check(jb && parseInt(jb.style.width, 10) >= 70, 'Nút cảm ứng chưa được phóng to');
+
+  // 7) Checkpoint (kid, hành trình): chạm cờ -> hết mạng hồi sinh tại cờ, thẻ đã nhặt vẫn còn.
+  stage = 'difficulty:checkpoint';
+  const jid = 'home', lid = OG.Journeys.levelIds(jid)[0];
+  OG.Story.startJourney(jid, { skipIntro: true }); await stepAsync(2);
+  OG.Story.playLevel(lid); await stepAsync(3);
+  await skipComics(['level']);
+  if (cur() === 'level') {
+    const st = OG.Level.state, p = st.player;
+    check(st.checkpoints.length > 0, 'Màn hành trình (kid) không có cờ checkpoint');
+    const c = st.checkpoints[0];
+    if (c) {
+      const reached = evCount['checkpoint:reach'] || 0;
+      p.x = c.x + 5; p.y = c.y - p.h - 1; p.vy = 0; p.inv = 2;
+      step(2);
+      check((evCount['checkpoint:reach'] || 0) > reached && st.checkpoint, 'Không chạm được cờ checkpoint');
+      const cards = OG.Learn.listCards ? JSON.stringify(OG.Learn.listCards(jid)) : '';
+      p.x = c.x + 300; step(1);
+      for (let i = 0; i < 12 && cur() === 'level'; i++) {
+        const before = OG.Game.run.lives;
+        p.inv = 0; p.shield = 0; OG.Player.hurt(p, 'enemy'); step(1);
+        if (OG.Game.run.lives > before) break;
+      }
+      check(cur() === 'level' && st.checkpoint && Math.abs(p.x - st.checkpoint.x) < 40, 'Hết mạng không hồi sinh tại checkpoint');
+      if (cards) check(JSON.stringify(OG.Learn.listCards(jid)) === cards, 'Hết mạng làm mất thẻ đã nhặt');
+    }
+  }
+  Dif.set('kid');
   OG.Scenes.go('menu'); await stepAsync(3);
 }
 

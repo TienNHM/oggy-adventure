@@ -33,6 +33,9 @@
   function create(arena) {
     var members = [];
     var trio;
+    // Độ khó (arena.difficulty): máu mỗi tên = 3 × bossHpMul, tối thiểu 2 (kid: 2 máu/tên).
+    var dz = K.diffOf ? K.diffOf(arena) : { hpMul: 1 };
+    var memberHp = Math.max(2, Math.round(MEMBER_HP * dz.hpMul));
 
     // Điều phối lượt đánh: chỉ một tên ra đòn tại một thời điểm, xoay vòng theo thứ tự.
     var ctrl = {
@@ -60,7 +63,7 @@
       var make = F[s.id];
       if (typeof make !== 'function') return;
       var m = make(arena, {
-        scale: s.scale, x: s.x, maxHp: MEMBER_HP, phaseAt: [], emitPhase: false,
+        scale: s.scale, x: s.x, maxHp: memberHp, phaseAt: [], emitPhase: false,
         ctrl: ctrl, patterns: PATTERNS[s.id], miniBar: true, onDeath: onMemberDeath,
         summonCount: 1, capCount: 2, speedMul: 0.9
       });
@@ -72,9 +75,9 @@
 
     trio = {
       id: 'trio', name: NAME, phase: 1,
-      maxHp: MEMBER_HP * members.length, hp: MEMBER_HP * members.length,
+      maxHp: memberHp * members.length, hp: memberHp * members.length,
       x: 0, y: 0, w: 0, h: 0,
-      members: members,
+      members: members, diffApplied: true,
 
       syncHp: function () {
         var hp = 0;

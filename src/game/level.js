@@ -93,6 +93,28 @@
 
   function hasSpriteFx() { return !!(OG.Sprites && OG.Sprites.fx); }
 
+  // Giẫm / chạm theo độ khó (OG.Difficulty có thể vẫn là stub -> dùng phép thử v1).
+  // Dùng chung cho scene boss qua OG.Level.stompOk / touchOk.
+  function stompOk(p, prevBottom, target, tol, prevTop) {
+    var D = OG.Difficulty;
+    if (D && typeof D.isStomp === 'function') {
+      var r = U.safe('Difficulty.isStomp', D.isStomp, D, [p, prevBottom, target, tol, prevTop]);
+      if (typeof r === 'boolean') return r;
+    }
+    var top = prevTop != null ? Math.max(target.y, prevTop) : target.y;
+    return p.vy > 0 && prevBottom <= top + (tol == null ? 12 : tol) && U.overlap(p, target);
+  }
+  function touchOk(p, box) {
+    var D = OG.Difficulty;
+    if (D && typeof D.touches === 'function') {
+      var r = U.safe('Difficulty.touches', D.touches, D, [p, box]);
+      if (typeof r === 'boolean') return r;
+    }
+    return U.overlap(p, box);
+  }
+  Level.stompOk = stompOk;
+  Level.touchOk = touchOk;
+
   function collect(st, it) {
     var stage = OG.Game.stage;
     it.got = true;
@@ -176,7 +198,7 @@
         var e = st.enemies[k];
         OG.Enemies.update(e, dt, st);
         if (!e.alive || st.phase !== 'play') continue;
-        if (e.stompable && OG.Physics.isStomp(p, res.prevBottom, e, 12)) {
+        if (e.stompable && stompOk(p, res.prevBottom, e, 12, e.prevY)) {
           OG.Enemies.kill(e);
           p.vy = -C.STOMP_BOUNCE;
           stage.stomps++;
@@ -186,7 +208,7 @@
           if (!hasSpriteFx()) OG.Particles.spawn(e.x + e.w / 2, e.y + e.h / 2, { color: '#b56bc7', count: 12 });
           OG.Particles.floatText(e.x + e.w / 2, e.y - 6, '+' + e.score);
           OG.Events.emit('enemy:stomp', { type: e.type, x: e.x, y: e.y, score: e.score });
-        } else if (e.hurts && U.overlap(p, OG.Enemies.hurtbox(e))) {
+        } else if (e.hurts && touchOk(p, OG.Enemies.hurtbox(e))) {
           OG.Player.hurt(p, 'enemy');
           if (OG.Scenes.base() !== 'level') return;
         }

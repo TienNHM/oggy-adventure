@@ -51,7 +51,13 @@
         p.attackT = 0.3;
         OG.Events.emit('player:action', { x: p.x + p.w / 2, y: p.y + p.h / 2, face: p.face });
       }
-      var res = OG.Physics.moveBody(p, dt, world.platforms, { minX: 0, maxX: world.width });
+      // Trọng lực theo độ khó: giữ nút nhảy khi đang bay lên -> nhảy cao hơn; rơi chậm hơn một chút (kid).
+      var g = C.GRAVITY;
+      if (p.vy < 0 && keys.jump && !p.celebrate) g *= diff('jumpHoldGravityMul', 1);
+      else if (p.vy >= 0) g *= diff('fallGravityMul', 1);
+      var res = OG.Physics.moveBody(p, dt, world.platforms, {
+        minX: 0, maxX: world.width, gravity: g, maxFall: C.MAX_FALL * diff('maxFallMul', 1)
+      });
       p.prevBottom = res.prevBottom;
       if (res.landed) OG.Events.emit('player:land', { x: p.x, y: p.y, vy: 0 });
       // Vật phẩm cửa hàng cần chạy mỗi frame (Giày lò xo = nhảy đôi). Shop tự chống gọi trùng trong 1 frame.
@@ -84,7 +90,7 @@
       }
       p.inv = p.invMax = diff('hurtInvuln', C.HURT_INVULN);
       p.vy = -C.HURT_BOUNCE;
-      p.vx = -p.face * C.HURT_KNOCKBACK;
+      p.vx = -p.face * C.HURT_KNOCKBACK * diff('hurtKnockMul', 1);
       OG.Camera.shake(5, 0.25);
       // Phát player:hurt TRƯỚC loseLife để thứ tự event là hurt -> (die -> game:over).
       var predicted = Math.max(0, (OG.Game.run ? OG.Game.run.lives : 1) - 1);

@@ -22,6 +22,22 @@
     return base;
   }
 
+  // Vật phẩm cửa hàng của lần vào màn gần nhất: {run, levelId, mods, reuse}.
+  var shopCache = null;
+  function copy(o) { var r = {}; for (var k in o) r[k] = o[k]; return r; }
+  function shopLevelMods(levelId) {
+    var run = Game.run;
+    var inLevel = OG.Scenes.current() === 'level';
+    if (inLevel && shopCache && shopCache.reuse && shopCache.run === run && shopCache.levelId === levelId) {
+      shopCache.reuse = false;
+      return copy(shopCache.mods);
+    }
+    var m = OG.util.call('Shop', 'getLevelModifiers', levelId, run ? run.charId : 'oggy');
+    m = m && typeof m === 'object' ? m : {};
+    if (inLevel) shopCache = { run: run, levelId: levelId, mods: copy(m), reuse: false };
+    return m;
+  }
+
   var Game = (OG.Game = {
     run: null,     // RunState hoặc null
     stage: null,   // LevelStats của màn đang chơi (dùng chung cho màn + boss)
@@ -66,7 +82,7 @@
       var m = mergeMods(baseMods(), null);
       var r = Game.run && Game.run.mods;
       if (r) { m.speedMul = r.speedMul; m.jumpMul = r.jumpMul; m.magnet = r.magnet; m.coinMul = r.coinMul; m.scoreMul = r.scoreMul; m.shield = r.shield; }
-      return mergeMods(m, OG.util.call('Shop', 'getLevelModifiers', levelId, Game.run ? Game.run.charId : 'oggy'));
+      return mergeMods(m, shopLevelMods(levelId));
     },
 
     // Bắt đầu chơi một màn (id hoặc chỉ số).
@@ -258,10 +274,13 @@
       if (sc === 'journeyMap' && !params.journeyId) params.journeyId = Game.run.journeyId;
       OG.Scenes.go(sc, params);
     },
-    // Chơi lại màn đang/vừa chơi.
+    // Chơi lại màn đang/vừa chơi. Vật phẩm cửa hàng (khiên/giày/nam châm) của lần vào màn này được
+    // DÙNG LẠI, không trừ kho thêm lần nữa (sửa lỗi "Chơi lại màn" từ pause tiêu thêm vật phẩm).
     restartLevel: function () {
       var run = Game.run;
-      if (run && run.levelId && OG.Data.getLevel(run.levelId)) Game.startLevel(run.levelId);
+      var id = run && run.levelId && OG.Data.getLevel(run.levelId) ? run.levelId : null;
+      if (id && shopCache && shopCache.run === run && shopCache.levelId === id) shopCache.reuse = true;
+      if (id) Game.startLevel(id);
       else Game.startLevel(run ? (run.nextLevel | 0) : 0);
     },
     // Lượt mới cùng chế độ (sau game over / chiến thắng).
