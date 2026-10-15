@@ -1,0 +1,11 @@
+{
+  "name": "Oggy Adventure",
+  "short_name": "Oggy",
+  "description": "Game phiêu lưu học tập miễn phí cho trẻ em, chơi ngay trên trình duyệt.",
+  "lang": "vi",
+  "start_url": "/",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#10192b",
+  "theme_color": "#17233d"
+}

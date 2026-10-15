@@ -1,0 +1,25 @@
+# Cho phép mọi công cụ tìm kiếm và trợ lý AI đọc toàn bộ trang
+User-agent: *
+Allow: /
+Disallow: /tests/
+Disallow: /legacy/
+
+# Trình thu thập của các AI (GEO / AI Overviews)
+User-agent: GPTBot
+Allow: /
+User-agent: OAI-SearchBot
+Allow: /
+User-agent: ChatGPT-User
+Allow: /
+User-agent: ClaudeBot
+Allow: /
+User-agent: Claude-SearchBot
+Allow: /
+User-agent: PerplexityBot
+Allow: /
+User-agent: Google-Extended
+Allow: /
+User-agent: Applebot-Extended
+Allow: /
+
+Sitemap: https://oggy-adventure.tiennhm.io.vn/sitemap.xml

@@ -1,0 +1,29 @@
+# Oggy Adventure
+
+> Game phiêu lưu 2D miễn phí, chơi ngay trên trình duyệt (máy tính và điện thoại), dành cho trẻ em 5–10 tuổi. Người chơi điều khiển chú mèo Oggy đuổi theo ba chú gián tinh nghịch Joey, Marky và Dee Dee, vừa vượt chướng ngại vật vừa học kiến thức thú vị. Đây là dự án fan-made phi thương mại, không chính thức.
+
+- Chơi ngay: https://oggy-adventure.tiennhm.io.vn/
+- Ngôn ngữ: tiếng Việt
+- Giá: miễn phí, không quảng cáo, không cần cài đặt hay đăng ký
+- Nền tảng: trình duyệt web (Chrome, Edge, Firefox, Safari), máy tính và điện thoại
+
+## Tính năng chính
+
+- 4 hành trình học tập: Cuốn Bách Khoa Kỳ Diệu (quanh nhà), Vòng quanh Việt Nam, Vòng quanh thế giới, Khoa học & Vũ trụ.
+- Thẻ kiến thức sưu tầm trong "Sổ tay khám phá", câu đố trắc nghiệm mở cửa (sai được thử lại, không bị phạt), truyện tranh giữa các màn, nhân vật dẫn đường giải thích kiến thức.
+- Chế độ "Bé chơi" dễ dàng cho trẻ nhỏ và chế độ "Thử thách" cho người lớn.
+- Boss fight với từng chú gián, bản đồ thế giới, nhiệm vụ, chọn nhân vật (Oggy, Jack, Olivia), skin và cửa hàng vật phẩm.
+- Nhạc nền và hiệu ứng âm thanh, bảng xếp hạng, chia sẻ thẻ thành tích.
+
+## Điều khiển
+
+- Máy tính: A/D hoặc phím mũi tên để di chuyển; Space/W/↑ để nhảy; Esc/P để tạm dừng; M để tắt tiếng.
+- Điện thoại: nút cảm ứng trên màn hình.
+
+## Câu hỏi thường gặp
+
+- Game có miễn phí không? Có, hoàn toàn miễn phí và không có quảng cáo.
+- Có cần tải về không? Không, mở link là chơi ngay trên trình duyệt.
+- Phù hợp độ tuổi nào? Thiết kế cho trẻ 5–10 tuổi, người lớn có thể chơi chế độ Thử thách.
+- Trẻ học được gì? Dinh dưỡng, cây cối và côn trùng, thời tiết, tái chế, địa lý – văn hoá – món ăn Việt Nam, kỳ quan thế giới, khủng long, cơ thể người và hệ Mặt Trời.
+- Tiến độ có được lưu không? Có, lưu tự động trên trình duyệt của thiết bị.
