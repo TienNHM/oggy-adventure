@@ -5,7 +5,7 @@
  * 5 khu × 2 màn + 1 trùm/khu: egypt (Joey) · france (Marky) · japan (Dee Dee) · amazon (Joey) · arctic (bộ ba).
  * Thiết kế màn cho trẻ 5–10 tuổi: bục rộng (≥160 px), bậc cao 70–80 px, hố ≤ 90 px, ít gián, gián đi chậm,
  * 2 checkpoint/màn, trang sách dễ thấy (1 trang đặt trên bục cao để thưởng).
- * Truyện trước trận trùm chiếu bằng comicTriggers gần cửa ra của màn cuối khu. */
+ * Truyện trước trận trùm: area.boss.intro (OG.Game.finishStage chiếu trước trận, lần đầu). */
 (function () {
   'use strict';
   var OG = window.OG;
@@ -33,7 +33,7 @@
       {
         id: 'egypt', name: 'Ai Cập', emoji: '🐪', sceneryTheme: 'world-egypt', music: 'roof',
         intro: 'egypt_intro', outro: 'egypt_outro',
-        boss: { bossId: 'joey' },
+        boss: { bossId: 'joey', intro: 'egypt_boss' },
         levels: [
           {
             id: 'world-egypt-1', name: 'Kim tự tháp Giza', width: 2400, spawn: { x: 70, y: 420 }, goal: 5,
@@ -68,7 +68,7 @@
               { x: 1960, charId: 'camel', lines: ['Tớ đi bộ qua sa mạc cả ngày mà không mệt!', 'Joey đang trốn ở cuối đường. Cẩn thận nhé!'] }
             ],
             quizGates: [{ quiz: 'q_hiero', x: 1300 }, { quiz: 'q_camel' }],
-            comicTriggers: [{ x: 1120, comic: 'egypt_mid' }, { x: 2280, comic: 'egypt_boss' }]
+            comicTriggers: [{ x: 1120, comic: 'egypt_mid' }]
           }
         ]
       },
@@ -79,7 +79,7 @@
       {
         id: 'france', name: 'Pháp', emoji: '🥐', sceneryTheme: 'world-france', music: 'garden',
         intro: 'france_intro', outro: 'france_outro',
-        boss: { bossId: 'marky' },
+        boss: { bossId: 'marky', intro: 'france_boss' },
         levels: [
           {
             id: 'world-france-1', name: 'Tháp Eiffel', width: 2500, spawn: { x: 70, y: 420 }, goal: 5,
@@ -114,7 +114,7 @@
               { x: 1760, lines: ['Nói thử với ta nào: Bonjour!', 'Hoạ sĩ Marky đang vẽ tranh ở phía trước đấy.'] }
             ],
             quizGate: { quiz: 'q_croissant' },
-            comicTriggers: [{ x: 1150, comic: 'france_mid' }, { x: 2320, comic: 'france_boss' }]
+            comicTriggers: [{ x: 1150, comic: 'france_mid' }]
           }
         ]
       },
@@ -125,7 +125,7 @@
       {
         id: 'japan', name: 'Nhật Bản', emoji: '🗻', sceneryTheme: 'world-japan', music: 'worldmap',
         intro: 'japan_intro', outro: 'japan_outro',
-        boss: { bossId: 'deedee' },
+        boss: { bossId: 'deedee', intro: 'japan_boss' },
         levels: [
           {
             id: 'world-japan-1', name: 'Núi Phú Sĩ', width: 2500, spawn: { x: 70, y: 420 }, goal: 5,
@@ -160,7 +160,7 @@
               { x: 1090, lines: ['Tàu Shinkansen chạy rất nhanh mà vẫn êm ru.', 'Dee Dee đang ăn sushi ở cuối đường kìa!'] }
             ],
             quizGates: [{ quiz: 'q_sakura', x: 1650 }],
-            comicTriggers: [{ x: 1200, comic: 'japan_mid' }, { x: 2300, comic: 'japan_boss' }]
+            comicTriggers: [{ x: 1200, comic: 'japan_mid' }]
           }
         ]
       },
@@ -171,7 +171,7 @@
       {
         id: 'amazon', name: 'Rừng Amazon', emoji: '🦜', sceneryTheme: 'world-amazon', music: 'garden',
         intro: 'amazon_intro', outro: 'amazon_outro',
-        boss: { bossId: 'joey' },
+        boss: { bossId: 'joey', intro: 'amazon_boss' },
         levels: [
           {
             id: 'world-amazon-1', name: 'Rừng mưa', width: 2500, spawn: { x: 70, y: 420 }, goal: 5,
@@ -206,7 +206,7 @@
               { x: 2060, charId: 'toucan', lines: ['Ếch phi tiêu đẹp lắm, nhưng chỉ nên ngắm thôi nhé!', 'Joey đang đu dây leo ở cuối rừng đấy!'] }
             ],
             quizGate: { quiz: 'q_frog' },
-            comicTriggers: [{ x: 1200, comic: 'amazon_mid' }, { x: 2300, comic: 'amazon_boss' }]
+            comicTriggers: [{ x: 1200, comic: 'amazon_mid' }]
           }
         ]
       },
@@ -217,7 +217,7 @@
       {
         id: 'arctic', name: 'Bắc Cực', emoji: '🐻‍❄️', sceneryTheme: 'world-arctic', music: 'roof',
         intro: 'arctic_intro',
-        boss: { bossId: 'trio' },
+        boss: { bossId: 'trio', intro: 'arctic_boss' },
         levels: [
           {
             id: 'world-arctic-1', name: 'Biển băng', width: 2500, spawn: { x: 70, y: 420 }, goal: 5,
@@ -252,7 +252,7 @@
               { x: 1120, charId: 'penguin', lines: ['Tớ là Cánh Cụt, đang đi du lịch xa nhà nè!', 'Nhà tớ ở nửa phía nam Trái Đất, xa lắm luôn!'] }
             ],
             quizGates: [{ quiz: 'q_penguin', x: 1650 }, { quiz: 'q_aurora' }],
-            comicTriggers: [{ x: 1250, comic: 'arctic_mid' }, { x: 2400, comic: 'arctic_boss' }]
+            comicTriggers: [{ x: 1250, comic: 'arctic_mid' }]
           }
         ]
       }

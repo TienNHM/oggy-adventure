@@ -342,22 +342,29 @@
         var stars = U.call('Progress', 'totalStars') || 0;
         var maxStars = U.call('Progress', 'maxStars') || 0;
         var hasLb = OG.Scenes.has('leaderboard');
+        var hasJourney = OG.Scenes.has('journeySelect');
+        // v2: PHIÊU LƯU HỌC TẬP là nút chính (to nhất, Enter); chiến dịch cổ điển là nút phụ.
         var html =
-          '<p class="ui-tagline">Ba chú gián tinh nghịch đã lấy mất đồ ăn của Oggy! Thu thập pizza, hạ bộ ba gián và giành lại căn bếp.</p>' +
+          '<p class="ui-tagline">' + (hasJourney
+            ? 'Cùng Oggy vừa chơi vừa học! Nhặt trang sách, giải câu đố và đuổi bộ ba gián tinh nghịch nhé!'
+            : 'Ba chú gián tinh nghịch đã lấy mất đồ ăn của Oggy! Thu thập pizza, hạ bộ ba gián và giành lại căn bếp.') + '</p>' +
           '<div class="ui-stats">' +
             '<span title="Xu">🪙 <b class="ui-coin-val">' + UI.fmt(UI.coins()) + '</b></span>' +
             '<span title="Kỷ lục">🏆 ' + UI.fmt(s.bestScore || 0) + '</span>' +
             (maxStars ? '<span title="Sao">⭐ ' + stars + '/' + maxStars + '</span>' : '') +
+            (hasJourney ? '<span title="Thẻ kiến thức">📒 ' + cardsHave() + '</span>' : '') +
           '</div>' +
+          (hasJourney ? '<div class="ui-menu-main"><button type="button" class="ui-btn-hero" data-act="journey" data-id="journey" data-primary>' +
+            '<span class="ui-btn-ico" aria-hidden="true">📖</span><span>PHIÊU LƯU HỌC TẬP<small>Vừa chơi vừa học</small></span></button></div>' : '') +
           '<div class="ui-menu-main">' +
             '<button type="button" class="ui-hero-chip secondary" data-act="chars" data-id="menu_char" aria-label="Đổi nhân vật">' +
               UI.previewHtml(charId, UI.equippedSkin(charId), 52, 'idle') +
               '<span><small>Nhân vật</small><b>' + UI.esc(UI.charName(charId)) + '</b></span></button>' +
-            '<button type="button" class="ui-btn-big" data-act="play" data-id="play" data-primary>▶ CHƠI</button>' +
+            '<button type="button" class="ui-btn-big' + (hasJourney ? ' secondary' : '') + '" data-act="play" data-id="play"' + (hasJourney ? '' : ' data-primary') + '>' +
+              (hasJourney ? '▶ CHƠI CỔ ĐIỂN' : '▶ CHƠI') + '</button>' +
           '</div>' +
-          // v2: Hành trình học tập (Tích hợp sẽ sắp xếp lại bố cục menu; xem docs/STORY.md mục 10).
-          (OG.Scenes.has('journeySelect') ? '<div class="ui-menu-main"><button type="button" class="ui-btn-big secondary" data-act="journey" data-id="journey">📖 PHIÊU LƯU HỌC TẬP</button></div>' : '') +
           '<div class="ui-menu-grid">' +
+            (hasJourney ? '<button type="button" class="secondary ui-span2" data-act="notebook" data-id="notebook">📒 Sổ tay khám phá</button>' : '') +
             '<button type="button" class="secondary" data-act="chars" data-id="chars">🐱 Nhân vật</button>' +
             '<button type="button" class="secondary" data-act="shop" data-id="shop">🛒 Cửa hàng</button>' +
             (hasLb ? '<button type="button" class="secondary" data-act="lb" data-id="leaderboard">🏆 Xếp hạng</button>' : '') +
@@ -367,10 +374,12 @@
           title: 'OGGY ADVENTURE!',
           className: 'ui-menu',
           html: html,
-          small: 'PC: A/D hoặc ←/→ đi · Space/W/↑ nhảy · E tương tác · Esc/P tạm dừng<br>Mobile: dùng nút trên màn hình · Game fan-made, không chính thức.',
+          small: 'Bàn phím: ←/→ đi · Space nhảy · E nói chuyện · Esc tạm dừng<br>Điện thoại: dùng nút to trên màn hình · Game fan-made, không chính thức.',
           handlers: {
             play: function () { OG.Game.newRun(); OG.Scenes.go('worldmap'); },
-            journey: function () { OG.Scenes.go('journeySelect', { back: 'menu' }); },
+            // Chọn chế độ (Bé chơi / Thử thách) trước, rồi mới chọn hành trình.
+            journey: function () { OG.Scenes.go(OG.Scenes.has('modeSelect') ? 'modeSelect' : 'journeySelect', { back: 'menu' }); },
+            notebook: function () { OG.Scenes.go('notebookHub', { back: 'menu' }); },
             chars: function () { OG.Scenes.go('charselect', { back: 'menu' }); },
             shop: function () { if (OG.Scenes.has('shop')) OG.Scenes.go('shop', { back: 'menu' }); },
             lb: function () { OG.Scenes.go('leaderboard', { back: 'menu' }); },
@@ -382,6 +391,112 @@
       update: function () {},
       draw: function (ctx) { UI.drawBackdrop(ctx); UI.drawPreviews(OG.time); }
     };
+  }
+
+  // Tổng số thẻ kiến thức đã sưu tầm ở mọi hành trình.
+  function cardsHave() {
+    if (!OG.Journeys || !OG.Learn) return 0;
+    return OG.Journeys.list().reduce(function (n, j) {
+      var c = U.call('Learn', 'count', j.id);
+      return n + ((c && c.have) | 0);
+    }, 0);
+  }
+
+  // ======================================================================
+  // Scene v2: chọn chế độ chơi (Bé chơi / Thử thách) — Menu → modeSelect → journeySelect.
+  //   Lựa chọn được NHỚ (settings.difficulty qua OG.Difficulty.set); lần sau nút đó sáng sẵn, Enter là đi tiếp.
+  //   Nút [data-act="mode"][data-arg="kid|challenge"]; Esc / ↩ = về menu.
+  // ======================================================================
+  var MODE_INFO = {
+    kid: { title: 'BÉ CHƠI', lines: ['❤️ Nhiều mạng', '🕳️ Rơi hố không sao', '🤝 Có bạn giúp đỡ'] },
+    challenge: { title: 'THỬ THÁCH', lines: ['💪 Ít mạng hơn', '🪳 Gián chạy nhanh hơn', '🏆 Cho bạn đã giỏi'] }
+  };
+  function modeSelectScene() {
+    var S = {
+      back: 'menu',
+      enter: function (params) {
+        UI.hideGameUi();
+        if (params && params.back) S.back = params.back;
+        var D = OG.Difficulty;
+        var cur = D ? D.mode() : 'kid';
+        var modes = D ? D.list() : ['kid'];
+        var cards = modes.map(function (m) {
+          var info = MODE_INFO[m] || { title: m, lines: [] };
+          var label = D ? D.label(m) : m;
+          var emoji = label.split(' ')[0];
+          return '<button type="button" class="ui-mode ui-mode-' + UI.esc(m) + (m === cur ? ' is-on' : '') + '" data-act="mode" data-arg="' + UI.esc(m) +
+            '" data-id="mode_' + UI.esc(m) + '"' + (m === cur ? ' data-primary' : '') + '>' +
+            '<span class="ui-mode-emoji" aria-hidden="true">' + UI.esc(emoji) + '</span>' +
+            '<b>' + UI.esc(info.title) + '</b>' +
+            '<span class="ui-mode-lines">' + info.lines.map(function (l) { return '<span>' + UI.esc(l) + '</span>'; }).join('') + '</span>' +
+            (m === cur ? '<span class="ui-tag ui-tag-ok">✔ Lần trước</span>' : '') + '</button>';
+        }).join('');
+        UI.open({
+          title: 'CHỌN CHẾ ĐỘ',
+          className: 'ui-modes',
+          html: '<p class="ui-tagline">Bạn muốn chơi thế nào? Đổi lại được trong ⚙️ Cài đặt.</p>' +
+            '<div class="ui-mode-grid">' + cards + '</div>' +
+            '<div class="actions"><button type="button" class="secondary" data-act="back" data-id="mode_back">↩ Quay lại</button></div>',
+          focus: '[data-arg="' + cur + '"]',
+          handlers: {
+            mode: function (m) {
+              if (OG.Difficulty) OG.Difficulty.set(m);
+              OG.Scenes.go('journeySelect', { back: 'modeSelect' });
+            },
+            back: function () { OG.Scenes.go(S.back); }
+          }
+        });
+      },
+      exit: function () { UI.close(); },
+      update: function () {
+        if (OG.Input.pressed('back')) { OG.Input.consume('back'); OG.Input.consume('pause'); OG.Scenes.go(S.back); }
+      },
+      draw: function (ctx) { UI.drawBackdrop(ctx); }
+    };
+    return S;
+  }
+
+  // ======================================================================
+  // Scene v2: Sổ tay khám phá — chọn hành trình để xem thẻ kiến thức đã sưu tầm.
+  //   Nút [data-act="book"][data-arg=jid] → OG.Learn.openNotebook(jid, 'notebookHub'); Esc / ↩ = về menu.
+  // ======================================================================
+  function notebookHubScene() {
+    var S = {
+      back: 'menu',
+      enter: function (params) {
+        UI.hideGameUi();
+        if (params && params.back) S.back = params.back;
+        var list = OG.Journeys ? OG.Journeys.list().filter(function (j) { return !j.invalid; }) : [];
+        var total = 0, have = 0;
+        var rows = list.map(function (j) {
+          var c = U.call('Learn', 'count', j.id) || { have: 0, total: 0 };
+          total += c.total; have += c.have;
+          var pct = c.total ? Math.round((c.have / c.total) * 100) : 0;
+          return '<button type="button" class="ui-book" data-act="book" data-arg="' + UI.esc(j.id) + '" data-id="book_' + UI.esc(j.id) + '">' +
+            '<span class="ui-book-emoji" aria-hidden="true">' + UI.esc(j.emoji || '📖') + '</span>' +
+            '<span class="ui-book-body"><b>' + UI.esc(j.title) + '</b>' +
+            '<i class="ui-book-bar"><em style="width:' + pct + '%"></em></i>' +
+            '<small>📒 ' + c.have + '/' + c.total + ' thẻ' + (c.total && c.have >= c.total ? ' · 🌟 Đủ bộ!' : '') + '</small></span></button>';
+        }).join('');
+        UI.open({
+          title: '📒 SỔ TAY KHÁM PHÁ',
+          className: 'ui-books',
+          html: '<p class="ui-tagline">Bạn đã sưu tầm <b>' + have + '/' + total + '</b> thẻ kiến thức. Chọn một cuốn để xem nhé!</p>' +
+            (rows ? '<div class="ui-book-grid">' + rows + '</div>' : '<p>Chưa có hành trình nào.</p>') +
+            '<div class="actions"><button type="button" class="secondary" data-act="back" data-id="books_back">↩ Quay lại</button></div>',
+          handlers: {
+            book: function (jid) { OG.Learn.openNotebook(jid, 'notebookHub', {}); },
+            back: function () { OG.Scenes.go(S.back); }
+          }
+        });
+      },
+      exit: function () { UI.close(); },
+      update: function () {
+        if (OG.Input.pressed('back')) { OG.Input.consume('back'); OG.Input.consume('pause'); OG.Scenes.go(S.back); }
+      },
+      draw: function (ctx) { UI.drawBackdrop(ctx); }
+    };
+    return S;
   }
 
   // ======================================================================
@@ -617,6 +732,22 @@
           return '<button type="button" class="' + (touch === val ? 'is-on' : 'secondary') + '" data-act="touch" data-arg="' + val +
             '" data-fk="touch-' + val + '" data-id="touch_' + val + '">' + label + '</button>';
         };
+        // v2: chế độ chơi (OG.Difficulty) và "chạm nửa phải màn hình để nhảy" (settings.tapJump, đọc ở OG.Input).
+        var tap = st.tapJump || 'auto';
+        var tapSeg = function (val, label) {
+          return '<button type="button" class="' + (tap === val ? 'is-on' : 'secondary') + '" data-act="tapjump" data-arg="' + val +
+            '" data-fk="tap-' + val + '" data-id="tap_' + val + '">' + label + '</button>';
+        };
+        var diffRow = function () {
+          var D = OG.Difficulty;
+          if (!D) return '';
+          var m = D.mode();
+          return '<div class="ui-setting"><span class="ui-setting-label">🎮 Chế độ chơi</span><div class="ui-seg">' +
+            D.list().map(function (k) {
+              return '<button type="button" class="' + (k === m ? 'is-on' : 'secondary') + '" data-act="diff" data-arg="' + UI.esc(k) +
+                '" data-fk="diff-' + UI.esc(k) + '" data-id="diff_' + UI.esc(k) + '">' + UI.esc(D.label(k)) + '</button>';
+            }).join('') + '</div></div>';
+        };
         var muted = S.muted();
         var html =
           S.sliderHtml('music', '🎵 Nhạc nền') +
@@ -624,10 +755,14 @@
           '<div class="ui-setting"><span class="ui-setting-label">🔇 Tắt tiếng</span>' +
             '<button type="button" class="' + (muted ? '' : 'secondary') + ' ui-toggle" data-act="mute" data-fk="mute" data-id="mute">' +
             (muted ? 'Đang tắt' : 'Đang bật') + '</button></div>' +
+          diffRow() +
           '<div class="ui-setting"><span class="ui-setting-label">📱 Nút cảm ứng</span>' +
             '<div class="ui-seg">' + seg('auto', 'Tự động') + seg('on', 'Luôn hiện') + seg('off', 'Ẩn') + '</div></div>' +
+          '<div class="ui-setting"><span class="ui-setting-label" title="Chạm nửa phải màn hình để nhảy">👆 Chạm để nhảy</span>' +
+            '<div class="ui-seg">' + tapSeg('auto', 'Tự động') + tapSeg('on', 'Bật') + tapSeg('off', 'Tắt') + '</div></div>' +
           '<details class="ui-help"><summary>🎮 Cách điều khiển</summary>' +
-            '<p>←/→ hoặc A/D: di chuyển · Space/W/↑: nhảy · E/J: tương tác<br>Esc/P: tạm dừng · Enter: chọn · Mũi tên: di chuyển giữa các nút</p></details>' +
+            '<p>←/→ hoặc A/D: di chuyển · Space/W/↑: nhảy · E/J: tương tác<br>Esc/P: tạm dừng · Enter: chọn · Mũi tên: di chuyển giữa các nút<br>' +
+            'Câu đố: phím 1, 2, 3 để chọn nhanh · Điện thoại: chạm nửa phải màn hình để nhảy</p></details>' +
           (S.overlay ? '' :
             '<div class="ui-setting ui-danger-row"><span class="ui-setting-label">🗑️ Dữ liệu</span>' +
             '<button type="button" class="ui-danger' + (S.confirmReset ? ' is-confirm' : '') + '" data-act="reset" data-fk="reset" data-id="reset">' +
@@ -653,6 +788,15 @@
             touch: function (val) {
               OG.Save.setSetting('touchControls', val);
               S.render('[data-fk="touch-' + val + '"]');
+            },
+            tapjump: function (val) {
+              OG.Save.setSetting('tapJump', val);
+              S.render('[data-fk="tap-' + val + '"]');
+            },
+            diff: function (val) {
+              if (OG.Difficulty) OG.Difficulty.set(val);
+              UI.toast(val === 'kid' ? '🧸 Chế độ Bé chơi: dễ và vui!' : '🔥 Chế độ Thử thách: cố lên nhé!', 1.8);
+              S.render('[data-fk="diff-' + val + '"]');
             },
             reset: function () {
               if (!S.confirmReset) { S.confirmReset = true; S.render('[data-fk="reset"]'); return; }
@@ -898,6 +1042,8 @@
     }
 
     OG.Scenes.register('menu', menuScene());
+    OG.Scenes.register('modeSelect', modeSelectScene());
+    OG.Scenes.register('notebookHub', notebookHubScene());
     OG.Scenes.register('charselect', charSelectScene());
     OG.Scenes.register('settings', settingsScene());
     OG.Scenes.register('pause', pauseScene());

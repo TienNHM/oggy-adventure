@@ -20,8 +20,8 @@ Khi hai tài liệu mâu thuẫn về phần v2, **tài liệu này được ưu
   (`OG.Decor.face(ctx, x, y, s)`), nhân vật giống "Oggy and the Cockroaches" nhưng cường điệu hơn.
 - **Bốn cách học, dùng TẤT CẢ trong mỗi hành trình:** (1) thẻ kiến thức sưu tầm, (2) câu đố mở cửa,
   (3) truyện tranh giữa màn, (4) nhân vật dẫn đường.
-- Chiến dịch **cổ điển** v1 (4 màn + 3 màn phụ, nút `▶ CHƠI`) giữ nguyên. Hành trình là chế độ mới
-  (nút `📖 PHIÊU LƯU HỌC TẬP` → scene `journeySelect`).
+- Chiến dịch **cổ điển** v1 (4 màn + 3 màn phụ, nút `▶ CHƠI CỔ ĐIỂN`) giữ nguyên. Hành trình là chế độ CHÍNH:
+  nút to nhất của menu `📖 PHIÊU LƯU HỌC TẬP` → `modeSelect` (Bé chơi / Thử thách) → `journeySelect`.
 
 ---
 
@@ -39,7 +39,9 @@ Khi hai tài liệu mâu thuẫn về phần v2, **tài liệu này được ưu
 | `OG.Story` (+ `OG.Story.ui`) | `src/story/story.js` | Điều phối hành trình, truyện tranh; tiện ích vẽ bong bóng/khung/nút |
 | `OG.Learn` | `src/story/learn.js` | Thẻ kiến thức, Sổ tay, câu đố |
 | `OG.Guide` | `src/story/guide.js` | Nhân vật dẫn đường trong màn |
-| Scene v2 | `src/story/scenes.js` | `journeySelect, journeyMap, comic, card, quiz, notebook, journeyEnd` |
+| Scene v2 | `src/story/scenes.js` | `journeySelect, comic, card, quiz, notebook, journeyEnd` (+ `journeyMap` DOM dự phòng) |
+| Bản đồ hành trình | `src/world/journey-map.js` | `OG.World.journeyMap` — scene `journeyMap` vẽ canvas (đăng ký trong `OG.World.init`) |
+| Menu v2 | `src/ui/menus.js` | scene `modeSelect`, `notebookHub`; Cài đặt có chế độ chơi + chạm để nhảy |
 | Dữ liệu hành trình | `src/journeys/<id>/{theme,content,extras,journey}.js` | Mỗi hành trình 1 thư mục |
 
 ---
@@ -77,7 +79,7 @@ OG.Journeys.register({
   outro: 'kitchen_outro',              // truyện chiếu sau màn CUỐI của khu (lần đầu)
   boss: { bossId: 'deedee',            // trùm đánh sau màn cuối khu (bỏ trống = không trùm)
           arena: { width, platforms, spawn, theme }, // tuỳ chọn, ghi đè đấu trường của OG.Bosses
-          intro: 'comicId' },          // (dự phòng cho story-ui: truyện trước trận trùm)
+          intro: 'comicId' },          // truyện trước trận trùm: OG.Game.finishStage chiếu (lần đầu) rồi vào 'boss'
   levels: [JourneyLevelDef] }
 ```
 Đấu trường trùm trong hành trình mặc định dùng **chủ đề cảnh nền của khu**.
@@ -171,15 +173,17 @@ Kẻ địch/trùm dễ thương, có báo hiệu trước đòn, có khoảng h
 ## 3. Luồng chơi hành trình
 
 ```
-menu ─📖→ journeySelect ─chọn→ OG.Story.startJourney(jid)
+menu ─📖→ modeSelect (Bé chơi/Thử thách, nhớ ở settings.difficulty) → journeySelect ─chọn→ OG.Story.startJourney(jid)
    → Game.newRun({journeyId}) → 'journey:select' → comic(intro, lần đầu) → journeyMap
 journeyMap ─▶ CHƠI TIẾP / chọn màn→ OG.Story.playLevel(levelId)
    → ('area:enter' nếu màn đầu khu) → comic(area.intro, level.intro — lần đầu) → Game.startLevel → level
 level: trang sách → push card · NPC → bong bóng · cổng → push quiz · comicTriggers → push comic
-   → đủ pizza + qua mọi cổng + chạm EXIT → (trùm của khu) → Game.completeLevel
+   → đủ pizza + qua mọi cổng + chạm EXIT → Game.finishStage → (comic area.boss.intro, lần đầu) → (trùm của khu) → Game.completeLevel
 Game.completeLevel (màn hành trình) → lưu tiến độ, thưởng xu, 'level:complete'{journeyId, areaId}
    → OG.Story.afterLevel(result): comic(level.outro, area.outro, ending nếu màn cuối) 
    → journeyMap{completed} | (màn cuối) Story.finishJourney → 'journey:complete' → journeyEnd
+journeyEnd: kết quả lượt (OG.Game.buildResult('victory') + journeyId, levelName = tên hành trình) → OG.Social.mountResult
+   (nhập tên, lưu điểm, chia sẻ) · nút #end_lb → leaderboard{back:'journeyEnd'} · Sổ tay · Bản đồ · Về menu
 Hết mạng: kid → OG.Difficulty.softFail (đầy mạng, về checkpoint, trợ giúp sau 2 lần) · challenge → gameover
    → THỬ LẠI = OG.Game.retryRun() (hành trình: startJourney(jid,{skipIntro}) → journeyMap)
 Pause: "Chơi lại màn" = OG.Game.restartLevel(); "Bản đồ" = OG.Game.backToMap() (journeyMap hoặc worldmap)
@@ -264,13 +268,24 @@ MODES, ASSIST
 | `bossHpMul` (tối thiểu 2 máu; trùm ghép `members` tự xử lý) | 0.6 | 1 |
 | `bossSpeedMul` (dt của `boss.update`) | 0.75 | 1 |
 | `hurtInvuln` (s) | 2.2 | 1.6 |
+| `jumpHoldGravityMul` (giữ nút nhảy khi đang lên) | 0.72 | 1 |
+| `fallGravityMul` / `maxFallMul` | 0.86 / 0.8 | 1 / 1 |
+| `grazePx` (chạm sượt không tính) | 6 | 0 |
+| `stompTolerance` (px) | 24 | 12 |
+| `hurtKnockMul` | 0.7 | 1 |
+| `bossTelegraphMul` / `bossStunMul` | 1.3 / 1.35 | 1 / 1 |
+| `bossRest` (s nghỉ sau mỗi đòn, giẫm được) | 0.9 | 0 |
 | `checkpoints` / `checkpointSpacing` | true / 600 px | false |
 | `fallDamage` (rơi vực mất mạng) | false → hồi về chỗ đứng an toàn | true (như v1) |
 | `softFail` (hết mạng trong hành trình) | true → đầy mạng tại checkpoint | false → game over |
 | `autoAssistAfter` (số lần thua để bật trợ giúp) | 2 | 3 |
 
-Trợ giúp (`ASSIST[1..2]`, cộng dồn theo số lần thua cùng màn): địch chậm thêm, máu trùm giảm thêm, `shield` khi hồi sinh,
-`extraLives`. Thắng màn → xoá đếm thua. Lưu: `settings.difficulty` (qua `OG.Save.setSetting`), số lần thua `OG.Save.ns('difficulty').fails`.
+Trợ giúp (`ASSIST[1..2]`, cộng dồn theo số lần thua cùng màn): địch chậm thêm, máu trùm giảm thêm, `bossSpeedMul` (0.9 / 0.8),
+`shield` khi hồi sinh, `extraLives`.
+API thêm (agent difficulty): `isStomp(p, prevBottom, target, tol, prevTop)`, `touches(p, box)`, `weakenBoss(boss, arena)`,
+`applyAssist(player, levelId)`; `OG.Level.stompOk/touchOk` dùng chung cho scene boss; kẻ địch có `e.prevY`;
+`OG.Input.TOUCH_SIZE`, `sizeTouch(el)`, phím `num1..num3` (câu đố). `OG.Story.onSoftFail({levelId, assist})` trả true = không hiện toast của Difficulty.
+Chạm nửa phải màn hình để nhảy: `settings.tapJump` = `'auto'` (chỉ khi chạm bằng ngón tay) | `'on'` | `'off'` (đổi trong Cài đặt). Thắng màn → xoá đếm thua. Lưu: `settings.difficulty` (qua `OG.Save.setSetting`), số lần thua `OG.Save.ns('difficulty').fails`.
 Nơi gọi đã nối sẵn: `Game.newRun` (mạng), `Player.update` (coyote/buffer — nhảy coyote `consume('jump')` để không tính nhảy đôi),
 `Player.hurt` (bất tử), `Enemies.create/hurtbox`, scene `level`/`boss` (rơi vực, máu & nhịp trùm, `arena.difficulty`),
 `Game.loseLife` (softFail). Checkpoint là một **level hook** (`id:'checkpoints'`). Chiến dịch cổ điển cũng theo độ khó
@@ -325,12 +340,14 @@ NPC chưa nói chuyện có dấu "!" nhún nhảy. `spot.card` → nói chuyệ
 | Scene | Cách vào | params | Phím / chạm |
 |---|---|---|---|
 | `journeySelect` | `go` | `{back}` | panel DOM: nút `[data-act="journey"][data-arg="<jid>"]`, đổi độ khó; Esc = back |
-| `journeyMap` | `go` | `{journeyId, completed?, result?}` | Enter = ▶ CHƠI TIẾP (màn chưa xong đầu tiên); nút màn `[data-act="level"][data-arg]`; Sổ tay; Esc → journeySelect |
+| `journeyMap` | `go` | `{journeyId, completed?, result?}` | **Canvas** (`src/world/journey-map.js`): mỗi khu là một ô tranh vẽ bằng chủ đề cảnh nền của khu, nút màn nối bằng đường chấm, trùm cuối khu. Màn được chọn sẵn = màn chưa xong đầu tiên (Oggy tự đi tới sau khi thắng). ←→↑↓ đổi màn đã mở; Enter/Space/E = ▶ CHƠI; chạm nút màn (chạm lần 2 = chơi), nút ▶ CHƠI TIẾP, 📒 Sổ tay, ↩, mũi tên cuộn; Esc → journeySelect. `OG.World.journeyMap.selected()/getNodes()` cho test. (Bản DOM dự phòng trong `src/story/scenes.js` có nút `[data-act="level"][data-arg]`.) |
 | `comic` | `go` (giữa cảnh) / `push` (`overlay:true`, giữa màn) | `{journeyId, comicId, onDone?, overlay?}` | Enter/Space/E/→/chạm = khung tiếp; Esc hoặc nút "Bỏ qua ⏭" = bỏ qua; luôn phát `comic:end` |
 | `card` | `push` | `{journeyId, cardId, isNew, onClose?}` | sau 0,35 s: Enter/Space/E/→/Esc/chạm = đóng (pop) |
 | `quiz` | `push` | `{journeyId, quizId, levelId, gateId, onPass?, onClose?}` | lựa chọn bắt đầu ở **0**; ←/→/↑/↓ đổi; Enter/Space/E chọn; chạm đáp án; sai = gợi ý + gạch lựa chọn, ở lại; đúng = giải thích, Enter/chạm → pop + onPass; Esc = để sau (pop, cổng vẫn khoá) |
 | `notebook` | `go` | `{journeyId, back, backParams}` | mũi tên chọn, Enter mở thẻ đã có (push card), Esc/nút ↩ = về back |
-| `journeyEnd` | `go` | `{journeyId}` | panel DOM: Sổ tay (primary), Bản đồ hành trình, Về menu |
+| `journeyEnd` | `go` | `{journeyId, result?}` | panel DOM: Sổ tay (primary), 🏆 Bảng xếp hạng (`#end_lb`), Bản đồ hành trình, Về menu + khối `OG.Social.mountResult` |
+| `modeSelect` (Menus) | `go` | `{back}` | `[data-act="mode"][data-arg="kid\|challenge"]`; chế độ đã nhớ có `is-on` + `data-primary` (Enter); Esc = back |
+| `notebookHub` (Menus) | `go` | `{back}` | `[data-act="book"][data-arg=jid]` → `notebook{back:'notebookHub'}`; Esc = back |
 
 Smoke test điều khiển các scene này bằng đúng phím/selector trên — đổi giao diện thoải mái nhưng giữ hợp đồng này.
 
@@ -359,8 +376,10 @@ Smoke test điều khiển các scene này bằng đúng phím/selector trên �
 | `assist:on` | `{levelId, level, fails}` | Difficulty.recordFail |
 
 Bổ sung payload cũ: `game:start` có `journeyId`; `LevelResult` có `journeyId, areaId` (màn hành trình, `isFinal:false`);
-`RunResult` có `journeyId`. Gợi ý Audio (Tích hợp nối sau): `page:collect`→`collect`, `card:unlock`→`quest`,
-`quiz:answer{correct:false}`→âm nhẹ (KHÔNG dùng âm "thua"), `quiz:pass`→`victory` ngắn, `checkpoint:reach`→`coin`, `guide:talk`→`click`.
+`RunResult` có `journeyId`. Audio (đã nối trong `src/audio/audio.js`): `page:collect`→`collect`, `card:unlock`→`quest`,
+`quiz:answer{correct:false}`→`select` trầm nhẹ (KHÔNG dùng âm "thua"), `quiz:pass`→`victory` nhỏ, `gate:open`→`unlock`,
+`checkpoint:reach`→`coin`, `guide:talk`→`click`, `player:respawn`→`powerup`, `journey:complete`→nhạc `victory`.
+Nhạc theo scene: `modeSelect/journeySelect/notebookHub/notebook`→`menu`, `journeyMap`→`worldmap`, `journeyEnd`→`victory`, `comic` giữ nhạc đang phát.
 
 ---
 
@@ -368,7 +387,8 @@ Bổ sung payload cũ: `game:start` có `journeyId`; `LevelResult` có `journeyI
 
 | Vùng | Nội dung |
 |---|---|
-| `settings.difficulty` | `'kid'` (mặc định) \| `'challenge'` |
+| `settings.difficulty` | `'kid'` (mặc định) \| `'challenge'` — đổi ở `modeSelect` hoặc Cài đặt |
+| `settings.tapJump` | `'auto'` (mặc định) \| `'on'` \| `'off'` |
 | `progress.levels[levelId]` | dùng chung cho màn hành trình (id có tiền tố nên không đụng màn cổ điển); `Progress.totalStars()` chỉ tính màn cổ điển |
 | `ext.story` | `{ seen: {'<jid>:<comicId>': true}, last: jid }` |
 | `ext.learn` | `{ cards, quizzes }` (mục 6.3) |
@@ -419,7 +439,7 @@ Thêm (tuỳ chọn, agent characters): `opts.accessory` cho mọi nhân vật �
 | **characters** | `src/gfx/sprites.js`, `src/gfx/skins.js`, `docs/sprites-demo.html` | |
 | **scenery** | `src/gfx/scenery.js`, `src/gfx/decor*.js` (file mới), `docs/scenery-demo.html` | `drawProp` page/gate/checkpoint ở `scenery.js` |
 | **difficulty** | `src/game/`, `src/bosses/`, `src/data/characters.js`, `src/core/input.js` | |
-| **Integrator** (sau) | `index.html`, `src/core/` (trừ `input.js`), `src/data/levels.js`, `src/world/`, `src/ui/`, `docs/`, `tests/` | đọc mọi `INTEGRATION.md` |
+| **Integrator** (sau) | `index.html`, `src/core/` (trừ `input.js`), `src/data/levels.js`, `src/world/`, `src/ui/`, `docs/`, `tests/` | đọc mọi `INTEGRATION.md` — **đã làm** (mục 12) |
 
 Quy tắc:
 1. Không sửa file ngoài phạm vi; không gán đè namespace người khác. Được **đọc/gọi** mọi API công khai.
@@ -452,8 +472,31 @@ Quy tắc:
 ## 11. Kiểm thử
 
 `node tests/smoke.js` (thêm `--verbose` để xem cảnh báo dữ liệu hành trình). Phần v2 (`journeyChecks`):
-validate 4 hành trình, cấm Trebuchet MS, menu → journeySelect, mỗi hành trình: chọn → truyện mở đầu (lướt + bỏ qua) →
-journeyMap → Enter → (truyện khu) → màn: người dẫn đường (đến gần + E), rơi vực không mất mạng, nhặt trang → thẻ → đóng,
-hết mạng 2 lần → hồi sinh + trợ giúp, cổng câu đố (sai 1 lần không phạt → đúng), EXIT, trùm theo chủ đề khu,
-`level:complete{journeyId}`, (màn cuối → journeyEnd + `journey:complete`), sổ tay (mở thẻ, Esc);
-pause → Bản đồ về journeyMap; chế độ challenge: game over → THỬ LẠI về journeyMap.
+- `OG.Journeys.validate()` cả 4 hành trình `ok`; Dee Dee xanh dương; `journeyMap` là bản canvas của `src/world`.
+- **Cấm Trebuchet MS**: quét MỌI file `.js/.css/.html/.md/.json/.txt` trong `src/` và `index.html` (bỏ qua câu "không dùng Trebuchet").
+- Menu: PHIÊU LƯU là nút chính, có Sổ tay khám phá; `modeSelect` nhớ lựa chọn (challenge ↔ kid); Cài đặt đổi chế độ chơi + `tapJump`;
+  `notebookHub` → sổ tay → quay lại.
+- **Chơi HẾT mỗi hành trình** (38 màn): chọn → truyện mở đầu (đọc hết bằng Enter; 1 hành trình thử nút bỏ qua) → bản đồ canvas
+  (chạm 📒, chạm màn khoá, mũi tên) → với MỌI màn: bản đồ chọn sẵn màn kế tiếp → Enter → truyện khu → HUD có 📖 trang →
+  nhặt trang → thẻ → nhặt đồ theo từng đoạn → cổng câu đố giữa màn + cửa EXIT (**sai 1 lần không phạt → đúng**; màn đầu dùng
+  mũi tên + Enter, các màn sau dùng phím 1–3) → truyện trước trùm (`area.boss.intro`) → trùm theo chủ đề khu → truyện kết khu →
+  `level:complete{journeyId}`. Màn đầu mỗi hành trình còn kiểm tra: người dẫn đường (đến gần + E), rơi vực không mất mạng,
+  hết mạng 2 lần → hồi sinh + trợ giúp; hành trình đầu thử pause → Bản đồ.
+- Màn cuối → `journeyEnd` + `journey:complete`, có khối `OG.Social` → 🏆 Bảng xếp hạng → Esc về journeyEnd → sổ tay.
+- Chế độ challenge: game over → THỬ LẠI về journeyMap.
+
+---
+
+## 12. Tích hợp v2 — đã áp dụng (agent Tích hợp)
+
+- `index.html`: thêm `src/gfx/decor-places.js`, `src/gfx/decor-home.js` (sau decor.js) và `src/world/journey-map.js` (sau world.js);
+  nút cảm ứng 74 px, nút ⏸ 56 px, chữ HUD to hơn. (`pages.yml` chép cả `src/` và `docs/` nên không cần sửa.)
+- Menu/HUD thân thiện trẻ em (`src/ui/`): menu mới, `modeSelect`, `notebookHub`, Cài đặt (chế độ chơi, chạm để nhảy), pill 📖 trang sách,
+  ẩn đồng hồ + nhiệm vụ ở màn hành trình, gọn HUD trên điện thoại.
+- `OG.Game.finishStage` chiếu `area.boss.intro` trước trận trùm (lần đầu). Hành trình `world` đã chuyển truyện trước trùm sang
+  `boss.intro` (bỏ comicTriggers gần EXIT).
+- Truyện tranh: sửa nền `{theme, camX}` (sàn vẽ lệch khi camX > 0). `journeyEnd` gắn `OG.Social.mountResult` + nút Bảng xếp hạng.
+- Audio cho event v2 và nhạc theo scene v2 (mục 7). Dee Dee xanh dương (`OG.Palette.deedee`, `src/data/characters.js`).
+- Hành trình `vietnam`: emoji `🇻🇳` → `⭐` (cờ hiện thành chữ "VN" trên Windows).
+- Màn `kitchen` (v1): dời 2 xu khỏi chỗ Dee Dee đứng (x=955) lên bục 1030–1190.
+- `settings.tapJump` có mặc định trong `save.js`.

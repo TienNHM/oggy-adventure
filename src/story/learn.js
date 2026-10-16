@@ -342,7 +342,8 @@
 
     drawScreen: function (ctx, st) {
       var L = st.learn;
-      if (L && L.pages.length) {
+      // Số trang sách đã hiện trên HUD DOM (OG.Menus.updateHud đọc hud.pages) → không vẽ pill canvas nữa.
+      if (L && L.pages.length && !(OG.Menus && OG.Menus.showsPages)) {
         // Pill trang sách: icon + "2/3" + chấm tiến độ
         var have = pagesHave(L), n = L.pages.length, w = 70 + n * 14;
         ctx.save();

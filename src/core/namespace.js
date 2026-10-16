@@ -46,7 +46,7 @@
     // Nhân vật (gợi ý cho Sprites; Sprites có thể tinh chỉnh)
     oggyHead: '#328be7', oggyBody: '#2877d5', oggyEar: '#2471cb', oggyFeet: '#263b9b', oggyMuzzle: '#d9f0ff',
     roachBody: '#7d3e9b', roachShell: '#b56bc7', roachLeg: '#4b285d',
-    joey: '#c45bd1', marky: '#5fae4e', deedee: '#e08a3c',
+    joey: '#c45bd1', marky: '#5fae4e', deedee: '#3f8de0', // v2: Dee Dee màu xanh dương như bản gốc
     jack: '#58b84a', olivia: '#f7f1ea', oliviaAccent: '#f29bb8',
     danger: '#e5484d', success: '#3fbf6f', white: '#ffffff'
   };

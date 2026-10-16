@@ -23,7 +23,7 @@
         unlocked: [],               // levelId đã mở (Progress tự thêm màn đầu tiên)
         levels: {}                  // levelId -> {completed, bestScore, stars, bestTime, plays}
       },
-      settings: { masterVolume: 1, musicVolume: 0.6, sfxVolume: 0.8, muted: false, touchControls: 'auto', difficulty: 'kid' },
+      settings: { masterVolume: 1, musicVolume: 0.6, sfxVolume: 0.8, muted: false, touchControls: 'auto', tapJump: 'auto', difficulty: 'kid' },
       stats: { plays: 0, deaths: 0, stomps: 0, pizzas: 0, coins: 0, bossesDefeated: 0, victories: 0 },
       ext: {}                       // vùng riêng cho module tính năng: ext.quests, ext.social, ...
     };

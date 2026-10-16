@@ -259,3 +259,85 @@ button.ui-card:active { transform: translateY(3px); box-shadow: 0 2px 0 #e2c9a3;
 @media (prefers-reduced-motion: reduce) {
   .panel.ui-panel, .ui-bump, .ui-hurt, .ui-badge, .ui-panel button.is-confirm { animation: none !important; }
 }
+
+/* ===================== v2: giao diện thân thiện trẻ em (agent Tích hợp) =====================
+ * Nút to (≥ 56px), chữ to, nhiều icon. Áp cho mọi panel .ui-panel. */
+.ui-panel button { min-height: 56px; font-size: clamp(16px, 2vw, 19px); }
+.ui-panel button.ui-mini { min-height: 48px; min-width: 48px; }
+.ui-menu-grid { max-width: 480px; }
+.ui-menu-grid button { font-size: 17px; padding: 12px; }
+.ui-span2 { grid-column: span 2; }
+
+/* Nút chính PHIÊU LƯU HỌC TẬP */
+.ui-btn-hero {
+  display: inline-flex; align-items: center; gap: 14px; min-height: 84px !important; padding: 12px 34px !important;
+  font-size: clamp(22px, 3vw, 30px) !important; background: #3fbf6f; box-shadow: 0 7px 0 #2a8a4f;
+  border: 4px solid #fff; border-radius: 22px; animation: ui-hero 2.2s ease-in-out infinite; text-align: left; line-height: 1.1;
+}
+.ui-btn-hero:active { box-shadow: 0 3px 0 #2a8a4f; }
+.ui-btn-hero small { display: block; font-size: 15px; font-weight: 800; opacity: .9; margin-top: 3px; }
+.ui-btn-ico { font-size: 1.6em; line-height: 1; }
+@keyframes ui-hero { 50% { transform: translateY(-3px) scale(1.02); } }
+
+/* Chọn chế độ */
+.ui-mode-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 6px 0 4px; }
+.ui-mode {
+  display: flex !important; flex-direction: column; align-items: center; gap: 6px; padding: 14px 10px 16px !important;
+  min-height: 210px !important; border-radius: 22px; border: 4px solid transparent; background: #52b9df; box-shadow: 0 7px 0 #2582aa;
+}
+.ui-mode-kid { background: #3fbf6f; box-shadow: 0 7px 0 #2a8a4f; }
+.ui-mode-challenge { background: #f27a43; box-shadow: 0 7px 0 #b74b2b; }
+.ui-panel button.ui-mode.is-on { border-color: #fff; outline: 4px solid var(--ui-gold); }
+.ui-mode.is-on.ui-mode-kid { background: #3fbf6f; box-shadow: 0 7px 0 #2a8a4f; }
+.ui-mode.is-on.ui-mode-challenge { background: #f27a43; box-shadow: 0 7px 0 #b74b2b; }
+.ui-mode-emoji { font-size: 54px; line-height: 1; }
+.ui-mode b { font-size: clamp(20px, 2.8vw, 26px); }
+.ui-mode-lines { display: flex; flex-direction: column; gap: 2px; font-size: 15px; font-weight: 800; }
+
+/* Sổ tay khám phá */
+.ui-book-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 6px 0; }
+.ui-book {
+  display: flex !important; align-items: center; gap: 12px; text-align: left; padding: 12px 14px !important;
+  min-height: 88px !important; background: #fff !important; color: var(--ui-text) !important; box-shadow: 0 6px 0 #e2c9a3 !important;
+  border: 3px solid #17233d22 !important; border-radius: 20px;
+}
+.ui-book-emoji { font-size: 40px; line-height: 1; }
+.ui-book-body { display: flex; flex-direction: column; gap: 5px; min-width: 0; flex: 1; }
+.ui-book-body b { font-size: 17px; color: var(--ui-ink); }
+.ui-book-body small { font-size: 14px; font-weight: 800; color: #9a5a23; }
+.ui-book-bar { display: block; height: 10px; background: #e6dccb; border-radius: 99px; overflow: hidden; }
+.ui-book-bar em { display: block; height: 100%; background: linear-gradient(90deg, #3fbf6f, var(--ui-gold)); border-radius: 99px; }
+
+/* HUD: trang sách của màn hành trình */
+.ui-pages.is-done { background: #3fbf6fdd; }
+@media (max-width: 560px) {
+  .ui-mode-grid, .ui-book-grid { grid-template-columns: 1fr; }
+  .ui-mode { min-height: 150px !important; }
+  .ui-btn-hero { min-height: 70px !important; padding: 10px 20px !important; }
+}
+
+/* Menu chính v2: rộng hơn, gọn để KHÔNG phải cuộn trên màn hình laptop */
+.panel.ui-panel.ui-menu { width: min(660px, 96%); padding: clamp(12px, 2vw, 22px); }
+.ui-menu h1 { font-size: clamp(24px, 4vw, 40px) !important; margin-bottom: 0 !important; }
+.ui-menu .ui-tagline { margin: 2px auto 6px !important; font-size: 15px; }
+.ui-menu .ui-stats { margin: 4px 0 8px; }
+.ui-menu .ui-menu-main { margin: 2px 0 8px; }
+.ui-btn-hero { white-space: nowrap; min-height: 76px !important; font-size: clamp(20px, 2.6vw, 27px) !important; }
+.ui-menu .ui-menu-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: 600px; gap: 8px; }
+.ui-menu .ui-menu-grid .ui-span2 { grid-column: span 1; }
+.ui-menu .small { margin-top: 6px; }
+.ui-modes h1, .ui-books h1 { font-size: clamp(22px, 3.4vw, 34px) !important; }
+@media (max-width: 560px) { .ui-menu .ui-menu-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Màn hình nhỏ (điện thoại xoay ngang): gọn HUD để không đè nút ⏸, menu bớt chữ */
+@media (max-width: 900px) {
+  #hud .ui-pill-level { display: none; }
+  #hud .ui-goal-bar { display: none; }
+}
+@media (max-height: 520px) {
+  .ui-menu .ui-tagline, .ui-menu .small, .ui-menu .ui-stats { display: none; }
+  .ui-btn-hero { min-height: 60px !important; padding: 8px 20px !important; }
+  .ui-panel button { min-height: 52px; }
+  .ui-menu .ui-menu-grid button { padding: 8px; font-size: 15px; }
+}
+@media (max-width: 900px) { #hud.ui-hud-journey #coins { display: none; } }

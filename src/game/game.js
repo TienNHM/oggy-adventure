@@ -170,7 +170,14 @@
     finishStage: function (levelId) {
       var level = OG.Data.getLevel(levelId);
       if (level && level.boss && OG.util.call('Bosses', 'has', level.boss)) {
-        OG.Scenes.go('boss', { levelId: levelId, bossId: level.boss });
+        var toBoss = { scene: 'boss', params: { levelId: levelId, bossId: level.boss } };
+        // Hành trình v2: truyện trước trận trùm (area.boss.intro), chỉ chiếu lần đầu.
+        var jid = level.journey, intro = level.bossIntro;
+        if (jid && intro && OG.Story && OG.Story.playComic && !OG.Story.hasSeen(jid, intro)) {
+          OG.Story.playComic(jid, intro, { next: toBoss });
+          return;
+        }
+        OG.Scenes.go(toBoss.scene, toBoss.params);
       } else {
         Game.completeLevel(levelId);
       }

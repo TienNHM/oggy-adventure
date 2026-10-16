@@ -514,8 +514,12 @@
       else if (typeof bg === 'string' && bg.indexOf('color:') === 0) { ctx.fillStyle = bg.slice(6); ctx.fillRect(0, 0, OG.W, OG.H); }
       else {
         var theme = (bg && bg.theme) || bg || 'kitchen';
-        OG.Sprites.drawBackground(ctx, theme, (bg && bg.camX) || 0, t);
-        OG.Sprites.drawPlatform(ctx, { x: (bg && bg.camX) || 0, y: OG.FLOOR_Y, w: OG.W, h: 60, isFloor: true }, theme, t);
+        var camX = (bg && bg.camX) || 0;
+        OG.Sprites.drawBackground(ctx, theme, camX, t);
+        // Sàn vẽ ở toạ độ thế giới: dịch -camX để sàn phủ kín khung (sửa lỗi khoảng trống bên trái khi camX > 0).
+        ctx.save(); ctx.translate(-camX, 0);
+        OG.Sprites.drawPlatform(ctx, { x: camX, y: OG.FLOOR_Y, w: OG.W, h: 60, isFloor: true }, theme, t);
+        ctx.restore();
       }
     });
     // Nhân vật: x 0..1 theo bề ngang khung; chân ở y (0..1 theo chiều cao khung, mặc định mặt sàn).
@@ -1079,6 +1083,10 @@
       hideChrome();
       ui().fx.clear();
       ui().fx.confetti(OG.W / 2, OG.H * 0.55, 90, 3);
+      // Kết quả lượt chơi hành trình (bảng xếp hạng dùng chung với chiến dịch cổ điển).
+      var result = this.result = (params && params.result) || OG.Game.buildResult('victory');
+      result.journeyId = jid;
+      result.levelName = (j.emoji ? j.emoji + ' ' : '') + (j.title || '');
       var panel = OG.DOM.panel({
         title: esc(end.title || 'HOÀN THÀNH! 🎉'),
         className: 'story-panel story-end',
@@ -1091,12 +1099,15 @@
           (c.have < c.total ? '<p class="story-end-tip">Còn ' + (c.total - c.have) + ' thẻ chưa tìm thấy. Chơi lại để sưu tầm đủ nhé! 🔎</p>' : '<p class="story-end-tip">Bạn đã sưu tầm ĐỦ thẻ! Siêu quá! 🌟</p>'),
         buttons: [
           { id: 'end_notebook', label: '📒 Xem Sổ tay', primary: true, onClick: function () { OG.Learn.openNotebook(jid, 'journeyEnd', { journeyId: jid }); } },
+          { id: 'end_lb', label: '🏆 Bảng xếp hạng', secondary: true, onClick: function () { OG.Scenes.go('leaderboard', { back: 'journeyEnd', backParams: { journeyId: jid, result: result } }); } },
           { id: 'end_map', label: '🗺️ Bản đồ hành trình', secondary: true, onClick: function () { OG.Scenes.go('journeyMap', { journeyId: jid }); } },
           { id: 'end_menu', label: '🏠 Về menu', secondary: true, onClick: function () { OG.Scenes.go('menu'); } }
         ]
       });
       panel.setAttribute('style', paletteStyle(jid));
       mountPortraits(panel);
+      // Ô nhập tên + lưu điểm + chia sẻ (OG.Social), giống màn chiến thắng cổ điển.
+      U.call('Social', 'mountResult', panel, result);
     },
     exit: function () { OG.DOM.hidePanel(); },
     update: function (dt) {

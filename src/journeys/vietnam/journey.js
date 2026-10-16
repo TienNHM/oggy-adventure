@@ -19,7 +19,7 @@
     id: 'vietnam',
     order: 2,
     title: 'Vòng quanh Việt Nam',
-    emoji: '🇻🇳',
+    emoji: '⭐', // cờ 🇻🇳 hiện thành chữ "VN" trên Windows
     description: 'Theo chân Bob đi khắp Việt Nam: phố cổ, vịnh biển, món ngon và chợ nổi!',
     guide: { charId: 'bob', name: 'Bob' },
     palette: { primary: '#e63946', secondary: '#2a9d8f', accent: '#ffb703', bg: '#fff6df', ink: '#17233d' },

@@ -41,6 +41,8 @@
         '<div class="ui-hud-row">' +
           '<div class="pill ui-pill ui-pill-level" id="level"></div>' +
           '<div class="pill ui-pill ui-goal" id="objective"><span class="ui-goal-text"></span><i class="ui-goal-bar"><b></b></i></div>' +
+          // v2: số trang sách của màn hành trình (OG.Game.hud.pages = {have, total}, do OG.Learn cập nhật)
+          '<div class="pill ui-pill ui-pages" id="pages" style="display:none"></div>' +
         '</div>' +
         '<div class="ui-items"></div>' +
       '</div>' +
@@ -58,13 +60,14 @@
       goal: hud.querySelector('#objective'),
       goalText: hud.querySelector('.ui-goal-text'),
       goalBar: hud.querySelector('.ui-goal-bar b'),
+      pages: hud.querySelector('#pages'),
       items: hud.querySelector('.ui-items'),
       coins: hud.querySelector('#coins'),
       lives: hud.querySelector('#lives'),
       score: hud.querySelector('#score'),
       quests: hud.querySelector('.ui-quests')
     };
-    last = { score: null, lives: null, coins: null, pizzas: null };
+    last = { score: null, lives: null, coins: null, pizzas: null, pages: null };
     return refs;
   }
 
@@ -76,6 +79,13 @@
     for (var i = 0; i < max; i++) s += i < lives ? '<span class="ui-heart">❤️</span>' : '<span class="ui-heart is-empty">🖤</span>';
     return s;
   }
+
+  // Màn của hành trình học tập v2? (OG.Journeys có thể chưa load)
+  function isJourneyLevel(id) {
+    return !!(id && OG.Journeys && typeof OG.Journeys.isJourneyLevel === 'function' && OG.Journeys.isJourneyLevel(id));
+  }
+  // OG.Learn đọc cờ này: HUD DOM đã hiện số trang sách → không vẽ thêm pill trên canvas.
+  Menus.showsPages = true;
 
   Menus.updateHud = function (h) {
     if (!h) return;
@@ -93,6 +103,18 @@
     r.goal.classList.toggle('is-done', piz >= goal && goal > 0);
     if (last.pizzas !== null && piz > last.pizzas) bump(r.goal, 'ui-bump');
     last.pizzas = piz;
+
+    // Trang sách (chỉ màn hành trình). Trẻ em: không đồng hồ, không danh sách nhiệm vụ để bé chơi thong thả.
+    var journey = isJourneyLevel(h.levelId);
+    var pg = journey && !inBoss && h.pages && h.pages.total > 0 ? h.pages : null;
+    r.pages.style.display = pg ? '' : 'none';
+    if (pg) {
+      setText(r.pages, '📖 ' + (pg.have | 0) + '/' + (pg.total | 0));
+      r.pages.classList.toggle('is-done', pg.have >= pg.total);
+      if (last.pages !== null && pg.have > last.pages) bump(r.pages, 'ui-bump');
+    }
+    last.pages = pg ? pg.have : null;
+    r.root.classList.toggle('ui-hud-journey', journey);
 
     // Xu
     setText(r.coins, '🪙 ' + fmt(h.coins));
@@ -122,7 +144,7 @@
     setHtml(r.items, chips);
 
     // Nhiệm vụ (tối đa 3 dòng)
-    var qs = Array.isArray(h.quests) ? h.quests.slice(0, 3) : [];
+    var qs = !journey && Array.isArray(h.quests) ? h.quests.slice(0, 3) : [];
     var UI = Menus.ui;
     setHtml(r.quests, qs.map(function (q) {
       if (UI && UI.questLine) return UI.questLine(q, h.levelId);
@@ -284,7 +306,7 @@
     ctx.save();
     if (playing && (h.lives | 0) === 1) drawLowLife(ctx);
     if (h.boss) drawBossBar(ctx, h.boss, dt);
-    else if (h.scene === 'level') drawTimer(ctx, h);
+    else if (h.scene === 'level' && !isJourneyLevel(h.levelId)) drawTimer(ctx, h);
     drawPhaseBanner(ctx, dt);
     ctx.restore();
   };

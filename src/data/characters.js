@@ -42,7 +42,7 @@
     deedee: {
       id: 'deedee', name: 'Dee Dee', role: 'boss', w: 50, h: 50,
       desc: 'Gián béo phàm ăn, lúc nào cũng đói.',
-      colors: { body: P.deedee, shell: '#f3b277', leg: '#8a4a17' }
+      colors: { body: P.deedee, shell: '#86c3f7', leg: '#1f4f96' } // v2: xanh dương
     },
     roach: {
       id: 'roach', name: 'Gián con', role: 'enemy', w: 34, h: 28,
