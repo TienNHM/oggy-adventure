@@ -17,26 +17,26 @@
  * Giấy phép hợp lệ: Public Domain, CC0, CC BY, CC BY-SA, Unsplash License, Pexels License (xem OG.Photos.licenseOk). */
 /* AUTO-SUMMARY (tự sinh khi chạy "write")
  * Danh sách (23 ảnh):
- *   hn_hoguom        CC BY 4.0      P. Hughes
+ *   hn_hoguom        CC BY 2.0      Richard Mortel from Riyadh, Saudi Arabia
  *   hn_pho           CC BY-SA 3.0   Codename5281
  *   hn_oldquarter    CC BY-SA 4.0   Christophe95
  *   hn_puppet        CC BY-SA 4.0   Steven C. Price
- *   hl_islands       CC0            lumoplank
+ *   hl_islands       CC BY-SA 4.0   Shyamal
  *   hl_heritage      CC BY-SA 3.0   Thomas Hirsch / User:Ravn
- *   hl_cave          CC BY 4.0      Jakub Hałun
+ *   hl_cave          CC BY 2.0      xiquinhosilva from Cacau
  *   hl_rocks         CC BY-SA 3.0   Nguyễn Thanh Quang
  *   hue_citadel      CC BY 4.0      Supanut Arunoprayote
  *   hue_nonla        CC BY 2.0      terence from Singapore
  *   hue_river        CC BY 4.0      P. Hughes
- *   ha_lantern       CC BY-SA 4.0   Christophe95
+ *   ha_lantern       Public domain  Khương Việt Hà
  *   ha_oldtown       CC BY-SA 4.0   Steffen Schmitz
  *   ha_bridge        CC BY-SA 4.0   Steffen Schmitz
  *   ha_douc          CC BY-SA 4.0   Charles J. Sharp
- *   sg_city          CC BY 2.0      Jorge Láscar from Australia
+ *   sg_city          CC BY-SA 4.0   Steffen Schmitz
  *   sg_banhmi        CC BY-SA 4.0   Minh Nguyen
  *   sg_market        CC BY-SA 4.0   Bahnfrend
  *   sg_cangio        CC BY-SA 3.0   Tho nau
- *   mt_floating      CC BY 4.0      Vyacheslav Argenberg
+ *   mt_floating      CC BY-SA 2.0   Jean-Marc Astesana from Voisins le Bretonneux, Fra
  *   mt_fruit         CC BY 2.0      McKay Savage from London, UK
  *   mt_mekong        CC BY-SA 2.0   JUMBOROIS
  *   mt_rice          Public domain  Thuydaonguyen
@@ -45,13 +45,13 @@ OG.Photos.register("vietnam", /* BEGIN-ENTRIES */ {
   "hn_hoguom": {
     "file": "hn_hoguom.webp",
     "w": 800,
-    "h": 538,
-    "author": "P. Hughes",
-    "license": "CC BY 4.0",
-    "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
+    "h": 529,
+    "author": "Richard Mortel from Riyadh, Saudi Arabia",
+    "license": "CC BY 2.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
     "source": "Wikimedia Commons",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Hanoi_-_Turtle_Tower_(Th%C3%A1p_R%C3%B9a),_Ho%C3%A0n_Ki%E1%BA%BFm_Lake.jpg",
-    "title": "Hanoi - Turtle Tower (Tháp Rùa), Hoàn Kiếm Lake",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Thap_Rua_(Tottoise)_Tower,_Hoan_Kiem_Lake,_Hanoi_(2)_(38465802112).jpg",
+    "title": "Thap Rua (Tottoise) Tower, Hoan Kiem Lake, Hanoi (2) (38465802112)",
     "note": "Đã thu nhỏ, chuyển sang WebP"
   },
   "hn_pho": {
@@ -93,13 +93,13 @@ OG.Photos.register("vietnam", /* BEGIN-ENTRIES */ {
   "hl_islands": {
     "file": "hl_islands.webp",
     "w": 800,
-    "h": 534,
-    "author": "lumoplank",
-    "license": "CC0",
-    "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+    "h": 360,
+    "author": "Shyamal",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
     "source": "Wikimedia Commons",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Ha_Long_Bay_-_Halong1407.jpg",
-    "title": "Ha Long Bay - Halong1407",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Ha_Long_Bay_24.jpg",
+    "title": "Ha Long Bay 24",
     "note": "Đã thu nhỏ, chuyển sang WebP"
   },
   "hl_heritage": {
@@ -122,12 +122,12 @@ OG.Photos.register("vietnam", /* BEGIN-ENTRIES */ {
     "file": "hl_cave.webp",
     "w": 800,
     "h": 534,
-    "author": "Jakub Hałun",
-    "license": "CC BY 4.0",
-    "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
+    "author": "xiquinhosilva from Cacau",
+    "license": "CC BY 2.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
     "source": "Wikimedia Commons",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Sung_Sot_Cave,_Ha_Long_Bay,_Vietnam,_20240128_1623_3921.jpg",
-    "title": "Sung Sot Cave, Ha Long Bay, Vietnam, 20240128 1623 3921",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Thien_Cung_Cave_(32765364111).jpg",
+    "title": "Thien Cung Cave (32765364111)",
     "note": "Đã thu nhỏ, chuyển sang WebP"
   },
   "hl_rocks": {
@@ -182,12 +182,12 @@ OG.Photos.register("vietnam", /* BEGIN-ENTRIES */ {
     "file": "ha_lantern.webp",
     "w": 800,
     "h": 600,
-    "author": "Christophe95",
-    "license": "CC BY-SA 4.0",
-    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "author": "Khương Việt Hà",
+    "license": "Public domain",
+    "licenseUrl": "https://creativecommons.org/publicdomain/mark/1.0/",
     "source": "Wikimedia Commons",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Lanterns_in_Hoi_An_5.jpg",
-    "title": "Lanterns in Hoi An 5",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Den_long_Hoi_An_3.JPG",
+    "title": "Den long Hoi An 3",
     "note": "Đã thu nhỏ, chuyển sang WebP"
   },
   "ha_oldtown": {
@@ -229,13 +229,13 @@ OG.Photos.register("vietnam", /* BEGIN-ENTRIES */ {
   "sg_city": {
     "file": "sg_city.webp",
     "w": 800,
-    "h": 600,
-    "author": "Jorge Láscar from Australia",
-    "license": "CC BY 2.0",
-    "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+    "h": 542,
+    "author": "Steffen Schmitz",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
     "source": "Wikimedia Commons",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Lascar_Ho_Chi_Minh_City_The_Capital_of_Motorbikes_(4607948894).jpg",
-    "title": "Lascar Ho Chi Minh City The Capital of Motorbikes (4607948894)",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Ho_Chi_Minh_City,_Nguyen_Hue_Street,_2020-01_CN-04.jpg",
+    "title": "Ho Chi Minh City, Nguyen Hue Street, 2020-01 CN-04",
     "note": "Đã thu nhỏ, chuyển sang WebP"
   },
   "sg_banhmi": {
@@ -281,13 +281,13 @@ OG.Photos.register("vietnam", /* BEGIN-ENTRIES */ {
   "mt_floating": {
     "file": "mt_floating.webp",
     "w": 800,
-    "h": 533,
-    "author": "Vyacheslav Argenberg",
-    "license": "CC BY 4.0",
-    "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
+    "h": 531,
+    "author": "Jean-Marc Astesana from Voisins le Bretonneux, France",
+    "license": "CC BY-SA 2.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0",
     "source": "Wikimedia Commons",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Can_Tho,_Vietnam,_Floating_Market.jpg",
-    "title": "Can Tho, Vietnam, Floating Market",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Cai_Rang_floating_market_(15724707578).jpg",
+    "title": "Cai Rang floating market (15724707578)",
     "note": "Đã thu nhỏ, chuyển sang WebP"
   },
   "mt_fruit": {
@@ -298,8 +298,8 @@ OG.Photos.register("vietnam", /* BEGIN-ENTRIES */ {
     "license": "CC BY 2.0",
     "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
     "source": "Wikimedia Commons",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Vietnam_08_-_164_-_rambutam_and_fruit_at_the_market_(3186660549).jpg",
-    "title": "Vietnam 08 - 164 - rambutam and fruit at the market (3186660549)",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Vietnam_08_-_46_-_fruit_for_sale_on_Halong_Bay_(3171231510).jpg",
+    "title": "Vietnam 08 - 46 - fruit for sale on Halong Bay (3171231510)",
     "note": "Đã thu nhỏ, chuyển sang WebP"
   },
   "mt_mekong": {
