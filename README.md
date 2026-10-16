@@ -1,10 +1,57 @@
 # Oggy Adventure
 
-Game phiêu lưu đi cảnh 2D chạy thẳng trên trình duyệt. Oggy phải lấy lại đồ ăn từ tay ba chú gián Joey, Marky và Dee Dee: đi qua từng phòng trong nhà, nhặt pizza để mở cửa, giẫm gián và hạ trùm.
+**▶ Chơi ngay: <https://oggy-adventure.tiennhm.io.vn>**
+
+Game phiêu lưu đi cảnh 2D **vừa chơi vừa học** cho các bé 5–10 tuổi, chạy thẳng trên trình duyệt. Cùng Oggy đi qua 4 hành trình: nhặt trang sách để mở thẻ kiến thức, giải câu đố để mở cửa, giẫm ba chú gián tinh nghịch Joey, Marky, Dee Dee và hạ trùm cuối mỗi khu.
 
 Game viết bằng HTML5 Canvas và JavaScript thuần. Không có bước build, không dùng thư viện ngoài, không có file ảnh hay âm thanh: hình được vẽ bằng Canvas, tiếng được tổng hợp bằng Web Audio API.
 
 > **Lưu ý bản quyền:** Đây là sản phẩm fan-made, phi thương mại, không liên quan tới chủ sở hữu thương hiệu *Oggy and the Cockroaches* (Xilam). Tên và hình tượng nhân vật thuộc về chủ sở hữu. Nếu muốn phát hành công khai hoặc thương mại, hãy thay nhân vật, tên và mọi yếu tố có bản quyền bằng thiết kế nguyên bản hoặc đã được cấp phép.
+
+| Menu | Bản đồ hành trình | Câu đố |
+|---|---|---|
+| ![Menu chính](docs/screenshots/01-menu.jpg) | ![Bản đồ hành trình](docs/screenshots/05-ban-do-hanh-trinh.jpg) | ![Câu đố mở cửa](docs/screenshots/08-cau-do.jpg) |
+
+Xem thêm ảnh trong [`docs/screenshots/`](docs/screenshots/).
+
+## Phiêu lưu học tập (4 hành trình)
+
+Ở menu chính, bấm nút xanh lớn **📖 PHIÊU LƯU HỌC TẬP** → chọn chế độ chơi → chọn hành trình. Mỗi hành trình có truyện tranh mở đầu, một bản đồ vẽ theo từng khu, người dẫn đường riêng và trùm cuối mỗi khu.
+
+| Hành trình | Người dẫn đường | Các khu | Màn | Thẻ kiến thức |
+|---|---|---|---|---|
+| 📖 **Cuốn Bách Khoa Kỳ Diệu** | Olivia | Nhà bếp → Khu vườn → Mái nhà → Tầng hầm | 8 | 20 |
+| ⭐ **Vòng quanh Việt Nam** | Bob | Hà Nội → Vịnh Hạ Long → Cố đô Huế → Phố cổ Hội An → TP. Hồ Chí Minh → Miền Tây sông nước | 12 | 24 |
+| 🌍 **Vòng quanh thế giới** | Giáo sư Cú | Ai Cập → Pháp → Nhật Bản → Rừng Amazon → Bắc Cực | 10 | 20 |
+| 🚀 **Khoa học & Vũ trụ** | Rô-bốt Bíp | Thời khủng long → Bên trong cơ thể → Đại dương sâu → Hệ Mặt Trời | 8 | 18 |
+
+Tổng cộng 38 màn, 82 thẻ kiến thức và gần 50 câu đố.
+
+### Chế độ chơi: 🧸 Bé chơi / 🔥 Thử thách
+
+Chọn một lần, game sẽ nhớ. Muốn đổi thì vào **⚙️ Cài đặt → Chế độ chơi**.
+
+| | 🧸 Bé chơi (mặc định) | 🔥 Thử thách |
+|---|---|---|
+| Mạng đầu lượt | 5 ❤️ | 3 ❤️ |
+| Rơi xuống hố | Không mất mạng, quay lại chỗ đứng an toàn | Mất 1 mạng |
+| Hết mạng | Hồi đầy mạng ở cờ gần nhất, không thua | Thua, phải chơi lại |
+| Gián | Đi chậm hơn, khó chạm trúng hơn | Tốc độ gốc |
+| Trùm | Ít máu hơn (60%), đánh chậm hơn, báo trước lâu hơn | Như bản gốc |
+| Nhảy | Dễ hơn: nhảy được ngay sau khi rời mép, giữ nút để nhảy cao hơn | Bình thường |
+| Trợ giúp | Thua 2 lần ở cùng một màn thì có thêm khiên và tim | Sau 3 lần |
+
+### Học như thế nào?
+
+- **Trang sách bay 📖:** mỗi màn có vài trang sách. Nhặt được trang sách thì mở một **thẻ kiến thức** có hình vẽ và một câu ngắn dễ hiểu. Có nút 🔊 để nghe đọc to nếu trình duyệt có giọng tiếng Việt.
+- **Cổng câu đố ❓:** có cổng chắn giữa đường hoặc ở cửa EXIT. Cổng hỏi một câu với 2–3 đáp án có hình. Trả lời sai **không bị phạt**: người dẫn đường đưa gợi ý để bé thử lại. Trả lời đúng thì cổng mở và có thêm lời giải thích.
+- **Người dẫn đường 💬:** đứng gần nhân vật có dấu **!** (hoặc bấm E) để nghe kể chuyện và mẹo chơi.
+- **Truyện tranh:** xem ở đầu hành trình, trước mỗi trùm và khi về đích. Bấm **Bỏ qua ⏭** nếu đã xem rồi.
+- **📒 Sổ tay khám phá:** nơi lưu mọi thẻ đã sưu tầm, xếp theo hành trình và theo khu. Mở từ menu chính hoặc từ bản đồ hành trình. Thẻ được lưu trên máy.
+
+## Chiến dịch cổ điển
+
+Nút **▶ CHƠI CỔ ĐIỂN** mở chiến dịch gốc "Ngôi nhà của Oggy" (không có câu đố). Phần dưới đây mô tả chế độ này.
 
 ## Tính năng
 
@@ -46,7 +93,7 @@ Các nút cảm ứng tự hiện trên thiết bị cảm ứng. Muốn bật/t
 
 ### Hướng dẫn chơi nhanh
 
-1. Bấm **▶ CHƠI**, chọn khu vực trên bản đồ rồi bấm Enter.
+1. Bấm **📖 PHIÊU LƯU HỌC TẬP** (hoặc **▶ CHƠI CỔ ĐIỂN**), chọn màn trên bản đồ rồi bấm Enter.
 2. Nhặt đủ số pizza ghi ở góc trên bên trái (🍕 x/y). Đủ rồi thì cửa **EXIT** cuối màn sẽ mở.
 3. Giẫm lên gián để tiêu diệt chúng. Chạm ngang vào gián sẽ mất 1 mạng ❤️.
 4. Đi qua cửa EXIT để vào trận trùm. Né đòn theo dấu báo trước (chấm than, vùng đỏ, bóng đổ). Khi thấy mũi tên vàng "GIẪM!" thì nhảy lên đầu trùm.
@@ -74,12 +121,13 @@ node tests/smoke.js --verbose  # in từng bước và số lần phát mỗi ev
 node --check src/core/main.js  # kiểm tra cú pháp một file
 ```
 
-Không cần cài gì thêm, Node 20 trở lên là đủ.
+Không cần cài gì thêm, Node 20 trở lên là đủ (CI dùng Node 22). Smoke test chơi hết 38 màn hành trình nên mất khoảng 40 giây.
 
 Smoke test làm những việc sau:
 - Dựng DOM, canvas, `localStorage` và `AudioContext` giả (`tests/fake-dom.js`).
 - Nạp mọi script đúng thứ tự trong `index.html`.
 - Chơi bằng phím, chạm và click qua cả luồng: menu → cài đặt/nhân vật/cửa hàng/xếp hạng → bản đồ → 4 màn + 4 trùm → chiến thắng → nhập tên → bảng xếp hạng. Sau đó chơi thêm màn phụ, game over và chơi lại.
+- Chơi trọn cả 4 hành trình ở chế độ Bé chơi: chọn chế độ, truyện tranh, bản đồ hành trình, nhặt trang sách, câu đố (trả lời sai rồi đúng), trùm cuối mỗi khu, màn kết, Sổ tay.
 - Chạy thêm các kiểm tra hồi quy (`qaChecks`): tạm dừng, nhạc theo scene, vật phẩm, lưu dữ liệu, rò rỉ listener.
 
 Test chỉ kiểm tra lỗi runtime và lỗi luồng chơi. Hình ảnh, độ khó và âm thanh vẫn phải thử bằng tay.
@@ -104,15 +152,17 @@ index.html              Khung HTML/CSS, HUD, nút cảm ứng, danh sách <scrip
 src/
   core/                 Namespace OG, event bus, Save (localStorage), Input, Camera, Physics, DOM, Scenes, Loop, main.js (khởi động, load cuối)
   data/                 Dữ liệu nhân vật/skin (characters.js) và 4 màn chính (levels.js)
+  story/                Truyện tranh, thẻ kiến thức, câu đố, Sổ tay, người dẫn đường (story.js, learn.js, guide.js, scenes.js)
+  journeys/             4 hành trình: home, vietnam, world, science (mỗi thư mục: theme.js, content.js, extras.js, journey.js)
   gfx/                  Sprite nhân vật vẽ bằng Canvas (sprites.js), skin phụ kiện (skins.js), nền và trang trí từng khu vực (scenery.js)
   audio/                Engine âm thanh + hiệu ứng (audio.js), nhạc nền tổng hợp (music.js)
   game/                 Gameplay: player, kẻ địch, vật phẩm, hạt, tiến độ, lượt chơi, scene màn chơi và scene trận trùm
   bosses/               Bộ khung trùm dùng chung (bosses.js) và từng trùm: deedee.js, marky.js, joey.js, trio.js
-  world/                Bản đồ thế giới (world.js), 3 màn phụ (extraLevels.js), nhiệm vụ và thành tựu (quests.js)
+  world/                Bản đồ thế giới (world.js), bản đồ hành trình (journey-map.js), 3 màn phụ (extraLevels.js), nhiệm vụ và thành tựu (quests.js)
   ui/                   Menu, chọn nhân vật, cài đặt, tạm dừng, kết quả (menus.js), HUD (hud.js), cửa hàng (shop.js), ui.css
   social/               Thẻ thành tích, chia sẻ (social.js), bảng xếp hạng (leaderboard.js), social.css
 tests/                  Smoke test Node: smoke.js, fake-dom.js
-docs/                   ARCHITECTURE.md (kiến trúc, hợp đồng API, danh sách event), ví dụ worker bảng xếp hạng online, trang demo sprite
+docs/                   ARCHITECTURE.md (kiến trúc, hợp đồng API, danh sách event), STORY.md (hành trình học tập v2), screenshots/, ví dụ worker bảng xếp hạng online, trang demo sprite
 legacy/index.mvp.html   Bản MVP một file ban đầu (chỉ để tham khảo)
 .github/workflows/      CI: smoke test và deploy GitHub Pages
 ```

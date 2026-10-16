@@ -429,7 +429,7 @@
             '<span class="ui-mode-emoji" aria-hidden="true">' + UI.esc(emoji) + '</span>' +
             '<b>' + UI.esc(info.title) + '</b>' +
             '<span class="ui-mode-lines">' + info.lines.map(function (l) { return '<span>' + UI.esc(l) + '</span>'; }).join('') + '</span>' +
-            (m === cur ? '<span class="ui-tag ui-tag-ok">✔ Lần trước</span>' : '') + '</button>';
+            (m === cur ? '<span class="ui-tag ui-tag-ok">✔ Đang chọn</span>' : '') + '</button>';
         }).join('');
         UI.open({
           title: 'CHỌN CHẾ ĐỘ',

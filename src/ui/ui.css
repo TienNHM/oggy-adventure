@@ -192,6 +192,10 @@ button.ui-card:active { transform: translateY(3px); box-shadow: 0 2px 0 #e2c9a3;
 .ui-hud-left { align-items: flex-start; }
 .ui-hud-right { align-items: flex-end; }
 .ui-hud-row { display: flex; gap: 8px; align-items: center; }
+/* Hai cột HUD không được lấn vào nút ⏸ ở giữa (rộng 56px): tên màn dài thì pill xuống dòng thay vì chui dưới nút. */
+#hud.ui-hud .ui-hud-col { max-width: calc(50% - 38px); }
+#hud.ui-hud .ui-hud-left .ui-hud-row { flex-wrap: wrap; row-gap: 6px; }
+#hud.ui-hud .ui-hud-right .ui-hud-row { flex-wrap: wrap; row-gap: 6px; justify-content: flex-end; }
 .ui-pill { white-space: nowrap; transition: background .2s; }
 .ui-pill-level { max-width: 32vw; overflow: hidden; text-overflow: ellipsis; }
 .ui-goal { display: flex; align-items: center; gap: 7px; }
@@ -321,10 +325,12 @@ button.ui-card:active { transform: translateY(3px); box-shadow: 0 2px 0 #e2c9a3;
 .ui-menu h1 { font-size: clamp(24px, 4vw, 40px) !important; margin-bottom: 0 !important; }
 .ui-menu .ui-tagline { margin: 2px auto 6px !important; font-size: 15px; }
 .ui-menu .ui-stats { margin: 4px 0 8px; }
-.ui-menu .ui-menu-main { margin: 2px 0 8px; }
+.ui-menu .ui-menu-main { margin: 10px 0 8px; } /* chừa chỗ cho viền vàng (outline) của nút chính, không đè tiêu đề */
 .ui-btn-hero { white-space: nowrap; min-height: 76px !important; font-size: clamp(20px, 2.6vw, 27px) !important; }
 .ui-menu .ui-menu-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: 600px; gap: 8px; }
 .ui-menu .ui-menu-grid .ui-span2 { grid-column: span 1; }
+/* 5 nút trên lưới 3 cột (hoặc 2 cột): nút cuối giãn 2 ô để không chừa ô trống */
+.ui-menu .ui-menu-grid > :last-child:nth-child(3n+2) { grid-column: span 2; }
 .ui-menu .small { margin-top: 6px; }
 .ui-modes h1, .ui-books h1 { font-size: clamp(22px, 3.4vw, 34px) !important; }
 @media (max-width: 560px) { .ui-menu .ui-menu-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -337,6 +343,18 @@ button.ui-card:active { transform: translateY(3px); box-shadow: 0 2px 0 #e2c9a3;
 @media (max-height: 520px) {
   .ui-menu .ui-tagline, .ui-menu .small, .ui-menu .ui-stats { display: none; }
   .ui-btn-hero { min-height: 60px !important; padding: 8px 20px !important; }
+  .ui-menu .ui-menu-main { margin: 9px 0 3px; }
+  /* Thẻ chọn chế độ gọn hơn để nút ↩ Quay lại không bị đẩy khỏi màn hình điện thoại xoay ngang */
+  .ui-mode { min-height: 0 !important; gap: 3px; padding: 8px 10px 10px !important; }
+  .ui-mode-emoji { font-size: 36px; }
+  .ui-mode-lines { font-size: 14px; gap: 0; }
+  /* Sổ tay (notebookHub) cũng gọn lại cho vừa 4 cuốn + nút ↩ */
+  .ui-books .ui-tagline { display: none; }
+  .ui-book-grid { gap: 8px; margin: 4px 0; }
+  .ui-book { min-height: 0 !important; padding: 6px 12px !important; gap: 10px; }
+  .ui-book-emoji { font-size: 32px; }
+  .ui-book-body { gap: 3px; }
+  .ui-book-body b { font-size: 16px; }
   .ui-panel button { min-height: 52px; }
   .ui-menu .ui-menu-grid button { padding: 8px; font-size: 15px; }
 }

@@ -838,9 +838,14 @@
             OG.Sprites.drawPortrait(ctx, g.charId, F.x + 58, by + 54, 70, { t: OG.time, state: passed ? 'victory' : 'think', bg: passed ? '#e2f8e8' : '#ffffff' });
           });
         }
-        ui().drawBubble(ctx, F.x + 102, by + 14, text, {
+        // Lời giải thích dài (+ dòng "Mở khoá thẻ") có thể tới 3–4 dòng → thu nhỏ chữ cho vừa,
+        // và kẹp bong bóng trong khung câu đố (bounds) để không tràn qua viền dưới.
+        var bOpts = {
           tail: 'none', anchor: 'left', maxW: this.passed ? F.w - 360 : F.w - 140, size: 20,
-          bg: this.passed ? '#e2f8e8' : '#fff9e0', reveal: Math.floor(this.msgT * 70) });
+          bg: this.passed ? '#e2f8e8' : '#fff9e0', reveal: Math.floor(this.msgT * 70),
+          bounds: { x: F.x, y: F.y, w: F.w, h: F.h - 4 } };
+        if (ui().measureBubble(ctx, text, bOpts).h > F.y + F.h - by - 24) bOpts.size = 17;
+        ui().drawBubble(ctx, F.x + 102, by + 14, text, bOpts);
         if (this.passed) {
           this.nextBtn = { x: F.x + F.w - 214, y: F.y + F.h - 84, w: 192, h: 62 };
           ui().drawButton(ctx, this.nextBtn, 'Đi tiếp ▶', { color: '#3fbf6f', shadow: '#2b8c4f', size: 24, pulse: this.t > 0.4 });
