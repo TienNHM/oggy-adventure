@@ -4,7 +4,7 @@
 
 Game phiêu lưu đi cảnh 2D **vừa chơi vừa học** cho các bé 5–10 tuổi, chạy thẳng trên trình duyệt. Cùng Oggy đi qua 4 hành trình: nhặt trang sách để mở thẻ kiến thức, giải câu đố để mở cửa, giẫm ba chú gián tinh nghịch Joey, Marky, Dee Dee và hạ trùm cuối mỗi khu.
 
-Game viết bằng HTML5 Canvas và JavaScript thuần. Không có bước build, không dùng thư viện ngoài, không có file ảnh hay âm thanh: hình được vẽ bằng Canvas, tiếng được tổng hợp bằng Web Audio API.
+Game viết bằng HTML5 Canvas và JavaScript thuần. Không có bước build, không dùng thư viện ngoài. Nhân vật và cảnh nền được vẽ bằng Canvas, tiếng được tổng hợp bằng Web Audio API. File ảnh duy nhất là ảnh chụp thật trên thẻ kiến thức (xem [Ảnh chụp thực tế & ghi công](#ảnh-chụp-thực-tế--ghi-công)).
 
 > **Lưu ý bản quyền:** Đây là sản phẩm fan-made, phi thương mại, không liên quan tới chủ sở hữu thương hiệu *Oggy and the Cockroaches* (Xilam). Tên và hình tượng nhân vật thuộc về chủ sở hữu. Nếu muốn phát hành công khai hoặc thương mại, hãy thay nhân vật, tên và mọi yếu tố có bản quyền bằng thiết kế nguyên bản hoặc đã được cấp phép.
 
@@ -47,7 +47,24 @@ Chọn một lần, game sẽ nhớ. Muốn đổi thì vào **⚙️ Cài đặ
 - **Cổng câu đố ❓:** có cổng chắn giữa đường hoặc ở cửa EXIT. Cổng hỏi một câu với 2–3 đáp án có hình. Trả lời sai **không bị phạt**: người dẫn đường đưa gợi ý để bé thử lại. Trả lời đúng thì cổng mở và có thêm lời giải thích.
 - **Người dẫn đường 💬:** đứng gần nhân vật có dấu **!** (hoặc bấm E) để nghe kể chuyện và mẹo chơi.
 - **Truyện tranh:** xem ở đầu hành trình, trước mỗi trùm và khi về đích. Bấm **Bỏ qua ⏭** nếu đã xem rồi.
-- **📒 Sổ tay khám phá:** nơi lưu mọi thẻ đã sưu tầm, xếp theo hành trình và theo khu. Mở từ menu chính hoặc từ bản đồ hành trình. Thẻ được lưu trên máy.
+- **📒 Sổ tay khám phá:** nơi lưu mọi thẻ đã sưu tầm, xếp theo hành trình và theo khu. Mở từ menu chính hoặc từ bản đồ hành trình. Thẻ được lưu trên máy. Thẻ có ảnh thật hiện ảnh làm hình nhỏ; mở thẻ rồi bấm vào ảnh (hoặc phím ↓) để phóng to.
+
+### Ảnh chụp thực tế & ghi công
+
+76 trên 82 thẻ kiến thức có thêm **ảnh chụp thật** đặt cạnh hình vẽ cartoon (ví dụ ảnh Hồ Gươm, kim tự tháp Giza, bộ xương khủng long). Dưới mỗi ảnh có một dòng ghi công ngắn: tác giả · giấy phép · nguồn.
+
+| Hành trình | Thẻ có ảnh | Dung lượng |
+|---|---|---|
+| 📖 Cuốn Bách Khoa Kỳ Diệu | 16/20 | ~0,9 MB |
+| ⭐ Vòng quanh Việt Nam | 23/24 | ~1,8 MB |
+| 🌍 Vòng quanh thế giới | 19/20 | ~1,5 MB |
+| 🚀 Khoa học & Vũ trụ | 18/18 | ~0,95 MB |
+
+- **Ghi công đầy đủ:** trang [`docs/credits.html`](docs/credits.html) (trên web: <https://oggy-adventure.tiennhm.io.vn/docs/credits.html>) liệt kê từng ảnh kèm tác giả, giấy phép và link trang gốc.
+- **Giấy phép được nhận:** Public Domain, CC0, CC BY, CC BY-SA, Unsplash License, Pexels License. Không nhận NC, ND, GFDL. Danh sách này nằm trong `OG.Photos.licenseOk` và smoke test dùng chung hàm đó. Ảnh đã được thu nhỏ (rộng tối đa 800px) và chuyển sang WebP, nên mỗi entry có ghi chú "Đã thu nhỏ, chuyển sang WebP".
+- **Cấu trúc:** ảnh ở `assets/photos/<hành trình>/<cardId>.webp`. File `credits.js` cạnh ảnh gọi `OG.Photos.register(...)`; dùng file `.js` thay cho `.json` để game vẫn chạy được qua `file://`. Code vẽ ảnh nằm ở `src/story/photos.js`.
+- **Thêm hoặc thay ảnh:** dùng `python tools/photos/fetch_commons.py` (cần Pillow). Lệnh `get` tải một ảnh Commons cho một thẻ, lệnh `write <hành trình>` sinh lại `credits.js` từ `_entries.json`. `_entries.json` chỉ dùng lúc soạn và không được deploy.
+- Thẻ không có ảnh, hoặc ảnh tải lỗi, vẫn hiện hình vẽ cartoon như cũ.
 
 ## Chiến dịch cổ điển
 
@@ -129,16 +146,17 @@ Smoke test làm những việc sau:
 - Chơi bằng phím, chạm và click qua cả luồng: menu → cài đặt/nhân vật/cửa hàng/xếp hạng → bản đồ → 4 màn + 4 trùm → chiến thắng → nhập tên → bảng xếp hạng. Sau đó chơi thêm màn phụ, game over và chơi lại.
 - Chơi trọn cả 4 hành trình ở chế độ Bé chơi: chọn chế độ, truyện tranh, bản đồ hành trình, nhặt trang sách, câu đố (trả lời sai rồi đúng), trùm cuối mỗi khu, màn kết, Sổ tay.
 - Chạy thêm các kiểm tra hồi quy (`qaChecks`): tạm dừng, nhạc theo scene, vật phẩm, lưu dữ liệu, rò rỉ listener.
+- Kiểm tra ảnh thẻ kiến thức: giấy phép hợp lệ, đủ tác giả và nguồn, file tồn tại và không quá 400 KB, không có ảnh thiếu ghi công, `docs/credits.html` nạp đủ `credits.js`.
 
 Test chỉ kiểm tra lỗi runtime và lỗi luồng chơi. Hình ảnh, độ khó và âm thanh vẫn phải thử bằng tay.
 
 ## Deploy
 
-Đây là site tĩnh: chỉ cần tải lên `index.html`, `src/` và (nếu muốn) `docs/`. Không có bước build.
+Đây là site tĩnh: chỉ cần tải lên `index.html`, `src/`, `assets/` và (nếu muốn) `docs/`. Không có bước build.
 
 - **GitHub Pages (đã cấu hình):** `.github/workflows/pages.yml` chạy mỗi khi push lên nhánh `master`.
   1. Chạy `node tests/smoke.js`. Test đỏ thì dừng, không deploy.
-  2. Đóng gói `index.html`, `src/`, `docs/`, `CNAME`, `.nojekyll`.
+  2. Đóng gói `index.html`, `src/`, `docs/`, `assets/` (bỏ các file `_entries.json`), `CNAME`, `.nojekyll` và các file SEO.
   3. Deploy lên Pages với tên miền trong file `CNAME`.
 
   Lần đầu dùng, vào **Settings → Pages → Source** và chọn **GitHub Actions**.
@@ -161,8 +179,10 @@ src/
   world/                Bản đồ thế giới (world.js), bản đồ hành trình (journey-map.js), 3 màn phụ (extraLevels.js), nhiệm vụ và thành tựu (quests.js)
   ui/                   Menu, chọn nhân vật, cài đặt, tạm dừng, kết quả (menus.js), HUD (hud.js), cửa hàng (shop.js), ui.css
   social/               Thẻ thành tích, chia sẻ (social.js), bảng xếp hạng (leaderboard.js), social.css
+assets/photos/          Ảnh chụp thật cho thẻ kiến thức (WebP) + credits.js ghi công, mỗi hành trình một thư mục
+tools/photos/           fetch_commons.py: tải ảnh Wikimedia Commons, thu nhỏ, sinh credits.js (không deploy)
 tests/                  Smoke test Node: smoke.js, fake-dom.js
-docs/                   ARCHITECTURE.md (kiến trúc, hợp đồng API, danh sách event), STORY.md (hành trình học tập v2), screenshots/, ví dụ worker bảng xếp hạng online, trang demo sprite
+docs/                   credits.html (ghi công ảnh), ARCHITECTURE.md (kiến trúc, hợp đồng API, danh sách event), STORY.md (hành trình học tập v2), screenshots/, ví dụ worker bảng xếp hạng online, trang demo sprite
 legacy/index.mvp.html   Bản MVP một file ban đầu (chỉ để tham khảo)
 .github/workflows/      CI: smoke test và deploy GitHub Pages
 ```

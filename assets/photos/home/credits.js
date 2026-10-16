@@ -23,7 +23,7 @@
  *   k_fruit          CC BY-SA 4.0   PattayaPatrol
  *   g_plant          CC BY-SA 3.0   Fasaxc
  *   g_seed           CC BY-SA 4.0   B. Domangue
- *   g_bee            Public domain  John Severns ( Severnjc )
+ *   g_bee            Public domain  John Severns
  *   g_ladybug        CC BY-SA 4.0   Andrea Bonifazi
  *   r_cloud          CC BY-SA 4.0   Michal Klajban
  *   r_wind           CC BY-SA 2.0   achille.ballabeni
@@ -119,7 +119,7 @@ OG.Photos.register("home", /* BEGIN-ENTRIES */ {
     "file": "g_bee.webp",
     "w": 800,
     "h": 632,
-    "author": "John Severns ( Severnjc )",
+    "author": "John Severns",
     "license": "Public domain",
     "licenseUrl": "https://creativecommons.org/publicdomain/mark/1.0/",
     "source": "Wikimedia Commons",

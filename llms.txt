@@ -11,6 +11,7 @@
 
 - 4 hành trình học tập: Cuốn Bách Khoa Kỳ Diệu (quanh nhà), Vòng quanh Việt Nam, Vòng quanh thế giới, Khoa học & Vũ trụ.
 - Thẻ kiến thức sưu tầm trong "Sổ tay khám phá", câu đố trắc nghiệm mở cửa (sai được thử lại, không bị phạt), truyện tranh giữa các màn, nhân vật dẫn đường giải thích kiến thức.
+- 76 trên 82 thẻ kiến thức có ảnh chụp thật (Hồ Gươm, vịnh Hạ Long, kim tự tháp Giza, tháp Eiffel, bộ xương khủng long, Sao Mộc...) bên cạnh hình vẽ cartoon. Ảnh lấy từ Wikimedia Commons với giấy phép tự do, ghi công đầy đủ tại https://oggy-adventure.tiennhm.io.vn/docs/credits.html
 - Chế độ "Bé chơi" dễ dàng cho trẻ nhỏ và chế độ "Thử thách" cho người lớn.
 - Boss fight với từng chú gián, bản đồ thế giới, nhiệm vụ, chọn nhân vật (Oggy, Jack, Olivia), skin và cửa hàng vật phẩm.
 - Nhạc nền và hiệu ứng âm thanh, bảng xếp hạng, chia sẻ thẻ thành tích.
