@@ -23,6 +23,15 @@
   // Tiện ích chung
   // ======================================================================
   UI.esc = function (s) { return U.escapeHtml(s); };
+  // Link nhỏ tới trang ghi công ảnh chụp (docs/credits.html). Giấy phép CC BY / CC BY-SA yêu cầu ghi công
+  // ở nơi người xem tìm được → đặt ở Cài đặt và Sổ tay khám phá. Mở tab mới để không mất tiến độ đang chơi.
+  // Chỉ hiện khi đã có ít nhất một ảnh được đăng ký (OG.Photos).
+  UI.photoCreditsLink = function () {
+    var P = OG.Photos, n = 0;
+    if (P) P.journeys().forEach(function (j) { n += P.entries(j).length; });
+    if (!n) return '';
+    return '<p class="ui-credits-link small"><a href="docs/credits.html" target="_blank" rel="noopener">📷 Ghi công ảnh chụp (' + n + ' ảnh)</a></p>';
+  };
   UI.save = function () { return (OG.Save && OG.Save.data) || null; };
   UI.coins = function () { return OG.Save && OG.Save.getCoins ? OG.Save.getCoins() : 0; };
   UI.fmt = function (n) {
@@ -483,7 +492,8 @@
           className: 'ui-books',
           html: '<p class="ui-tagline">Bạn đã sưu tầm <b>' + have + '/' + total + '</b> thẻ kiến thức. Chọn một cuốn để xem nhé!</p>' +
             (rows ? '<div class="ui-book-grid">' + rows + '</div>' : '<p>Chưa có hành trình nào.</p>') +
-            '<div class="actions"><button type="button" class="secondary" data-act="back" data-id="books_back">↩ Quay lại</button></div>',
+            '<div class="actions"><button type="button" class="secondary" data-act="back" data-id="books_back">↩ Quay lại</button></div>' +
+            UI.photoCreditsLink(),
           handlers: {
             book: function (jid) { OG.Learn.openNotebook(jid, 'notebookHub', {}); },
             back: function () { OG.Scenes.go(S.back); }
@@ -767,7 +777,8 @@
             '<div class="ui-setting ui-danger-row"><span class="ui-setting-label">🗑️ Dữ liệu</span>' +
             '<button type="button" class="ui-danger' + (S.confirmReset ? ' is-confirm' : '') + '" data-act="reset" data-fk="reset" data-id="reset">' +
             (S.confirmReset ? 'Chắc chắn? Bấm lần nữa' : 'Xoá toàn bộ tiến độ') + '</button></div>') +
-          '<div class="actions"><button type="button" data-act="back" data-id="settings_back" data-primary>✔ XONG</button></div>';
+          '<div class="actions"><button type="button" data-act="back" data-id="settings_back" data-primary>✔ XONG</button></div>' +
+          UI.photoCreditsLink();
 
         UI.open({
           title: 'CÀI ĐẶT',

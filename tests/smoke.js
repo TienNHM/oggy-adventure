@@ -552,6 +552,7 @@ async function main() {
 
   await qaChecks();
   await journeyChecks();
+  await photoChecks();
   await difficultyChecks();
 
   // ---- Quay lại menu, xoá dữ liệu (save:reset) và chạy lại boot ----
@@ -1135,6 +1136,151 @@ async function journeyChecks() {
     expectScene('journeyMap', 'thử lại hành trình → bản đồ hành trình');
   }
   OG.Difficulty.set('kid');
+  OG.Scenes.go('menu'); await stepAsync(3);
+}
+
+// ---------------------------------------------------------------------------
+// Ảnh chụp thực tế (OG.Photos + assets/photos/<id>/credits.js)
+// ---------------------------------------------------------------------------
+// Danh sách trắng giấy phép: dùng CHÍNH hàm của game (OG.Photos.licenseOk) để test và game không lệch nhau.
+const PHOTO_MAX_BYTES = 400 * 1024;
+const IMAGE_EXT = /\.(webp|jpe?g|png|gif|avif)$/i;
+
+// Đọc khối JSON thô giữa /* BEGIN-ENTRIES */ ... /* END-ENTRIES */ của credits.js (kể cả entry mà
+// OG.Photos.register đã loại vì sai giấy phép — để test báo lỗi thay vì lặng lẽ bỏ qua).
+function rawPhotoEntries(jid) {
+  const file = path.join(ROOT, 'assets', 'photos', jid, 'credits.js');
+  if (!fs.existsSync(file)) { fail('Thiếu assets/photos/' + jid + '/credits.js'); return {}; }
+  const m = /\/\* BEGIN-ENTRIES \*\/([\s\S]*)\/\* END-ENTRIES \*\//.exec(fs.readFileSync(file, 'utf8'));
+  if (!m) { fail('credits.js của ' + jid + ' thiếu khối BEGIN-ENTRIES/END-ENTRIES'); return {}; }
+  try { return JSON.parse(m[1]); } catch (e) { fail('credits.js của ' + jid + ' không phải JSON hợp lệ: ' + e.message); return {}; }
+}
+
+async function photoChecks() {
+  stage = 'photos:registry';
+  const P = OG.Photos;
+  if (!check(P && typeof P.register === 'function', 'Thiếu module OG.Photos (src/story/photos.js)')) return;
+  // Thứ tự script: photos.js trước mọi credits.js.
+  const iPhotos = scripts.indexOf('src/story/photos.js');
+  check(iPhotos >= 0, 'index.html chưa nạp src/story/photos.js');
+  const creditsFile = path.join(ROOT, 'docs', 'credits.html');
+  const creditsPage = fs.existsSync(creditsFile) ? fs.readFileSync(creditsFile, 'utf8') : '';
+  check(!!creditsPage, 'Thiếu trang docs/credits.html');
+  // Giấy phép: vài ca chuẩn để chắc danh sách trắng không bị sửa hỏng.
+  ['CC BY-SA 4.0', 'CC BY 2.0', 'CC0', 'Public domain', 'PD-USGov-NASA', 'Unsplash License', 'Pexels License']
+    .forEach((l) => check(P.licenseOk(l), 'licenseOk từ chối giấy phép hợp lệ: ' + l));
+  ['CC BY-NC 4.0', 'CC BY-NC-SA 2.0', 'CC BY-ND 4.0', 'GFDL', 'Fair use', '', 'All rights reserved']
+    .forEach((l) => check(!P.licenseOk(l), 'licenseOk nhận giấy phép bị cấm: "' + l + '"'));
+
+  let total = 0;
+  JOURNEYS.forEach((jid) => {
+    const rel = 'assets/photos/' + jid + '/credits.js';
+    check(scripts.indexOf(rel) > iPhotos, rel + ' phải được nạp trong index.html, SAU src/story/photos.js');
+    check(creditsPage.includes('../' + rel), 'docs/credits.html chưa nạp ../' + rel);
+    const raw = rawPhotoEntries(jid);
+    const dir = path.join(ROOT, 'assets', 'photos', jid);
+    const used = new Set();
+    Object.keys(raw).forEach((cid) => {
+      const e = raw[cid] || {}, tag = jid + '/' + cid;
+      const file = e.file || cid + '.webp';
+      used.add(file);
+      total++;
+      check(!!OG.Journeys.getCard(jid, cid), 'Ảnh ' + tag + ': cardId không có trong hành trình ' + jid);
+      const fp = path.join(dir, file);
+      if (check(fs.existsSync(fp), 'Ảnh ' + tag + ': thiếu file assets/photos/' + jid + '/' + file)) {
+        const kb = Math.round(fs.statSync(fp).size / 1024);
+        check(kb * 1024 <= PHOTO_MAX_BYTES, 'Ảnh ' + tag + ' quá nặng (' + kb + ' KB > 400 KB)');
+      }
+      check(P.licenseOk(e.license), 'Ảnh ' + tag + ': giấy phép không thuộc danh sách trắng: "' + e.license + '"');
+      check(!!String(e.author || '').trim(), 'Ảnh ' + tag + ': thiếu tác giả');
+      check(/^https:\/\//.test(String(e.sourceUrl || '')), 'Ảnh ' + tag + ': sourceUrl phải là link https tới trang gốc');
+      check(!!String(e.licenseUrl || '').trim(), 'Ảnh ' + tag + ': thiếu licenseUrl');
+      check(!!String(e.source || '').trim(), 'Ảnh ' + tag + ': thiếu tên nguồn (source)');
+      check(!/<[a-z][^>]*>/i.test(String(e.author || '') + String(e.title || '')), 'Ảnh ' + tag + ': tác giả/tiêu đề còn thẻ HTML');
+      check(+e.w > 0 && +e.h > 0 && Math.max(+e.w, +e.h) <= 1200, 'Ảnh ' + tag + ': w/h không hợp lệ (' + e.w + 'x' + e.h + ')');
+      check(!!P.get(jid, cid), 'Ảnh ' + tag + ' có trong credits.js nhưng OG.Photos không nhận');
+    });
+    // File ảnh "mồ côi" (không có ghi công) sẽ bị deploy mà không ghi tác giả → vi phạm giấy phép.
+    if (fs.existsSync(dir)) {
+      fs.readdirSync(dir).filter((f) => IMAGE_EXT.test(f) && !used.has(f))
+        .forEach((f) => fail('File ảnh không có ghi công: assets/photos/' + jid + '/' + f + ' (chạy fetch_commons.py write hoặc xoá file)'));
+    }
+  });
+  log('OG.Photos: ' + total + ' ảnh đã đăng ký');
+
+  // ---- Giao diện: dùng entry giả để chạy mọi nhánh vẽ (shimmer → ảnh → phóng to → ảnh lỗi) ----
+  stage = 'photos:ui';
+  const jid = 'vietnam';
+  const cards = OG.Journeys.cardsOf(jid);
+  const real = cards.find((c) => P.has(jid, c.id));
+  const target = real || cards[0];
+  const spare = cards.find((c) => c !== target && !P.has(jid, c.id));
+  const temp = [];
+  const fakeEntry = {
+    w: 800, h: 533, author: 'Smoke test', license: 'CC0', licenseUrl: 'https://creativecommons.org/publicdomain/zero/1.0/',
+    source: 'Test', sourceUrl: 'https://example.org/test', title: 'Ảnh giả'
+  };
+  if (!real) { P.register(jid, { [target.id]: fakeEntry }); temp.push(target.id); }
+  if (spare) { P.register(jid, { [spare.id]: fakeEntry }); temp.push(spare.id); }
+  check(OG.Menus.ui.photoCreditsLink().includes('docs/credits.html'), 'Thiếu link "Ghi công ảnh" khi đã có ảnh');
+  const rec = P.image(jid, target.id);
+  if (!check(rec && rec.img && rec.state === 'loading', 'OG.Photos.image không tạo new Image() / state loading')) return;
+  check(P.image(jid, target.id) === rec, 'OG.Photos.image không cache ảnh');
+  check(String(rec.img.src).startsWith('assets/photos/' + jid + '/'), 'Đường dẫn ảnh phải tương đối assets/photos/<id>/: ' + rec.img.src);
+
+  // 1) Popup trong màn (from:'level'): đang tải → khung shimmer. Mở trên Sổ tay (canvas) để phím Enter
+  //    không lọt xuống nút DOM của menu bên dưới.
+  OG.Learn.openNotebook(jid, 'menu', {}); await stepAsync(10);
+  if (doc.activeElement && doc.activeElement.blur) doc.activeElement.blur();
+  OG.Learn.openCard(jid, target.id, { from: 'level' }); await stepAsync(30);
+  expectScene('card', 'mở thẻ có ảnh (đang tải)');
+  // 2) Ảnh tải xong → polaroid
+  rec.img.naturalWidth = 800; rec.img.naturalHeight = 533;
+  if (typeof rec.img.onload === 'function') rec.img.onload();
+  check(rec.state === 'ready' && evLast['photo:load'] && evLast['photo:load'].cardId === target.id,
+    'onload không chuyển ảnh sang ready / không phát photo:load');
+  await stepAsync(20);
+  await press('ArrowDown'); await stepAsync(2);
+  check(!OG.Scenes.get('card').zoom, 'Popup trong màn không được phóng to ảnh (chỉ Sổ tay)');
+  await press('Enter'); await stepAsync(3);
+  expectScene('notebook', 'đóng thẻ có ảnh');
+
+  // 3) Sổ tay: lưới có thumbnail ảnh; chi tiết thẻ có ảnh lớn + phóng to
+  OG.Learn.unlockCard(jid, target.id, { silent: true });
+  OG.Learn.openNotebook(jid, 'menu', {}); await stepAsync(20);
+  if (expectScene('notebook', 'mở Sổ tay để thử ảnh')) {
+    OG.Learn.openCard(jid, target.id, { from: 'notebook' }); await stepAsync(30);
+    const sc = OG.Scenes.get('card');
+    await press('ArrowDown'); await stepAsync(20);
+    check(sc.zoom === true, 'Phím ↓ không phóng to ảnh trong Sổ tay');
+    await press('Enter'); await stepAsync(3);
+    check(!sc.zoom && cur() === 'card', 'Enter khi đang phóng to phải đóng ảnh (không đóng thẻ)');
+    const r = sc.photoRect;
+    if (check(r, 'Thẻ có ảnh chưa lưu photoRect để chạm')) {
+      const cv = doc.getElementById('game');
+      const tapAt = async (x, y) => {
+        cv.dispatchEvent(new D.FakeEvent('pointerdown', { clientX: x, clientY: y }));
+        step(2); win.dispatchEvent(new D.FakeEvent('pointerup', {})); await stepAsync(20);
+      };
+      await tapAt(r.x + r.w / 2, r.y + r.h / 2);
+      check(sc.zoom === true, 'Chạm vào ảnh không phóng to');
+      await tapAt(100, 100);
+      check(!sc.zoom && cur() === 'card', 'Chạm lần nữa phải đóng ảnh phóng to');
+    }
+    await press('Escape'); await stepAsync(3);
+    expectScene('notebook', 'đóng thẻ → Sổ tay');
+    // 4) Ảnh lỗi → quay về bố cục hình vẽ cũ, không lỗi
+    if (spare) {
+      const r2 = P.image(jid, spare.id);
+      if (typeof r2.img.onerror === 'function') r2.img.onerror();
+      check(r2.state === 'error' && !P.ready(jid, spare.id), 'onerror không đánh dấu ảnh lỗi');
+      OG.Learn.openCard(jid, spare.id, { from: 'notebook' }); await stepAsync(20);
+      check(OG.Scenes.get('card').photo() === null, 'Ảnh lỗi phải quay về hình vẽ cartoon');
+      await press('Escape'); await stepAsync(3);
+    }
+    await press('Escape'); await stepAsync(3);
+  }
+  temp.forEach((cid) => P._unregister(jid, cid));
   OG.Scenes.go('menu'); await stepAsync(3);
 }
 

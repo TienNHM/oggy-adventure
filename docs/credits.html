@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ghi công ảnh chụp — Oggy Adventure</title>
+<meta name="description" content="Danh sách ảnh chụp thực tế dùng trong thẻ kiến thức của game giáo dục Oggy Adventure: tác giả, giấy phép (CC BY, CC BY-SA, Public Domain...) và nguồn gốc.">
+<link rel="canonical" href="https://oggy-adventure.tiennhm.io.vn/docs/credits.html">
+<meta name="theme-color" content="#17233d">
+<!--
+  Trang GHI CÔNG ẢNH CHỤP.
+  Vì sao cần? Ảnh CC BY / CC BY-SA cho phép dùng miễn phí NHƯNG bắt buộc ghi tên tác giả, giấy phép và nguồn
+  ở nơi người xem tìm được. Game đã có dòng "📷 ..." nhỏ dưới mỗi ảnh; trang này liệt kê đầy đủ, có link.
+
+  Cách hoạt động (không cần build, chạy được qua file://):
+    1. Nạp các script của game cần thiết để biết TÊN THẺ: namespace.js → journeys.js → content.js/journey.js.
+    2. Nạp src/story/photos.js (OG.Photos) rồi các assets/photos/<id>/credits.js (mỗi file gọi OG.Photos.register).
+    3. Script cuối trang đọc OG.Photos và dựng danh sách bằng DOM (textContent — không chèn HTML lạ).
+  Trang nằm trong docs/ nên mọi đường dẫn đều đi lên một cấp: "../".
+-->
+<style>
+  :root { --ink:#17233d; --cream:#fff6df; --paper:#fffaf0; --gold:#ffc94a; --blue:#52c5ee; --orange:#f27a43; --bg:#10192b; --muted:#5b6780; --link:#2582aa; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.5 "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif; }
+  main { max-width: 1040px; margin: 0 auto; padding: 20px 16px 40px; }
+  header { color: var(--cream); margin-bottom: 18px; }
+  h1 { margin: 0 0 6px; font-size: clamp(24px, 4vw, 36px); color: var(--gold); }
+  header p { margin: 4px 0; max-width: 760px; opacity: .9; }
+  header a, footer a { color: var(--blue); font-weight: 700; }
+  .journey { background: var(--paper); border: 4px solid #fff; border-radius: 22px; padding: 16px; margin: 0 0 18px;
+    box-shadow: 0 8px 0 #b87542; }
+  .journey h2 { margin: 0 0 12px; font-size: 22px; }
+  .journey h2 small { font-size: 14px; color: var(--muted); font-weight: 600; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+  .item { background: #fff; border: 3px solid var(--ink); border-radius: 18px; overflow: hidden; display: flex; flex-direction: column; }
+  .item img { width: 100%; height: auto; aspect-ratio: 4 / 3; object-fit: cover; display: block; background: #e6ebf3; }
+  .item .body { padding: 10px 12px 12px; font-size: 14px; display: grid; gap: 3px; }
+  .item b { font-size: 16px; }
+  .item .orig { color: var(--muted); font-size: 12.5px; overflow-wrap: anywhere; }
+  .item a { color: var(--link); font-weight: 700; overflow-wrap: anywhere; }
+  .empty { color: var(--muted); margin: 0; }
+  footer { color: var(--cream); opacity: .8; font-size: 14px; text-align: center; }
+  @media (max-width: 480px) { .journey { padding: 12px; border-radius: 16px; } .grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>📷 Ghi công ảnh chụp</h1>
+    <p>Thẻ kiến thức trong <a href="../index.html">Oggy Adventure</a> có thêm ảnh thật bên cạnh hình vẽ cartoon.
+      Mọi ảnh đều có giấy phép tự do (Public Domain, CC0, CC BY, CC BY-SA, Unsplash, Pexels).
+      Chúng mình cảm ơn các tác giả dưới đây! Ảnh đã được thu nhỏ và chuyển sang định dạng WebP.</p>
+    <p id="total"></p>
+  </header>
+  <div id="list"><p style="color:#fff6df">Đang tải danh sách…</p></div>
+  <footer><p>Bấm vào tên giấy phép để đọc điều khoản, bấm “Trang gốc” để xem ảnh đầy đủ ở nguồn.</p></footer>
+</main>
+
+<!-- 1. Dữ liệu hành trình (chỉ để lấy tên hành trình / tên thẻ) -->
+<script src="../src/core/namespace.js"></script>
+<script src="../src/core/journeys.js"></script>
+<script src="../src/journeys/home/content.js"></script>
+<script src="../src/journeys/home/journey.js"></script>
+<script src="../src/journeys/vietnam/content.js"></script>
+<script src="../src/journeys/vietnam/journey.js"></script>
+<script src="../src/journeys/world/content.js"></script>
+<script src="../src/journeys/world/journey.js"></script>
+<script src="../src/journeys/science/content.js"></script>
+<script src="../src/journeys/science/journey.js"></script>
+<!-- 2. Registry ảnh + ghi công từng hành trình -->
+<script src="../src/story/photos.js"></script>
+<script src="../assets/photos/home/credits.js"></script>
+<script src="../assets/photos/vietnam/credits.js"></script>
+<script src="../assets/photos/world/credits.js"></script>
+<script src="../assets/photos/science/credits.js"></script>
+<script>
+(function () {
+  'use strict';
+  var OG = window.OG || {};
+  var P = OG.Photos, J = OG.Journeys;
+  var list = document.getElementById('list');
+  // Tạo phần tử với textContent (an toàn: không bao giờ chèn HTML từ dữ liệu).
+  function el(tag, text, attrs) {
+    var e = document.createElement(tag);
+    if (text != null) e.textContent = text;
+    for (var k in attrs || {}) e.setAttribute(k, attrs[k]);
+    return e;
+  }
+  // Chỉ nhận link http(s) — chặn "javascript:" nếu ai đó lỡ ghi sai dữ liệu.
+  function safeUrl(u) { return /^https?:\/\//i.test(u || '') ? u : null; }
+  function link(text, url) {
+    var u = safeUrl(url);
+    return u ? el('a', text, { href: u, target: '_blank', rel: 'noopener' }) : el('span', text);
+  }
+
+  list.textContent = '';
+  if (!P) { list.appendChild(el('p', 'Không tải được OG.Photos.', { class: 'empty' })); return; }
+  var ids = (J && J.ids ? J.ids() : []).concat(P.journeys()).filter(function (id, i, a) { return a.indexOf(id) === i; });
+  var total = 0;
+  ids.forEach(function (jid) {
+    var j = (J && J.get(jid)) || { title: jid, emoji: '📖' };
+    var entries = P.entries(jid);
+    total += entries.length;
+    var sec = el('section', null, { class: 'journey', id: 'j-' + jid });
+    var h = el('h2', (j.emoji || '📖') + ' ' + (j.title || jid) + ' ');
+    h.appendChild(el('small', entries.length + ' ảnh'));
+    sec.appendChild(h);
+    if (!entries.length) {
+      sec.appendChild(el('p', 'Chưa có ảnh chụp — thẻ dùng hình vẽ cartoon.', { class: 'empty' }));
+      list.appendChild(sec);
+      return;
+    }
+    var grid = el('div', null, { class: 'grid' });
+    entries.forEach(function (e) {
+      var card = J && J.getCard ? J.getCard(jid, e.cardId) : null;
+      var item = el('article', null, { class: 'item' });
+      item.appendChild(el('img', null, { src: '../' + e.src, alt: (card ? card.title + ' — ' : '') + (e.title || 'ảnh chụp'), loading: 'lazy', width: e.w || 800, height: e.h || 600 }));
+      var b = el('div', null, { class: 'body' });
+      b.appendChild(el('b', card ? card.title : e.cardId));
+      if (e.title) b.appendChild(el('span', '“' + e.title + '”', { class: 'orig' }));
+      b.appendChild(el('span', 'Tác giả: ' + e.author));
+      var lic = el('span', 'Giấy phép: '); lic.appendChild(link(e.license, e.licenseUrl)); b.appendChild(lic);
+      var src = el('span', 'Nguồn: '); src.appendChild(link((e.source || 'Trang gốc') + ' — Trang gốc', e.sourceUrl)); b.appendChild(src);
+      if (e.note) b.appendChild(el('span', e.note, { class: 'orig' }));
+      item.appendChild(b);
+      grid.appendChild(item);
+    });
+    sec.appendChild(grid);
+    list.appendChild(sec);
+  });
+  document.getElementById('total').textContent = 'Tổng cộng: ' + total + ' ảnh trong ' + ids.length + ' hành trình.';
+})();
+</script>
+</body>
+</html>

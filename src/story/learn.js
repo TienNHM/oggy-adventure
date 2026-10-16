@@ -164,7 +164,8 @@
     openCard: function (journeyId, cardId, opts) {
       opts = opts || {};
       OG.Events.emit('card:open', { journeyId: journeyId, cardId: cardId, from: opts.from || 'level' });
-      OG.Scenes.push('card', { journeyId: journeyId, cardId: cardId, isNew: !!opts.isNew, onClose: opts.onClose || null });
+      // `from` cho scene biết đang mở từ Sổ tay (ảnh lớn + phóng to) hay từ màn chơi (popup gọn).
+      OG.Scenes.push('card', { journeyId: journeyId, cardId: cardId, isNew: !!opts.isNew, from: opts.from || 'level', onClose: opts.onClose || null });
     },
     openNotebook: function (journeyId, back, backParams) {
       OG.Events.emit('notebook:open', { journeyId: journeyId });
@@ -254,6 +255,8 @@
         cooldown: 0
       };
       OG.Game.hud.pages = { have: 0, total: st.learn.pages.length };
+      // Tải trước ảnh thật của các thẻ trong màn này → khi bé nhặt trang sách, popup có ảnh ngay (không phải chờ).
+      if (OG.Photos) OG.Photos.preload(jid, st.learn.pages.map(function (p) { return p.card; }));
     },
 
     update: function (st, dt, p) {

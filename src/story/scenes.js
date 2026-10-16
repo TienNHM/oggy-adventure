@@ -580,10 +580,64 @@
   }
 
   // ===========================================================================
-  // card — thẻ kiến thức (push).  params: {journeyId, cardId, isNew, onClose?}
+  // card — thẻ kiến thức (push).  params: {journeyId, cardId, isNew, from:'level'|'notebook', onClose?}
   //   Đóng: Enter / Space / E / → / Esc / chạm (sau 0,35 giây). Nút 🔊 đọc to (khi trình duyệt có giọng tiếng Việt).
+  //   Thẻ có ẢNH THẬT (OG.Photos): bố cục rộng hơn — chữ bên trái, ảnh kiểu polaroid bên phải, hình vẽ cartoon
+  //   thu nhỏ thành "sticker" dán ở góc ảnh, dòng ghi công dưới ảnh. Ảnh lỗi → quay về bố cục cũ.
+  //   Mở từ Sổ tay (from:'notebook'): ảnh lớn hơn; chạm vào ảnh / phím ↓ để phóng to toàn màn hình, chạm lần nữa để đóng.
   // ===========================================================================
   var CARD = { w: 660, h: 400 };
+  // Bố cục thẻ có ảnh. photoW/photoH = kích thước phần ẢNH bên trong khung polaroid.
+  var CARD_PHOTO = {
+    level: { x: 40, y: 50, w: 880, h: 440, photoW: 372, photoH: 256 },
+    notebook: { x: 16, y: 14, w: 928, h: 508, photoW: 430, photoH: 300 }
+  };
+  var POLA = { pad: 12, bottom: 46, r: 22 }; // viền trắng polaroid: lề 3 cạnh + dải dưới (chứa dòng ghi công)
+  var ZOOM_BOX = { x: 24, y: 20, w: 912, h: 452 };
+
+  // Khung ảnh polaroid: viền trắng dày, bo góc lớn, bóng mềm, hơi nghiêng cho dễ thương.
+  // P = {x, y, w, h} khung ngoài; e = entry OG.Photos; rec = {img, state}.
+  function drawPolaroid(ctx, P, e, rec, tilt) {
+    ctx.save();
+    ctx.translate(P.x + P.w / 2, P.y + P.h / 2); ctx.rotate(tilt || 0); ctx.translate(-P.x - P.w / 2, -P.y - P.h / 2);
+    // bóng mềm (shadowBlur) rồi mới vẽ khung trắng có viền mực
+    ctx.save();
+    ctx.shadowColor = 'rgba(23,35,61,0.38)'; ctx.shadowBlur = 18; ctx.shadowOffsetY = 8;
+    ctx.fillStyle = '#ffffff';
+    U.roundRectPath(ctx, P.x, P.y, P.w, P.h, POLA.r); ctx.fill();
+    ctx.restore();
+    ctx.strokeStyle = INK; ctx.lineWidth = 4;
+    U.roundRectPath(ctx, P.x, P.y, P.w, P.h, POLA.r); ctx.stroke();
+    // phần ảnh
+    var ix = P.x + POLA.pad, iy = P.y + POLA.pad, iw = P.w - POLA.pad * 2, ih = P.h - POLA.pad - POLA.bottom;
+    if (rec.state === 'ready') OG.Photos.drawCover(ctx, rec.img, ix, iy, iw, ih, 14, e.focus, e);
+    else OG.Photos.drawShimmer(ctx, ix, iy, iw, ih, 14, OG.time);
+    ctx.strokeStyle = 'rgba(23,35,61,0.25)'; ctx.lineWidth = 2;
+    U.roundRectPath(ctx, ix, iy, iw, ih, 14); ctx.stroke();
+    // dòng ghi công trong dải trắng phía dưới (cắt ngắn tên tác giả cho vừa)
+    ctx.fillStyle = '#4a5670'; ctx.font = ui().font(13, '600'); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    var line = OG.Photos.creditLine(e, 28);
+    for (var n = 24; ctx.measureText(line).width > iw && n > 6; n -= 3) line = OG.Photos.creditLine(e, n);
+    ctx.fillText(line, P.x + P.w / 2, P.y + P.h - POLA.bottom / 2);
+    ctx.restore();
+    return { x: ix, y: iy, w: iw, h: ih };
+  }
+
+  // Hình vẽ cartoon của thẻ thu nhỏ thành sticker tròn dán ở góc ảnh.
+  function drawSticker(ctx, c, cx, cy, r, color) {
+    ctx.save();
+    ctx.translate(cx, cy + Math.sin(OG.time * 2.4) * 3); ctx.rotate(-0.12 + Math.sin(OG.time * 1.7) * 0.04);
+    ctx.save();
+    ctx.shadowColor = 'rgba(23,35,61,0.3)'; ctx.shadowBlur = 10; ctx.shadowOffsetY = 4;
+    ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill();
+    ctx.restore();
+    ctx.strokeStyle = INK; ctx.lineWidth = 3.5; ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.stroke();
+    ctx.fillStyle = color; ctx.beginPath(); ctx.arc(0, 0, r - 7, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc(0, 0, r - 7, 0, TAU); ctx.clip();
+    OG.Learn.drawCardIcon(ctx, c, 0, 0, r * 1.5, OG.time);
+    ctx.restore();
+  }
+
   var card = {
     drawBelow: true,
     enter: function (params) {
@@ -591,6 +645,9 @@
       this.c = J().getCard(this.p.journeyId, this.p.cardId);
       this.area = this.c && J().getArea(this.p.journeyId, this.c.areaId);
       this.speakBtn = null;
+      this.photoRect = null; this.zoom = false; this.zoomT = 0;
+      // Bắt đầu tải ảnh thật ngay (nếu có) — trong lúc chờ, khung ảnh hiện shimmer.
+      if (this.c && OG.Photos) OG.Photos.image(this.p.journeyId, this.c.id);
       hideChrome();
       if (this.c && this.p.isNew) {
         ui().fx.confetti(OG.W / 2, 150, 70, 2.8);
@@ -604,26 +661,79 @@
       OG.Scenes.pop();
       if (cb) cb();
     },
+    // Ảnh của thẻ đang mở: {e, rec} hoặc null (không có ảnh / ảnh lỗi → dùng bố cục cũ).
+    photo: function () {
+      if (!this.c || !OG.Photos) return null;
+      var e = OG.Photos.get(this.p.journeyId, this.c.id);
+      var rec = e && OG.Photos.image(this.p.journeyId, this.c.id);
+      return rec && rec.state !== 'error' ? { e: e, rec: rec } : null;
+    },
+    // Chỉ cho phóng to khi xem từ Sổ tay và ảnh đã tải xong.
+    canZoom: function () {
+      var ph = this.photo();
+      return this.p.from === 'notebook' && !!ph && ph.rec.state === 'ready';
+    },
     update: function (dt) {
       this.t += dt;
       ui().fx.update(dt);
       if (!this.c) { if (this.t > 0.1) this.close(); return; }
+      // Đang phóng to: mọi cú chạm / phím chỉ đóng chế độ phóng to (không đóng thẻ).
+      if (this.zoom) {
+        this.zoomT += dt;
+        if (this.zoomT > 0.12 && (tapped() || backPressed() || ui().advancePressed() || I().pressed('down'))) { this.zoom = false; }
+        return;
+      }
       if (this.t < 0.35) return;
       if (tapped() && this.speakBtn && ui().hit(this.speakBtn, pt().x, pt().y)) { ui().speak(this.c.title + '. ' + this.c.fact); return; }
+      if (this.canZoom() && ((tapped() && ui().hit(this.photoRect, pt().x, pt().y)) || I().pressed('down'))) {
+        this.zoom = true; this.zoomT = 0;
+        OG.Events.emit('photo:zoom', { journeyId: this.p.journeyId, cardId: this.c.id });
+        return;
+      }
       if (backPressed() || ui().advancePressed() || tapped()) this.close();
     },
     draw: function (ctx) {
       ctx.fillStyle = 'rgba(12,19,34,0.66)'; ctx.fillRect(0, 0, OG.W, OG.H);
       var c = this.c;
       if (!c) return;
-      var jid = this.p.journeyId, pal = ui().palette(jid);
+      var ph = this.photo();
+      if (ph) this.drawWithPhoto(ctx, ph);
+      else this.drawClassic(ctx);
+      if (this.zoom && ph && ph.rec.state === 'ready') this.drawZoom(ctx, ph);
+      ui().fx.draw(ctx);
+    },
+    // Hiệu ứng lật thẻ khi mở: co giãn ngang từ 0 → 1 quanh tâm thẻ.
+    flip: function (ctx, cy) {
       var k = ui().easeOutBack(Math.min(1, this.t / 0.42));
-      var x = (OG.W - CARD.w) / 2, y = 64, w = CARD.w, h = CARD.h;
-      ctx.save();
-      // Lật thẻ: co giãn ngang từ 0 → 1 quanh tâm thẻ
-      ctx.translate(OG.W / 2, y + h / 2);
+      ctx.translate(OG.W / 2, cy);
       ctx.scale(Math.max(0.02, k), 0.9 + 0.1 * Math.min(1, k));
-      ctx.translate(-OG.W / 2, -(y + h / 2));
+      ctx.translate(-OG.W / 2, -cy);
+    },
+    // Nút 🔊 + nút đóng + ruy băng "THẺ MỚI" (dùng chung cho hai bố cục).
+    drawButtons: function (ctx, tx, tw, by, ribbonX, ribbonY) {
+      var bw = 230, btn = { x: tx + tw - bw, y: by, w: bw, h: 58 };
+      ui().drawButton(ctx, btn, this.p.isNew ? 'Tuyệt vời! ▶' : 'Đóng ✓', { color: '#3fbf6f', shadow: '#2b8c4f', size: 22, pulse: this.t > 0.6 });
+      this.speakBtn = null;
+      if (ui().canSpeak()) {
+        this.speakBtn = { x: tx, y: by, w: 58, h: 58 };
+        ui().drawButton(ctx, this.speakBtn, '🔊', { color: '#52b9df', shadow: '#2582aa', size: 24 });
+      }
+      if (this.p.isNew) {
+        ctx.save();
+        ctx.translate(ribbonX, ribbonY);
+        ctx.rotate(0.12);
+        ui().drawButton(ctx, { x: -86, y: -24, w: 172, h: 44 }, 'THẺ MỚI! ✨', { color: '#ff5c8a', shadow: '#b8335e', size: 19 });
+        ctx.restore();
+      }
+    },
+
+    // ---- Bố cục cũ (không có ảnh thật): ô hình vẽ bên trái, chữ bên phải ----
+    drawClassic: function (ctx) {
+      var c = this.c, jid = this.p.journeyId, pal = ui().palette(jid);
+      var x = (OG.W - CARD.w) / 2, y = 64, w = CARD.w, h = CARD.h;
+      this.photoRect = null;
+      ctx.save();
+      this.flip(ctx, y + h / 2);
       ui().drawFrame(ctx, x, y, w, h, '#fffaf0', 24, { lineWidth: 5 });
       // Ô hình bên trái
       var ax = x + 18, ay = y + 18, aw = 236, ah = h - 36;
@@ -664,24 +774,88 @@
       ctx.fillStyle = 'rgba(23,35,61,0.55)'; ctx.font = ui().font(15);
       ctx.fillText('📒 Sổ tay: ' + cnt.have + '/' + cnt.total + ' thẻ', tx, y + h - 112);
       ctx.restore();
-      // Nút
-      var bw = 230, btn = { x: tx + tw - bw, y: y + h - 80, w: bw, h: 58 };
-      ui().drawButton(ctx, btn, this.p.isNew ? 'Tuyệt vời! ▶' : 'Đóng ✓', { color: '#3fbf6f', shadow: '#2b8c4f', size: 22, pulse: this.t > 0.6 });
-      this.speakBtn = null;
-      if (ui().canSpeak()) {
-        this.speakBtn = { x: tx, y: y + h - 80, w: 58, h: 58 };
-        ui().drawButton(ctx, this.speakBtn, '🔊', { color: '#52b9df', shadow: '#2582aa', size: 24 });
-      }
-      // Ruy băng "THẺ MỚI"
-      if (this.p.isNew) {
+      this.drawButtons(ctx, tx, tw, y + h - 80, x + w - 70, y + 6);
+      ctx.restore();
+    },
+
+    // ---- Bố cục có ảnh thật: chữ bên trái, polaroid bên phải, sticker hình vẽ ở góc ảnh ----
+    drawWithPhoto: function (ctx, ph) {
+      var c = this.c, jid = this.p.journeyId, pal = ui().palette(jid);
+      var L = this.p.from === 'notebook' ? CARD_PHOTO.notebook : CARD_PHOTO.level;
+      var x = L.x, y = L.y, w = L.w, h = L.h;
+      // Khung polaroid (ngoài) căn phải, căn giữa theo chiều dọc (nhích lên một chút chừa chỗ cho gợi ý).
+      var P = { w: L.photoW + POLA.pad * 2, h: L.photoH + POLA.pad + POLA.bottom };
+      P.x = x + w - 28 - P.w; P.y = y + (h - P.h) / 2 - 12;
+      ctx.save();
+      this.flip(ctx, y + h / 2);
+      ui().drawFrame(ctx, x, y, w, h, '#fffaf0', 26, { lineWidth: 5 });
+      // nền nhạt sau ảnh có tia sáng (giữ "chất" thẻ kiến thức cũ)
+      ctx.save();
+      U.roundRectPath(ctx, P.x - 14, y + 16, w - (P.x - x) + 14 - 16, h - 32, 20); ctx.clip();
+      ctx.fillStyle = ui().shade(pal.primary, 0.7); ctx.fillRect(P.x - 14, y, w, h);
+      ui().drawRays(ctx, P.x + P.w / 2, P.y + P.h / 2, 340, OG.time, this.p.isNew ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.3)', 14);
+      ctx.restore();
+      var inner = drawPolaroid(ctx, P, ph.e, ph.rec, -0.025);
+      this.photoRect = inner;
+      drawSticker(ctx, c, P.x + 8, P.y + 8, this.p.from === 'notebook' ? 56 : 50, ui().shade(pal.primary, 0.45));
+      // gợi ý phóng to (chỉ trong Sổ tay, khi ảnh đã tải)
+      if (this.canZoom()) {
         ctx.save();
-        ctx.translate(x + w - 70, y + 6);
-        ctx.rotate(0.12);
-        ui().drawButton(ctx, { x: -86, y: -24, w: 172, h: 44 }, 'THẺ MỚI! ✨', { color: '#ff5c8a', shadow: '#b8335e', size: 19 });
+        ctx.fillStyle = INK; ctx.font = ui().font(15); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.globalAlpha *= 0.75;
+        ctx.fillText(isTouch() ? '🔍 Chạm vào ảnh để phóng to' : '🔍 Bấm vào ảnh hoặc nhấn ↓ để phóng to', P.x + P.w / 2, P.y + P.h + 20);
         ctx.restore();
       }
+      // Cột chữ bên trái
+      var tx = x + 30, tw = P.x - 14 - 26 - tx, ty = y + 26;
+      ctx.save();
+      ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      if (this.area) { // nhãn khu nhỏ ở trên tiêu đề
+        ctx.font = ui().font(16);
+        var lab = (this.area.emoji || '📍') + ' ' + this.area.name, lw = Math.min(tw, ctx.measureText(lab).width + 26);
+        ctx.fillStyle = pal.primary; ctx.strokeStyle = INK; ctx.lineWidth = 2.5;
+        U.roundRectPath(ctx, tx, ty, lw, 34, 17); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#ffffff'; ctx.textBaseline = 'middle';
+        ctx.fillText(lab, tx + 13, ty + 18);
+        ctx.textBaseline = 'top';
+        ty += 46;
+      }
+      ctx.fillStyle = ui().shade(pal.primary, -0.15); ctx.font = ui().font(32, '900');
+      var tl = ui().wrap(ctx, c.title, tw).slice(0, 2);
+      tl.forEach(function (l, i) { ctx.fillText(l, tx, ty + i * 38); });
+      ty += tl.length * 38 + 8;
+      // Số dòng tối đa để chữ không đè lên dòng "Sổ tay" và hàng nút ở đáy thẻ.
+      var maxLines = Math.max(2, Math.floor((y + h - 118 - ty) / 29));
+      ctx.fillStyle = INK; ctx.font = ui().font(21, '600');
+      ui().wrap(ctx, c.fact, tw).slice(0, maxLines).forEach(function (l, i) { ctx.fillText(l, tx, ty + i * 29); });
+      var cnt = OG.Learn.count(jid);
+      ctx.fillStyle = 'rgba(23,35,61,0.55)'; ctx.font = ui().font(15);
+      ctx.fillText('📒 Sổ tay: ' + cnt.have + '/' + cnt.total + ' thẻ', tx, y + h - 108);
       ctx.restore();
-      ui().fx.draw(ctx);
+      this.drawButtons(ctx, tx, tw, y + h - 80, x + w - 80, y + 8);
+      ctx.restore();
+    },
+
+    // ---- Ảnh phóng to toàn màn hình (Sổ tay) ----
+    drawZoom: function (ctx, ph) {
+      var k = ui().easeOutBack(Math.min(1, this.zoomT / 0.28)), B = ZOOM_BOX;
+      ctx.save();
+      ctx.globalAlpha *= Math.min(1, this.zoomT / 0.15);
+      ctx.fillStyle = 'rgba(8,12,22,0.93)'; ctx.fillRect(0, 0, OG.W, OG.H);
+      ctx.translate(OG.W / 2, B.y + B.h / 2); ctx.scale(0.85 + 0.15 * k, 0.85 + 0.15 * k); ctx.translate(-OG.W / 2, -(B.y + B.h / 2));
+      var R = OG.Photos.drawContain(ctx, ph.rec.img, B.x, B.y, B.w, B.h, 16, ph.e);
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 4;
+      U.roundRectPath(ctx, R.x, R.y, R.w, R.h, 16); ctx.stroke();
+      ctx.restore();
+      ctx.save();
+      ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = ui().font(16, '600');
+      var line = OG.Photos.creditLine(ph.e, 60);
+      for (var n = 54; ctx.measureText(line).width > OG.W - 60 && n > 8; n -= 4) line = OG.Photos.creditLine(ph.e, n);
+      ctx.fillText(line, OG.W / 2, 494);
+      ctx.font = ui().font(14); ctx.globalAlpha *= 0.75;
+      ctx.fillText((ph.e.note ? ph.e.note + ' · ' : '') + (isTouch() ? 'Chạm để đóng ✕' : 'Bấm vào ảnh hoặc nhấn Enter / Esc để đóng ✕'), OG.W / 2, 520);
+      ctx.restore();
     }
   };
 
@@ -864,7 +1038,7 @@
   // ===========================================================================
   // notebook — Sổ tay khám phá.  params: {journeyId, back, backParams}
   //   Thẻ chia theo khu (thẻ chưa có = bóng mờ "?"). ←/→/↑/↓ chọn, Enter mở thẻ đã có (push card),
-  //   Esc / nút ↩ = về back. Chạm: tab khu, thẻ (mở luôn).
+  //   Esc / nút ↩ = về back. Chạm: tab khu, thẻ (mở luôn). Thẻ có ảnh thật (OG.Photos) → ảnh làm thumbnail.
   // ===========================================================================
   var NB = { x: 12, y: 8, w: 936, h: 524 };
   var NB_BACK = { x: 30, y: 22, w: 66, h: 56 };
@@ -1051,7 +1225,20 @@
         ui().drawFrame(ctx, 0, 0, r.w, r.h, '#ffffff', 16, { lineWidth: sel ? 5 : 3.5, border: sel ? pal.primary : INK, gloss: false });
         ctx.fillStyle = ui().shade(pal.secondary, 0.6);
         U.roundRectPath(ctx, 8, 8, r.w - 16, 86, 12); ctx.fill();
-        OG.Learn.drawCardIcon(ctx, it.card, r.w / 2, 52, 78, OG.time);
+        // Có ảnh thật (đã tải xong) → ảnh làm thumbnail, hình vẽ thu nhỏ thành huy hiệu tròn ở góc.
+        // Ảnh chỉ được nạp khi thẻ hiện trên lưới (nạp lười), chưa xong thì vẫn vẽ hình cartoon như cũ.
+        var thumb = OG.Photos && OG.Photos.ready(this.jid, it.card.id);
+        if (thumb) {
+          OG.Photos.drawCover(ctx, thumb, 8, 8, r.w - 16, 86, 12, (OG.Photos.get(this.jid, it.card.id) || {}).focus);
+          ctx.fillStyle = '#ffffff'; ctx.strokeStyle = INK; ctx.lineWidth = 2.5;
+          ctx.beginPath(); ctx.arc(r.w - 22, 80, 19, 0, TAU); ctx.fill(); ctx.stroke();
+          ctx.save();
+          ctx.beginPath(); ctx.arc(r.w - 22, 80, 17, 0, TAU); ctx.clip();
+          OG.Learn.drawCardIcon(ctx, it.card, r.w - 22, 80, 30, OG.time);
+          ctx.restore();
+          ctx.font = ui().font(13); ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+          ctx.fillText('📷', 13, 21);
+        } else OG.Learn.drawCardIcon(ctx, it.card, r.w / 2, 52, 78, OG.time);
         ctx.fillStyle = INK; ctx.font = ui().font(15); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         var tl = ui().wrap(ctx, it.card.title, r.w - 14).slice(0, 2);
         tl.forEach(function (l, i) { ctx.fillText(l, r.w / 2, 116 + (i - (tl.length - 1) / 2) * 18); });
