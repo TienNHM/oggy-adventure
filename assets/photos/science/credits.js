@@ -16,20 +16,15 @@
  *             focus }                  // (tuỳ chọn) {x, y} 0..1: điểm giữ lại khi cắt ảnh cho vừa khung
  * Giấy phép hợp lệ: Public Domain, CC0, CC BY, CC BY-SA, Unsplash License, Pexels License (xem OG.Photos.licenseOk). */
 /* AUTO-SUMMARY (tự sinh khi chạy "write")
- * Danh sách (18 ảnh):
+ * Danh sách (13 ảnh):
  *   dn_herbivore     CC BY 3.0      Matt Wedel
- *   dn_trex          CC BY-SA 4.0   Zissoudisctrucker
- *   dn_fossil        CC BY-SA 3.0   Drake411
- *   dn_bird          CC BY-SA 4.0   Emily Willoughby
- *   bd_heart         CC BY 4.0      Dguendel
- *   bd_blood         CC BY-SA 3.0   Rogeriopfm
- *   bd_lungs         CC0            Eboelen
- *   bd_bones         CC BY 3.0      Jason Hickey
- *   bd_teeth         Public domain  Sebastian Wallroth
+ *   dn_trex          CC BY 4.0      Larry D. Moore
+ *   dn_fossil        CC BY 2.0      Becks
+ *   dn_bird          CC0            Petr Kratochvil
  *   oc_ocean         Public domain  NASA/Apollo 17 crew; taken by either Harrison Schm
- *   oc_octopus       CC BY 2.0      Kārlis Dambrāns (janitors)
- *   oc_glow          CC BY-SA 2.0   NOAA Ocean Explorer from USA
- *   oc_whale         Public domain  NOAA Photo Library
+ *   oc_octopus       CC BY 4.0      Pauline Walsh Jacobson
+ *   oc_glow          Public domain  Magic5227 at English Wikipedia
+ *   oc_whale         CC BY-SA 3.0   Don Ramey Logan
  *   sp_sun           Public domain  NASA/SDO (AIA)
  *   sp_moon          CC BY-SA 3.0   Gregory H. Revera
  *   sp_astronaut     Public domain  NASA
@@ -52,105 +47,37 @@ OG.Photos.register("science", /* BEGIN-ENTRIES */ {
   "dn_trex": {
     "file": "dn_trex.webp",
     "w": 800,
-    "h": 600,
-    "author": "Zissoudisctrucker",
-    "license": "CC BY-SA 4.0",
-    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "h": 533,
+    "author": "Larry D. Moore",
+    "license": "CC BY 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
     "source": "Wikimedia Commons",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:FMNH_Tyrannosaurus_rex_Sue.jpg",
-    "title": "FMNH Tyrannosaurus rex Sue",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Tyrannosaurus_Model_Dinosaur_Valley_State_Park_Texas_2023.jpg",
+    "title": "Tyrannosaurus Model Dinosaur Valley State Park Texas 2023",
     "note": "Đã thu nhỏ, chuyển sang WebP"
   },
   "dn_fossil": {
     "file": "dn_fossil.webp",
     "w": 800,
     "h": 600,
-    "author": "Drake411",
-    "license": "CC BY-SA 3.0",
-    "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+    "author": "Becks",
+    "license": "CC BY 2.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
     "source": "Wikimedia Commons",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Sauropod_Skull_Articulated_Neck,_Wall_of_Bones,_Dinosaur_National_Monument,_Quarry_Building_2012.JPG",
-    "title": "Sauropod Skull Articulated Neck, Wall of Bones, Dinosaur National Monument, Quarry Building 2012",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Ammonite_fossil_(8606998286).jpg",
+    "title": "Ammonite fossil (8606998286)",
     "note": "Đã thu nhỏ, chuyển sang WebP"
   },
   "dn_bird": {
     "file": "dn_bird.webp",
-    "w": 670,
+    "w": 533,
     "h": 800,
-    "author": "Emily Willoughby",
-    "license": "CC BY-SA 4.0",
-    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
-    "source": "Wikimedia Commons",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Berlin_Archaeopteryx.jpg",
-    "title": "Berlin Archaeopteryx",
-    "note": "Đã thu nhỏ, chuyển sang WebP",
-    "focus": {
-      "x": 0.5,
-      "y": 0.45
-    }
-  },
-  "bd_heart": {
-    "file": "bd_heart.webp",
-    "w": 578,
-    "h": 800,
-    "author": "Dguendel",
-    "license": "CC BY 4.0",
-    "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
-    "source": "Wikimedia Commons",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Dresden,_Deutsches_Hygiene-Museum,_anatomisches_Modell,_Herz.jpg",
-    "title": "Dresden, Deutsches Hygiene-Museum, anatomisches Modell, Herz",
-    "note": "Đã thu nhỏ, chuyển sang WebP"
-  },
-  "bd_blood": {
-    "file": "bd_blood.webp",
-    "w": 800,
-    "h": 500,
-    "author": "Rogeriopfm",
-    "license": "CC BY-SA 3.0",
-    "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
-    "source": "Wikimedia Commons",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Erythrocyte_oxy.jpg",
-    "title": "Erythrocyte oxy",
-    "note": "Đã thu nhỏ, chuyển sang WebP"
-  },
-  "bd_lungs": {
-    "file": "bd_lungs.webp",
-    "w": 800,
-    "h": 629,
-    "author": "Eboelen",
+    "author": "Petr Kratochvil",
     "license": "CC0",
     "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
     "source": "Wikimedia Commons",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:3d_model_of_lungs_airways_ribs.jpg",
-    "title": "3d model of lungs airways ribs",
-    "note": "Đã thu nhỏ, chuyển sang WebP"
-  },
-  "bd_bones": {
-    "file": "bd_bones.webp",
-    "w": 541,
-    "h": 800,
-    "author": "Jason Hickey",
-    "license": "CC BY 3.0",
-    "licenseUrl": "https://creativecommons.org/licenses/by/3.0",
-    "source": "Wikimedia Commons",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:X-ray_child%27s_hand.jpg",
-    "title": "X-ray child's hand",
-    "note": "Đã thu nhỏ, chuyển sang WebP",
-    "focus": {
-      "x": 0.5,
-      "y": 0.4
-    }
-  },
-  "bd_teeth": {
-    "file": "bd_teeth.webp",
-    "w": 800,
-    "h": 600,
-    "author": "Sebastian Wallroth",
-    "license": "Public domain",
-    "licenseUrl": "https://creativecommons.org/publicdomain/mark/1.0/",
-    "source": "Wikimedia Commons",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Deciduous_teeths.jpg",
-    "title": "Deciduous teeths",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Yellow_Chick.jpg",
+    "title": "Yellow Chick",
     "note": "Đã thu nhỏ, chuyển sang WebP"
   },
   "oc_ocean": {
@@ -168,37 +95,37 @@ OG.Photos.register("science", /* BEGIN-ENTRIES */ {
   "oc_octopus": {
     "file": "oc_octopus.webp",
     "w": 800,
-    "h": 533,
-    "author": "Kārlis Dambrāns (janitors)",
-    "license": "CC BY 2.0",
-    "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+    "h": 600,
+    "author": "Pauline Walsh Jacobson",
+    "license": "CC BY 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
     "source": "Wikimedia Commons",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Giant_Pacific_octopus_in_exhibit_at_Monterey_Bay_Aquarium.jpg",
-    "title": "Giant Pacific octopus in exhibit at Monterey Bay Aquarium",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Octopus_cyanea_251606691.jpg",
+    "title": "Octopus cyanea 251606691",
     "note": "Đã thu nhỏ, chuyển sang WebP"
   },
   "oc_glow": {
     "file": "oc_glow.webp",
-    "w": 600,
-    "h": 399,
-    "author": "NOAA Ocean Explorer from USA",
-    "license": "CC BY-SA 2.0",
-    "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0",
+    "w": 800,
+    "h": 600,
+    "author": "Magic5227 at English Wikipedia",
+    "license": "Public domain",
+    "licenseUrl": "https://creativecommons.org/publicdomain/mark/1.0/",
     "source": "Wikimedia Commons",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Atolla_wyvillei_(Operation_Deep_Scope_2004).jpg",
-    "title": "Atolla wyvillei (Operation Deep Scope 2004)",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Jelly_4.JPG",
+    "title": "Jelly 4",
     "note": "Đã thu nhỏ, chuyển sang WebP"
   },
   "oc_whale": {
     "file": "oc_whale.webp",
     "w": 800,
-    "h": 554,
-    "author": "NOAA Photo Library",
-    "license": "Public domain",
-    "licenseUrl": "https://creativecommons.org/publicdomain/mark/1.0/",
+    "h": 475,
+    "author": "Don Ramey Logan",
+    "license": "CC BY-SA 3.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
     "source": "Wikimedia Commons",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Anim1754_-_Flickr_-_NOAA_Photo_Library.jpg",
-    "title": "Anim1754 - Flickr - NOAA Photo Library",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Large_Blue_Whale_Off_Southern_California_Coast_Photo_Don_Ramey_Logan.jpg",
+    "title": "Large Blue Whale Off Southern California Coast Photo Don Ramey Logan",
     "note": "Đã thu nhỏ, chuyển sang WebP"
   },
   "sp_sun": {
