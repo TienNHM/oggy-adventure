@@ -86,9 +86,10 @@
       return ls[ls.length - 1].id;
     },
     allCompleted: function () { return levels().every(function (l) { return Progress.isCompleted(l.id); }); },
+    // Chỉ tính màn cổ điển (OG.Data.levels); sao của hành trình xem OG.Journeys.progress(id).
     totalStars: function () {
       var s = 0, p = prog().levels;
-      for (var k in p) s += p[k].stars | 0;
+      levels().forEach(function (l) { if (p[l.id]) s += p[l.id].stars | 0; });
       return s;
     },
     maxStars: function () { return levels().length * 3; },

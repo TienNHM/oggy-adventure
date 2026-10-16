@@ -7,7 +7,8 @@
   var OG = window.OG;
 
   // Thứ tự init module tính năng (namespace trên window.OG).
-  OG.FEATURE_INIT_ORDER = ['Audio', 'Sprites', 'Bosses', 'World', 'Quests', 'Menus', 'Shop', 'Social'];
+  // v2: Difficulty init trước (Menus/Story đọc mode); Learn/Guide/Story gắn level hook trong init().
+  OG.FEATURE_INIT_ORDER = ['Difficulty', 'Audio', 'Sprites', 'Bosses', 'World', 'Quests', 'Menus', 'Shop', 'Social', 'Learn', 'Guide', 'Story'];
 
   function applyTouchSetting() {
     var mode = OG.Save.data.settings.touchControls || 'auto';
@@ -31,6 +32,8 @@
     OG.Events.on('settings:change', function (e) { if (e.key === 'touchControls') applyTouchSetting(); });
 
     OG.FEATURE_INIT_ORDER.forEach(function (ns) { OG.util.call(ns, 'init'); });
+    // Kiểm tra dữ liệu hành trình SAU khi trùm/nhân vật đã đăng ký (lỗi -> console.warn, hành trình bị ẩn).
+    OG.util.call('Journeys', 'init');
 
     // Tự tạm dừng khi rời tab/cửa sổ trong lúc chơi.
     var autoPause = function () {

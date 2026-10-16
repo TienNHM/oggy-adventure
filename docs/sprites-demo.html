@@ -7,31 +7,33 @@
 <style>
   :root { --ink:#17233d; --cream:#fff6df; --gold:#ffc94a; --blue:#52c5ee; --bg:#10192b; }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--cream); font: 15px/1.4 "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif; }
+  body { margin: 0; background: var(--bg); color: var(--cream); font: 15px/1.4 "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif; }
   header { padding: 14px 16px 6px; }
   h1 { margin: 0 0 4px; font-size: 22px; color: var(--gold); }
-  p.note { margin: 0; opacity: .8; font-size: 13px; }
+  p.note { margin: 0; opacity: .85; font-size: 13px; max-width: 980px; }
   .bar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 10px 16px; position: sticky; top: 0; background: #10192bee; z-index: 2; }
   .bar label { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; cursor: pointer; }
   .bar input[type=checkbox] { width: 20px; height: 20px; }
   button { min-height: 44px; padding: 0 14px; border: 0; border-radius: 12px; background: #f27a43; color: #fff;
-    font: bold 14px "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif; box-shadow: 0 4px 0 #b74b2b; cursor: pointer; }
+    font: bold 14px "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif; box-shadow: 0 4px 0 #b74b2b; cursor: pointer; }
   button.sec { background: #52b9df; box-shadow: 0 4px 0 #2582aa; }
+  button.on { background: #ffc94a; color: #17233d; box-shadow: 0 4px 0 #b87542; }
   button:active { transform: translateY(2px); box-shadow: 0 2px 0 #b74b2b; }
   #stats { font-family: monospace; font-size: 12px; opacity: .85; }
   .wrap { padding: 0 16px 24px; overflow-x: auto; }
   canvas { display: block; border-radius: 14px; background: #fff6df; touch-action: manipulation; }
   h2 { font-size: 16px; color: var(--gold); margin: 18px 0 8px; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 10px; }
 </style>
 </head>
 <body>
 <header>
   <h1>Oggy Adventure: Sprite demo</h1>
-  <p class="note">Mọi nhân vật × mọi trạng thái animation, vẽ procedural bằng Canvas qua <code>OG.Sprites.drawCharacter</code>.
-    Trạng thái một lần (jump, hurt, attack, dead) được phát lặp lại để dễ xem.</p>
+  <p class="note">Mọi nhân vật × mọi trạng thái, vẽ procedural bằng Canvas qua <code>OG.Sprites.drawCharacter</code>
+    (viền mực dày kiểu sticker, bóng đổ mềm, squash &amp; stretch). Trạng thái một lần (jump, hurt, attack, dead) được phát lặp lại.
+    Cột <b>idle lâu</b> cho thấy mèo ngáp và gãi bụng khi đứng yên lâu. Dấu <b>?</b> và chữ <b>OÁI!</b> vẽ ngoài cache nên không bị lật.</p>
 </header>
 <div class="bar">
-  <label><input type="checkbox" id="optCache" checked> Cache khung (sân thử + chân dung)</label>
   <label><input type="checkbox" id="optFlash"> Nháy trắng (flash)</label>
   <label><input type="checkbox" id="optFace"> Quay trái</label>
   <label>Tốc độ <input type="range" id="optSpeed" min="0.1" max="2" step="0.1" value="1"></label>
@@ -40,102 +42,180 @@
 </div>
 <div class="wrap">
   <h2>Nhân vật × trạng thái</h2>
+  <div class="tabs" id="tabs"></div>
   <canvas id="grid"></canvas>
-  <h2>Sân thử: chạy, nhảy, tiếp đất (bụi + squash) và hiệu ứng hạt</h2>
+  <h2>Sân thử: chạy (chân xoay tít), nhảy, tiếp đất, giẫm gián "BỐP!", trúng đòn "OÁI!"</h2>
   <div class="bar" style="position:static;padding-left:0">
+    <button id="bStomp">Giẫm gián</button>
+    <button id="bHurt">Trúng đòn</button>
     <button id="bDust" class="sec">Bụi</button>
     <button id="bSpark" class="sec">Lấp lánh</button>
-    <button id="bStars" class="sec">Sao va chạm</button>
     <button id="bSkin">Đổi skin Oggy</button>
+    <button id="bHero" class="sec">Đổi nhân vật</button>
   </div>
   <canvas id="lane"></canvas>
-  <h2>Chân dung và đạo cụ</h2>
+  <h2>Chân dung (drawPortrait)</h2>
   <canvas id="props"></canvas>
 </div>
 
 <!-- Chỉ cần vài file core + dữ liệu + gfx để chạy độc lập -->
 <script src="../src/core/namespace.js"></script>
 <script src="../src/core/events.js"></script>
+<script src="../src/core/scenery-registry.js"></script>
 <script src="../src/data/characters.js"></script>
 <script src="../src/gfx/sprites.js"></script>
 <script src="../src/gfx/skins.js"></script>
 <script src="../src/gfx/scenery.js"></script>
+<script src="../src/gfx/decor.js"></script>
 <script>
 (function () {
   'use strict';
   var OG = window.OG, S = OG.Sprites;
   S.init();
+  var FONT = OG.FONT || '"Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif';
+  function font(px, w) { return (w ? w + ' ' : '') + px + 'px ' + FONT; }
+  function safe(fn) { try { return fn(); } catch (e) { if (window.console) console.warn(e); return false; } }
 
-  var STATES = ['idle', 'walk', 'run', 'jump', 'fall', 'hurt', 'attack', 'victory', 'stunned', 'dead'];
+  var STATES = ['idle', 'idle lâu', 'walk', 'run', 'jump', 'fall', 'hurt', 'attack', 'victory', 'stunned', 'dead', 'talk', 'wave', 'think', 'point'];
   // Trạng thái một lần: lặp lại theo chu kỳ (giây)
-  var REPLAY = { jump: 0.8, hurt: 0.9, attack: 0.7, dead: 1.6 };
-  var ROWS = [
-    { id: 'oggy', skin: 'oggy_default', label: 'Oggy' },
-    { id: 'oggy', skin: 'oggy_chef', label: 'Oggy Đầu Bếp' },
-    { id: 'oggy', skin: 'oggy_super', label: 'Siêu Mèo Oggy' },
-    { id: 'oggy', skin: 'oggy_ninja', label: 'Oggy Ninja' },
-    { id: 'oggy', skin: 'oggy_gold', label: 'Oggy Hoàng Kim' },
-    { id: 'jack', skin: null, label: 'Jack' },
-    { id: 'olivia', skin: null, label: 'Olivia' },
-    { id: 'joey', skin: null, label: 'Joey' },
-    { id: 'marky', skin: null, label: 'Marky' },
-    { id: 'deedee', skin: null, label: 'Dee Dee' },
-    { id: 'roach', skin: null, label: 'Gián con' }
-  ];
+  var REPLAY = { jump: 0.8, hurt: 1.0, attack: 0.7, dead: 1.6 };
+
+  var GROUPS = {
+    'Mèo & skin': [
+      { id: 'oggy', skin: 'oggy_default', label: 'Oggy' },
+      { id: 'jack', skin: null, label: 'Jack' },
+      { id: 'olivia', skin: null, label: 'Olivia' },
+      { id: 'oggy', skin: 'oggy_chef', label: 'Oggy Đầu Bếp' },
+      { id: 'oggy', skin: 'oggy_super', label: 'Siêu Mèo Oggy' },
+      { id: 'oggy', skin: 'oggy_ninja', label: 'Oggy Ninja' },
+      { id: 'oggy', skin: 'oggy_gold', label: 'Oggy Hoàng Kim' },
+      { id: 'oggy', skin: 'oggy_explorer', label: 'Oggy Thám Hiểm' },
+      { id: 'oggy', skin: 'oggy_astronaut', label: 'Oggy Phi Hành Gia' },
+      { id: 'oggy', skin: 'oggy_scientist', label: 'Oggy Nhà Khoa Học' },
+      { id: 'jack', skin: 'jack_army', label: 'Jack Quân Nhân' },
+      { id: 'olivia', skin: 'olivia_rose', label: 'Olivia Hoa Hồng' }
+    ],
+    'Bộ ba gián': [
+      { id: 'joey', label: 'Joey' },
+      { id: 'marky', label: 'Marky' },
+      { id: 'deedee', label: 'Dee Dee' },
+      { id: 'roach', label: 'Gián tuần tra' },
+      { id: 'joey', label: 'Joey (trùm ×1,6)', scale: 1.6 }
+    ],
+    'Dẫn đường': [
+      { id: 'olivia', label: 'Olivia (nhà)' },
+      { id: 'bob', label: 'Bob (Việt Nam)' },
+      { id: 'owl', label: 'Giáo sư Cú (thế giới)' },
+      { id: 'robot', label: 'Rô-bốt Bíp (khoa học)' }
+    ],
+    'NPC phụ': [
+      { id: 'bee', label: 'Ong Vàng' },
+      { id: 'ladybug', label: 'Bọ Rùa' },
+      { id: 'droplet', label: 'Giọt Nước' },
+      { id: 'buffalo', label: 'Trâu Con' },
+      { id: 'turtle', label: 'Rùa Vàng' },
+      { id: 'lion_dance', label: 'Lân Con' },
+      { id: 'camel', label: 'Lạc Đà' },
+      { id: 'toucan', label: 'Chim Toucan' },
+      { id: 'penguin', label: 'Chim Cánh Cụt' },
+      { id: 'polar_bear', label: 'Gấu Bắc Cực' },
+      { id: 'dino', label: 'Khủng Long Con' },
+      { id: 'blood_cell', label: 'Hồng Cầu' }
+    ],
+    'Phụ kiện': [
+      { id: 'joey', acc: 'nonla', label: 'Joey + nón lá' },
+      { id: 'deedee', acc: 'nonla', label: 'Dee Dee + nón lá' },
+      { id: 'marky', acc: 'beret', label: 'Marky + mũ nồi' },
+      { id: 'roach', acc: 'helmet', label: 'Gián + mũ bảo hộ' },
+      { id: 'oggy', acc: 'nonla', label: 'Oggy + nón lá' },
+      { id: 'jack', acc: 'explorer', label: 'Jack + thám hiểm' },
+      { id: 'olivia', acc: 'scarf', label: 'Olivia + khăn' },
+      { id: 'deedee', acc: 'spacesuit', label: 'Dee Dee + vũ trụ' },
+      { id: 'robot', acc: 'helmet', label: 'Rô-bốt + mũ bảo hộ' },
+      { id: 'penguin', acc: 'scarf', label: 'Cánh Cụt + khăn' },
+      { id: 'dino', acc: 'explorer', label: 'Khủng Long + thám hiểm' },
+      { id: 'bob', acc: 'beret', label: 'Bob + mũ nồi' }
+    ]
+  };
+  var groupNames = Object.keys(GROUPS), group = groupNames[0];
 
   var $ = function (id) { return document.getElementById(id); };
-  var opt = { cache: true, flash: false, face: 1, speed: 1, zoom: 1.25 };
-  $('optCache').onchange = function () { opt.cache = this.checked; S.setCacheEnabled(opt.cache); };
+  var opt = { flash: false, face: 1, speed: 1, zoom: 1.25 };
   $('optFlash').onchange = function () { opt.flash = this.checked; };
   $('optFace').onchange = function () { opt.face = this.checked ? -1 : 1; };
   $('optSpeed').oninput = function () { opt.speed = +this.value; };
   $('optZoom').oninput = function () { opt.zoom = +this.value; layout(); };
 
+  var tabs = $('tabs');
+  groupNames.forEach(function (g) {
+    var b = document.createElement('button');
+    b.textContent = g; b.className = 'sec';
+    b.onclick = function () { group = g; layout(); paintTabs(); };
+    tabs.appendChild(b);
+  });
+  function paintTabs() {
+    var bs = tabs.querySelectorAll('button');
+    for (var i = 0; i < bs.length; i++) bs[i].className = bs[i].textContent === group ? 'on' : 'sec';
+  }
+  paintTabs();
+
+  function charOf(id) {
+    var D = OG.Data, ch = D && D.characters && D.characters[id];
+    return ch || { w: 34, h: 52 };
+  }
+
   // ---------- Lưới nhân vật × trạng thái ----------
   var grid = $('grid'), gctx = grid.getContext('2d');
-  var LABEL_W = 120, CELL_W = 86, CELL_H = 96, HEAD_H = 30;
+  var LABEL_W = 150, CELL_W = 92, CELL_H = 108, HEAD_H = 30;
+  function rowH(row) { return CELL_H * (row.scale || 1) * (charOf(row.id).h > 55 ? 1.12 : 1); }
   function layout() {
-    var z = opt.zoom, dpr = window.devicePixelRatio || 1;
-    var w = (LABEL_W + CELL_W * STATES.length) * z, h = (HEAD_H + CELL_H * ROWS.length) * z;
+    var rows = GROUPS[group], z = opt.zoom, dpr = window.devicePixelRatio || 1, H = HEAD_H;
+    for (var i = 0; i < rows.length; i++) H += rowH(rows[i]);
+    var w = (LABEL_W + CELL_W * STATES.length) * z, h = H * z;
     grid.style.width = w + 'px'; grid.style.height = h + 'px';
     grid.width = Math.round(w * dpr); grid.height = Math.round(h * dpr);
   }
   layout();
 
   function drawGrid(t) {
-    var z = opt.zoom * (window.devicePixelRatio || 1);
-    gctx.setTransform(z, 0, 0, z, 0, 0);
+    var z = opt.zoom, dpr = window.devicePixelRatio || 1, rows = GROUPS[group];
+    gctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     gctx.clearRect(0, 0, grid.width, grid.height);
-    gctx.font = 'bold 13px "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif';
+    gctx.font = font(13 * z, 'bold');
     gctx.textAlign = 'center'; gctx.fillStyle = '#17233d';
-    for (var c = 0; c < STATES.length; c++) gctx.fillText(STATES[c], LABEL_W + CELL_W * c + CELL_W / 2, 20);
-    for (var r = 0; r < ROWS.length; r++) {
-      var row = ROWS[r], y0 = HEAD_H + r * CELL_H;
+    for (var c = 0; c < STATES.length; c++) gctx.fillText(STATES[c], (LABEL_W + CELL_W * c + CELL_W / 2) * z, 20 * z);
+    var y0 = HEAD_H;
+    for (var r = 0; r < rows.length; r++) {
+      var row = rows[r], rh = rowH(row);
       gctx.fillStyle = r % 2 ? '#f7ecd0' : '#fff6df';
-      gctx.fillRect(0, y0, LABEL_W + CELL_W * STATES.length, CELL_H);
+      gctx.fillRect(0, y0 * z, (LABEL_W + CELL_W * STATES.length) * z, rh * z);
       gctx.fillStyle = '#17233d'; gctx.textAlign = 'left';
-      gctx.fillText(row.label, 10, y0 + CELL_H / 2 + 4);
+      gctx.font = font(13 * z, 'bold');
+      gctx.fillText(row.label, 10 * z, (y0 + rh / 2 + 4) * z);
       gctx.textAlign = 'center';
-      var ch = OG.Data.getCharacter(row.id);
+      var ch = charOf(row.id);
       for (var c2 = 0; c2 < STATES.length; c2++) {
-        var st = STATES[c2], at = REPLAY[st] ? t % REPLAY[st] : t;
-        var cx = LABEL_W + CELL_W * c2 + CELL_W / 2, fy = y0 + CELL_H - 14;
-        // vạch sàn
-        gctx.fillStyle = '#e9a34f55'; gctx.fillRect(cx - 34, fy, 68, 3);
+        var st = STATES[c2], at;
+        if (st === 'idle lâu') { at = 5 + (t % 9); st = 'idle'; }
+        else at = REPLAY[st] ? t % REPLAY[st] : t;
+        var cx = (LABEL_W + CELL_W * c2 + CELL_W / 2) * z, fy = (y0 + rh - 14) * z;
+        gctx.fillStyle = '#e9a34f55'; gctx.fillRect(cx - 38 * z, fy, 76 * z, 3 * z);
         gctx.save();
         gctx.translate(cx, fy);
         S.drawCharacter(gctx, row.id, st, at, {
-          // Lưới vẽ trực tiếp (noCache) vì 110 ô vượt giới hạn cache; trong game chỉ có vài nhân vật.
-          face: opt.face, skin: row.skin, w: ch.w, h: ch.h, flash: opt.flash, time: t, noCache: true
+          // Lưới vẽ không cache (quá nhiều ô); trong game chỉ có vài nhân vật nên cache trúng gần hết.
+          face: opt.face, skin: row.skin || null, w: ch.w, h: ch.h, flash: opt.flash, time: t, noCache: true,
+          scale: z * (row.scale || 1), accessory: row.acc
         });
         gctx.restore();
       }
+      y0 += rh;
     }
   }
 
   // ---------- Sân thử ----------
   var lane = $('lane'), lctx = lane.getContext('2d');
-  var LW = 960, LH = 220, FLOOR = 190;
+  var LW = 960, LH = 240, FLOOR = 205;
   function sizeLane() {
     var dpr = window.devicePixelRatio || 1;
     var cssW = Math.min(LW, document.querySelector('.wrap').clientWidth - 32);
@@ -156,36 +236,45 @@
   };
 
   var skins = S.OGGY_SKINS || ['oggy_default'], skinIdx = 0;
-  var hero = { x: 100, y: FLOOR, vx: 170, vy: 0, ground: true, anim: 'run', animT: 0, face: 1, jumpCd: 1.2 };
+  var heroes = ['oggy', 'jack', 'olivia'], heroIdx = 0;
+  var hero = { x: 100, y: FLOOR, vx: 170, vy: 0, ground: true, anim: 'run', animT: 0, face: 1, jumpCd: 1.2, hurtT: 0 };
+  var roach = { x: 700, dir: -1, t: 0, dead: 0 };
+  $('bStomp').onclick = function () {
+    roach.dead = 0.6;
+    OG.Events.emit('enemy:stomp', { type: 'roach', x: roach.x - 17, y: FLOOR - 28, score: 50 });
+  };
+  $('bHurt').onclick = function () { hero.hurtT = 0.55; hero.anim = 'hurt'; hero.animT = 0; };
   $('bDust').onclick = function () { S.fx.puff(hero.x, FLOOR, 8); };
   $('bSpark').onclick = function () { S.fx.sparkle(480, 90); };
-  $('bStars').onclick = function () { S.fx.stars(hero.x, hero.y - 40, 6); };
-  $('bSkin').onclick = function () { skinIdx = (skinIdx + 1) % skins.length; };
-
-  var roach = { x: 700, dir: -1, t: 0 };
+  $('bSkin').onclick = function () { skinIdx = (skinIdx + 1) % skins.length; heroIdx = 0; };
+  $('bHero').onclick = function () { heroIdx = (heroIdx + 1) % heroes.length; };
 
   function updateLane(dt) {
-    var h = hero;
-    h.jumpCd -= dt;
-    if (h.ground && h.jumpCd <= 0) {
-      h.vy = -560; h.ground = false; h.jumpCd = 1.4 + Math.random();
-      OG.Events.emit('player:jump', { charId: 'oggy', x: h.x - 17, y: h.y - 52 });
-    }
-    h.x += h.vx * dt;
-    if (h.x > LW - 40) { h.vx = -170; h.face = -1; }
-    if (h.x < 40) { h.vx = 170; h.face = 1; }
-    if (!h.ground) {
-      h.vy += 1500 * dt; h.y += h.vy * dt;
-      if (h.y >= FLOOR) {
-        h.y = FLOOR; h.vy = 0; h.ground = true;
-        OG.Events.emit('player:land', { x: h.x - 17, y: h.y - 52, vy: 0 });
+    var h = hero, ch = charOf(heroes[heroIdx]);
+    if (h.hurtT > 0) { h.hurtT -= dt; h.animT += dt; if (h.hurtT <= 0) { h.anim = 'idle'; h.animT = 0; } }
+    else {
+      h.jumpCd -= dt;
+      if (h.ground && h.jumpCd <= 0) {
+        h.vy = -560; h.ground = false; h.jumpCd = 1.4 + Math.random();
+        OG.Events.emit('player:jump', { charId: heroes[heroIdx], x: h.x - ch.w / 2, y: h.y - ch.h });
       }
+      h.x += h.vx * dt;
+      if (h.x > LW - 40) { h.vx = -170; h.face = -1; }
+      if (h.x < 40) { h.vx = 170; h.face = 1; }
+      if (!h.ground) {
+        h.vy += 1500 * dt; h.y += h.vy * dt;
+        if (h.y >= FLOOR) {
+          h.y = FLOOR; h.vy = 0; h.ground = true;
+          OG.Events.emit('player:land', { x: h.x - ch.w / 2, y: h.y - ch.h, vy: 0 });
+        }
+      }
+      var a = h.ground ? 'run' : (h.vy < 0 ? 'jump' : 'fall');
+      if (a !== h.anim) { h.anim = a; h.animT = 0; } else h.animT += dt;
     }
-    var a = h.ground ? 'run' : (h.vy < 0 ? 'jump' : 'fall');
-    if (a !== h.anim) { h.anim = a; h.animT = 0; } else h.animT += dt;
 
-    roach.t += dt; roach.x += roach.dir * 70 * dt;
-    if (roach.x < 560 || roach.x > 900) roach.dir *= -1;
+    roach.t += dt;
+    if (roach.dead > 0) roach.dead -= dt;
+    else { roach.x += roach.dir * 70 * dt; if (roach.x < 560 || roach.x > 900) roach.dir *= -1; }
 
     for (var i = parts.length - 1; i >= 0; i--) {
       var p = parts[i]; p.life -= dt;
@@ -205,15 +294,24 @@
   function drawLane(t) {
     var k = lane.width / LW;
     lctx.setTransform(k, 0, 0, k, 0, 0);
-    S.drawBackground(lctx, 'kitchen', 0, t);
-    S.drawPlatform(lctx, { x: 0, y: FLOOR, w: LW, h: 40, isFloor: true }, 'kitchen', t);
-    S.drawProp(lctx, 'pizza', 480, 90, t);
+    var bgOk = S.drawBackground && safe(function () { S.drawBackground(lctx, 'kitchen', 0, t); return true; });
+    if (!bgOk) { lctx.fillStyle = '#bfe9f7'; lctx.fillRect(0, 0, LW, LH); }
+    var plOk = S.drawPlatform && safe(function () { S.drawPlatform(lctx, { x: 0, y: FLOOR, w: LW, h: 40, isFloor: true }, 'kitchen', t); return true; });
+    if (!plOk) { lctx.fillStyle = '#e9a34f'; lctx.fillRect(0, FLOOR, LW, LH - FLOOR); }
+    if (S.drawProp) safe(function () { S.drawProp(lctx, 'pizza', 480, 90, t); });
+    // Bob và Giáo sư Cú đứng xem
+    lctx.save(); lctx.translate(300, FLOOR); S.drawCharacter(lctx, 'bob', 'wave', t, { time: t }); lctx.restore();
+    lctx.save(); lctx.translate(420, FLOOR); S.drawCharacter(lctx, 'owl', 'talk', t, { time: t, face: -1 }); lctx.restore();
     lctx.save(); lctx.translate(roach.x, FLOOR);
-    S.drawCharacter(lctx, 'roach', 'run', roach.t, { face: roach.dir, w: 34, h: 28 });
+    S.drawCharacter(lctx, 'roach', roach.dead > 0 ? 'hurt' : 'run', roach.dead > 0 ? 0.6 - roach.dead : roach.t, { face: roach.dir, w: 34, h: 28 });
     lctx.restore();
+    var id = heroes[heroIdx], ch = charOf(id);
     lctx.save(); lctx.translate(hero.x, hero.y);
-    // opts.vx != null kích hoạt squash tiếp đất (dựa trên OG.time + event player:land)
-    S.drawCharacter(lctx, 'oggy', hero.anim, hero.animT, { face: hero.face, skin: skins[skinIdx], vx: hero.vx, vy: hero.vy, time: t });
+    // opts.vx != null kích hoạt squash tiếp đất; worldX/worldY để vẽ chữ "BỐP!" (toạ độ sân thử = thế giới)
+    S.drawCharacter(lctx, id, hero.anim, hero.animT, {
+      face: hero.face, skin: id === 'oggy' ? skins[skinIdx] : null, vx: hero.vx, vy: hero.vy, time: t,
+      w: ch.w, h: ch.h, flash: hero.anim === 'hurt', worldX: hero.x, worldY: hero.y
+    });
     lctx.restore();
     for (var i = 0; i < parts.length; i++) {
       var p = parts[i];
@@ -222,13 +320,15 @@
       if (!S.drawParticle(lctx, p)) lctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
     }
     lctx.globalAlpha = 1;
-    lctx.fillStyle = '#17233d'; lctx.font = 'bold 14px "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif'; lctx.textAlign = 'left';
-    lctx.fillText('Skin: ' + skins[skinIdx], 12, 22);
+    lctx.fillStyle = '#17233d'; lctx.font = font(14, 'bold'); lctx.textAlign = 'left';
+    lctx.fillText('Nhân vật: ' + id + (id === 'oggy' ? ' · skin: ' + skins[skinIdx] : ''), 12, 22);
   }
 
-  // ---------- Chân dung + đạo cụ ----------
+  // ---------- Chân dung ----------
   var pc = $('props'), pctx = pc.getContext('2d');
-  var PW = 960, PH = 180;
+  var PW = 960, PH = 200;
+  var PORTRAITS = ['oggy', 'jack', 'olivia', 'joey', 'marky', 'deedee', 'roach', 'bob', 'owl', 'robot', 'bee', 'ladybug',
+    'droplet', 'buffalo', 'turtle', 'lion_dance', 'camel', 'toucan', 'penguin', 'polar_bear', 'dino', 'blood_cell'];
   function sizeProps() {
     var dpr = window.devicePixelRatio || 1;
     var cssW = Math.min(PW, document.querySelector('.wrap').clientWidth - 32);
@@ -241,20 +341,22 @@
     var k = pc.width / PW;
     pctx.setTransform(k, 0, 0, k, 0, 0);
     pctx.fillStyle = '#76d8f2'; pctx.fillRect(0, 0, PW, PH);
-    var ids = ['oggy', 'jack', 'olivia', 'joey', 'marky', 'deedee', 'roach'];
-    for (var i = 0; i < ids.length; i++) {
-      if (S.drawPortrait) S.drawPortrait(pctx, ids[i], 50 + i * 68, 50, 58, { t: t, time: t });
+    var per = 11;
+    for (var i = 0; i < PORTRAITS.length; i++) {
+      var col = i % per, row = Math.floor(i / per);
+      var x = 50 + col * 86, y = 50 + row * 96;
+      if (S.drawPortrait) S.drawPortrait(pctx, PORTRAITS[i], x, y, 70, { t: t, time: t, state: i % 3 === 0 ? 'talk' : 'idle' });
+      pctx.fillStyle = '#17233d'; pctx.font = font(11, 'bold'); pctx.textAlign = 'center';
+      pctx.fillText(PORTRAITS[i], x, y + 46);
     }
-    var props = ['pizza', 'coin', 'heart', 'shield', 'star'];
-    for (var j = 0; j < props.length; j++) S.drawProp(pctx, props[j], 540 + j * 56, 50, t);
-    S.drawProp(pctx, 'exit', 820, 175, t, { open: Math.floor(t / 2) % 2 === 0 });
   }
 
   // ---------- Vòng lặp ----------
-  // ?t=1.25 : cố định thời gian (để chụp ảnh kiểm tra); ?step=0.05 : tăng t mỗi khung cố định.
+  // ?t=1.25 : cố định thời gian (để chụp ảnh kiểm tra); ?step=0.05 : tăng t mỗi khung cố định; ?g=2 : chọn nhóm.
   var qs = {};
   location.search.replace(/[?&]([^=&]+)=([^&]*)/g, function (m, k, v) { qs[k] = parseFloat(v); });
-  var last = 0, sim = isFinite(qs.t) ? qs.t : 0, fps = 60;
+  if (isFinite(qs.g) && groupNames[qs.g]) { group = groupNames[qs.g]; layout(); paintTabs(); }
+  var last = 0, sim = isFinite(qs.t) ? qs.t : 0, fps = 60, gridAcc = 1;
   function frame(ts) {
     requestAnimationFrame(frame);
     var dt = Math.min(0.033, (ts - last) / 1000 || 0); last = ts;
@@ -263,7 +365,10 @@
     if (isFinite(qs.t)) dt = isFinite(qs.step) ? qs.step : 0;
     sim += dt; OG.time = sim;
     updateLane(dt); demoDust();
-    drawGrid(sim); drawLane(sim); drawProps(sim);
+    // Lưới không cache nên vẽ lại ~20 lần/giây cho nhẹ.
+    gridAcc += dt;
+    if (gridAcc >= 0.05 || dt === 0) { gridAcc = 0; drawGrid(sim); }
+    drawLane(sim); drawProps(sim);
     var st = S.cacheStats ? S.cacheStats() : null;
     $('stats').textContent = 'FPS ' + fps.toFixed(0) + (st ? ' · cache ' + st.size + '/' + st.max + ' khung · hit ' + st.hits + ' · miss ' + st.misses : '');
   }

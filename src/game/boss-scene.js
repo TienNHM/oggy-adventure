@@ -21,13 +21,25 @@
 
   var S = null; // trạng thái scene boss
 
+  // Giẫm / chạm theo độ khó (OG.Level.stompOk/touchOk; dự phòng = phép thử v1).
+  function stomp(p, prevBottom, target, tol, prevTop) {
+    if (OG.Level && OG.Level.stompOk) return OG.Level.stompOk(p, prevBottom, target, tol, prevTop);
+    return OG.Physics.isStomp(p, prevBottom, target, tol);
+  }
+  function touch(p, box) {
+    if (OG.Level && OG.Level.touchOk) return OG.Level.touchOk(p, box);
+    return U.overlap(p, box);
+  }
+
   function makeArena(level, bossId) {
     var def = OG.util.call('Bosses', 'getArena', bossId) || {};
+    // Hành trình v2: area.boss.arena (level.bossArena) ghi đè; cảnh nền mặc định theo chủ đề của khu.
+    var jd = level.journey ? (level.bossArena || {}) : {};
     var src = {
-      width: def.width || DEFAULT_ARENA.width,
-      platforms: def.platforms || DEFAULT_ARENA.platforms,
-      spawn: def.spawn || DEFAULT_ARENA.spawn,
-      theme: def.theme || level.theme || 'boss'
+      width: jd.width || def.width || DEFAULT_ARENA.width,
+      platforms: jd.platforms || def.platforms || DEFAULT_ARENA.platforms,
+      spawn: jd.spawn || def.spawn || DEFAULT_ARENA.spawn,
+      theme: jd.theme || (level.journey ? level.theme : def.theme) || level.theme || 'boss'
     };
     var run = OG.Game.ensureRun();
     var mods = OG.Game.levelMods(level.id);
@@ -38,7 +50,8 @@
       player: OG.Player.create(run.charId, src.spawn.x, src.spawn.y, mods, run.skinId),
       // --- API cho boss ---
       hurtPlayer: function (cause) { return OG.Player.hurt(arena.player, cause || 'boss'); },
-      overlapsPlayer: function (rect) { return U.overlap(arena.player, rect); },
+      // Đạn/bẫy của trùm: chạm sượt không tính (chế độ kid).
+      overlapsPlayer: function (rect) { return touch(arena.player, rect); },
       shake: function (mag, dur) { OG.Camera.shake(mag, dur); },
       particles: function (x, y, opts) { OG.Particles.spawn(x, y, opts); },
       floatText: function (x, y, text, color) { OG.Particles.floatText(x, y, text, color); },
@@ -46,7 +59,10 @@
       emit: function (name, payload) { OG.Events.emit(name, payload); },
       addScore: function (n) { OG.Game.addScore(n); },
       spawnEnemy: function (src) { var e = OG.Enemies.create(src, arena.enemies.length); arena.enemies.push(e); return e; },
-      enemies: []
+      enemies: [],
+      journeyId: level.journey || null,
+      // Tham số độ khó (OG.Difficulty.params) để trùm tự điều chỉnh nếu muốn: bossHpMul, bossSpeedMul, mode...
+      difficulty: OG.util.call('Difficulty', 'params', level.id) || null
     };
     return arena;
   }
@@ -69,7 +85,10 @@
       if (!OG.Game.stage) OG.Game.beginStage(level);
       var arena = makeArena(level, bossId);
       var boss = OG.util.call('Bosses', 'create', bossId, arena) || null;
-      S = { levelId: level.id, bossId: bossId, arena: arena, boss: boss, phase: boss ? 'fight' : 'skip', endT: 0 };
+      if (boss) OG.util.call('Difficulty', 'setupBoss', boss, arena); // máu trùm theo độ khó
+      S = { levelId: level.id, bossId: bossId, arena: arena, boss: boss, phase: boss ? 'fight' : 'skip', endT: 0, prevWeakTop: null };
+      // Trợ giúp (thua nhiều lần): khiên + tim khi vào trận.
+      if (boss) U.call('Difficulty', 'applyAssist', arena.player, level.id);
       var hud = OG.Game.hud;
       hud.scene = 'boss';
       hud.boss = boss ? { id: bossId, name: boss.name || bossId, hp: boss.hp, maxHp: boss.maxHp } : null;
@@ -88,18 +107,24 @@
       A.t += dt;
       if (S.phase === 'fight') OG.Game.tickTime(dt);
       var res = OG.Player.update(p, dt, A);
-      if (p.y > OG.H + 80) {
+      if (p.y > OG.H + 80 && U.call('Difficulty', 'onFall', p, A) !== true) {
         OG.Player.hurt(p, 'fall');
         if (OG.Scenes.base() !== 'boss') return;
         p.x = 80; p.y = 300; p.vy = 0;
       }
 
       if (S.phase === 'fight') {
-        U.safe('boss.update', boss.update, boss, [dt, A]);
+        // Độ khó: nhịp đòn trùm chậm hơn ở chế độ 'kid'.
+        var bdt = dt * (U.call('Difficulty', 'bossTimeScale') || 1);
+        U.call('Difficulty', 'trackSafe', p, A);
+        U.safe('boss.update', boss.update, boss, [bdt, A]);
         if (OG.Scenes.base() !== 'boss') return;
         // Giẫm điểm yếu
         var weak = U.safe('boss.getWeakspot', boss.getWeakspot, boss, []) || null;
-        if (weak && OG.Physics.isStomp(p, res.prevBottom, weak, 16)) {
+        // prevWeakTop: điểm yếu frame trước — trùm đang nhảy lên/đáp xuống vẫn giẫm được.
+        var wasTop = S.prevWeakTop;
+        S.prevWeakTop = weak ? weak.y : null;
+        if (weak && stomp(p, res.prevBottom, weak, 16, wasTop)) {
           p.vy = -C.STOMP_BOUNCE * 1.1;
           p.inv = Math.max(p.inv, 0.3);
           U.safe('boss.onHit', boss.onHit, boss, [1, A]);
@@ -109,7 +134,7 @@
         } else {
           var boxes = U.safe('boss.getHurtboxes', boss.getHurtboxes, boss, []) || [];
           for (var i = 0; i < boxes.length; i++) {
-            if (U.overlap(p, boxes[i])) { OG.Player.hurt(p, 'boss'); break; }
+            if (touch(p, boxes[i])) { OG.Player.hurt(p, 'boss'); break; }
           }
           if (OG.Scenes.base() !== 'boss') return;
         }
@@ -118,14 +143,14 @@
           var e = A.enemies[k];
           OG.Enemies.update(e, dt, A);
           if (!e.alive) continue;
-          if (OG.Physics.isStomp(p, res.prevBottom, e, 12)) {
+          if (stomp(p, res.prevBottom, e, 12, e.prevY)) {
             OG.Enemies.kill(e); p.vy = -C.STOMP_BOUNCE; OG.Game.addScore(e.score);
             if (OG.Game.stage) OG.Game.stage.stomps++;
             OG.Game.run.stats.stomps++;
             OG.Save.data.stats.stomps++;
             OG.Particles.floatText(e.x + e.w / 2, e.y - 6, '+' + e.score);
             OG.Events.emit('enemy:stomp', { type: e.type, x: e.x, y: e.y, score: e.score });
-          } else if (U.overlap(p, OG.Enemies.hurtbox(e))) {
+          } else if (touch(p, OG.Enemies.hurtbox(e))) {
             OG.Player.hurt(p, 'enemy');
             if (OG.Scenes.base() !== 'boss') return;
           }

@@ -5,7 +5,12 @@
   'use strict';
   var OG = (window.OG = window.OG || {});
 
-  OG.VERSION = '1.0.0';
+  OG.VERSION = '2.0.0-dev';
+
+  // Font chuẩn (đủ glyph tiếng Việt). KHÔNG dùng Trebuchet MS.
+  OG.FONT = '"Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif';
+  // Tạo chuỗi ctx.font: OG.font(18, 'bold') -> 'bold 18px "Segoe UI", ...'
+  OG.font = function (px, weight) { return (weight ? weight + ' ' : '') + (px | 0) + 'px ' + OG.FONT; };
 
   // Kích thước logic của canvas (CSS sẽ co giãn, toạ độ game luôn là 960x540).
   OG.W = 960;
@@ -41,7 +46,7 @@
     // Nhân vật (gợi ý cho Sprites; Sprites có thể tinh chỉnh)
     oggyHead: '#328be7', oggyBody: '#2877d5', oggyEar: '#2471cb', oggyFeet: '#263b9b', oggyMuzzle: '#d9f0ff',
     roachBody: '#7d3e9b', roachShell: '#b56bc7', roachLeg: '#4b285d',
-    joey: '#c45bd1', marky: '#5fae4e', deedee: '#e08a3c',
+    joey: '#c45bd1', marky: '#5fae4e', deedee: '#3f8de0', // v2: Dee Dee màu xanh dương như bản gốc
     jack: '#58b84a', olivia: '#f7f1ea', oliviaAccent: '#f29bb8',
     danger: '#e5484d', success: '#3fbf6f', white: '#ffffff'
   };

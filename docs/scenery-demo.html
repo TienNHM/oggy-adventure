@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Oggy Scenery Demo</title>
+<style>
+  :root { --ink:#17233d; --cream:#fff6df; --gold:#ffc94a; --blue:#52c5ee; --bg:#10192b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--cream); font: 15px/1.4 "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif; }
+  header { padding: 14px 16px 6px; }
+  h1 { margin: 0 0 4px; font-size: 22px; color: var(--gold); }
+  p.note { margin: 0; opacity: .8; font-size: 13px; max-width: 980px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 10px 16px; position: sticky; top: 0; background: #10192bee; z-index: 2; }
+  .bar label { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; cursor: pointer; }
+  .bar input[type=checkbox] { width: 20px; height: 20px; }
+  select, input[type=search] { min-height: 40px; border-radius: 10px; border: 2px solid #2b3a5c; background: #1b2740; color: var(--cream);
+    font: 14px "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif; padding: 0 10px; }
+  button { min-height: 44px; padding: 0 14px; border: 0; border-radius: 12px; background: #f27a43; color: #fff;
+    font: bold 14px "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif; box-shadow: 0 4px 0 #b74b2b; cursor: pointer; }
+  button.sec { background: #52b9df; box-shadow: 0 4px 0 #2582aa; }
+  button:active { transform: translateY(2px); box-shadow: 0 2px 0 #b74b2b; }
+  #stats { font-family: monospace; font-size: 12px; opacity: .85; }
+  .wrap { padding: 0 16px 24px; overflow-x: auto; }
+  canvas { display: block; border-radius: 14px; background: #fff6df; touch-action: manipulation; max-width: 100%; height: auto; }
+  h2 { font-size: 16px; color: var(--gold); margin: 18px 0 8px; }
+  code { color: #ffd36b; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Oggy Adventure: Cảnh nền &amp; đồ trang trí</h1>
+  <p class="note">Bộ vẽ ThemeDef (<code>src/gfx/scenery.js</code>) và thư viện decor dùng chung (<code>src/gfx/decor*.js</code>).
+    Mọi hình vẽ bằng Canvas. Thêm <code>?t=1.2</code> vào URL để cố định thời gian khi chụp ảnh, <code>?theme=garden</code> để chọn chủ đề.</p>
+</header>
+<div class="bar">
+  <label>Chủ đề <select id="selTheme"></select></label>
+  <button id="bPrev" class="sec" title="Chủ đề trước">◀</button>
+  <button id="bNext" class="sec" title="Chủ đề sau">▶</button>
+  <label><input type="checkbox" id="optScroll" checked> Tự cuộn camera</label>
+  <label><input type="checkbox" id="optOverlay" checked> Lớp phủ (hạt, decor trước)</label>
+  <label><input type="checkbox" id="optCache" checked> Cache lớp tĩnh</label>
+  <label><input type="checkbox" id="optOggy" checked> Oggy chạy thử</label>
+  <label>Tốc độ <input type="range" id="optSpeed" min="0" max="2" step="0.1" value="1"></label>
+  <span id="stats"></span>
+</div>
+<div class="wrap">
+  <h2>Xem chủ đề (nền → sàn → decor → đạo cụ → lớp phủ)</h2>
+  <canvas id="theme" width="960" height="540"></canvas>
+  <h2>Thư viện decor <input type="search" id="decorFilter" placeholder="Lọc theo tên… (vd: tree, vietnam-)"></h2>
+  <canvas id="decor" width="960" height="300"></canvas>
+  <h2>Lớp parallax</h2>
+  <canvas id="layers" width="960" height="300"></canvas>
+  <h2>Kiểu sàn (platformStyle.pattern)</h2>
+  <canvas id="plats" width="960" height="300"></canvas>
+  <h2>Hạt môi trường (ambient) và đạo cụ mới: trang sách, cổng câu đố, cột cờ lưu điểm</h2>
+  <canvas id="amb" width="960" height="420"></canvas>
+</div>
+
+<!-- Core tối thiểu + gfx + chủ đề của 4 hành trình -->
+<script src="../src/core/namespace.js"></script>
+<script src="../src/core/events.js"></script>
+<script src="../src/core/scenery-registry.js"></script>
+<script src="../src/data/characters.js"></script>
+<script src="../src/gfx/sprites.js"></script>
+<script src="../src/gfx/skins.js"></script>
+<script src="../src/gfx/scenery.js"></script>
+<script src="../src/gfx/decor.js"></script>
+<script src="../src/gfx/decor-places.js"></script>
+<script src="../src/gfx/decor-home.js"></script>
+<script>
+  // Stub tối thiểu để extras.js của hành trình load được ngoài game (chỉ cần phần decor/lớp).
+  (function () {
+    var OG = window.OG;
+    OG.Enemies = OG.Enemies || { registerType: function () {} };
+    OG.Bosses = OG.Bosses || { register: function () {} };
+    OG.Data = OG.Data || {};
+    OG.Data.registerCharacter = OG.Data.registerCharacter || function () {};
+    OG.Journeys = OG.Journeys || { register: function () {} };
+    window.__demoErrors = [];
+    window.addEventListener('error', function (e) { window.__demoErrors.push(e.message); });
+  })();
+</script>
+<script src="../src/journeys/home/theme.js"></script>
+<script src="../src/journeys/home/extras.js"></script>
+<script src="../src/journeys/vietnam/theme.js"></script>
+<script src="../src/journeys/vietnam/extras.js"></script>
+<script src="../src/journeys/world/theme.js"></script>
+<script src="../src/journeys/world/extras.js"></script>
+<script src="../src/journeys/science/theme.js"></script>
+<script src="../src/journeys/science/extras.js"></script>
+<script>
+(function () {
+  'use strict';
+  var OG = window.OG, S = OG.Scenery, SP = OG.Sprites;
+  var TAU = Math.PI * 2, INK = '#17233d';
+  var qs = new URLSearchParams(location.search);
+  var fixedT = qs.has('t') ? parseFloat(qs.get('t')) : null;
+  var $ = function (id) { return document.getElementById(id); };
+
+  // ---- danh sách chủ đề ----
+  var themes = ['kitchen', 'garden', 'roof', 'lair', 'boss'].concat(S.list().sort());
+  var sel = $('selTheme');
+  themes.forEach(function (id) {
+    var d = S.getTheme(id) || (SP.SCENERY_BUILTIN && SP.SCENERY_BUILTIN[id]) || {};
+    var o = document.createElement('option'); o.value = id; o.textContent = id + (d.name ? ' — ' + d.name : '');
+    sel.appendChild(o);
+  });
+  if (qs.has('theme') && themes.indexOf(qs.get('theme')) >= 0) sel.value = qs.get('theme');
+  function step(k) { var i = themes.indexOf(sel.value); sel.value = themes[(i + k + themes.length) % themes.length]; cam = 0; }
+  $('bPrev').onclick = function () { step(-1); };
+  $('bNext').onclick = function () { step(1); };
+  $('optCache').onchange = function () { OG.Decor.setCache(this.checked); };
+  window.addEventListener('keydown', function (e) { if (e.key === 'ArrowRight' && e.target === document.body) step(1); if (e.key === 'ArrowLeft' && e.target === document.body) step(-1); });
+
+  // ---- màn mẫu: sàn có hố, bục, đạo cụ ----
+  var WORLD = 2400;
+  var plats = [
+    { x: 0, y: 480, w: 1060, h: 60, isFloor: true }, { x: 1180, y: 480, w: 1220, h: 60, isFloor: true },
+    { x: 260, y: 380, w: 170, h: 20 }, { x: 560, y: 320, w: 140, h: 20 }, { x: 980, y: 360, w: 260, h: 22 },
+    { x: 1480, y: 370, w: 190, h: 20 }, { x: 1900, y: 330, w: 150, h: 20 }
+  ];
+  var cam = 0, camDir = 1;
+
+  // Oggy chạy qua lại (nếu có OG.Sprites.drawCharacter)
+  var oggy = { x: 120, dir: 1 };
+
+  function drawThemeView(ctx, t, dt) {
+    var th = sel.value;
+    if ($('optScroll').checked) {
+      cam += camDir * 120 * dt;
+      if (cam > WORLD - 960) { cam = WORLD - 960; camDir = -1; }
+      if (cam < 0) { cam = 0; camDir = 1; }
+    }
+    oggy.x += oggy.dir * 160 * dt;
+    if (oggy.x > cam + 860) oggy.dir = -1; if (oggy.x < cam + 100) oggy.dir = 1;
+    if (oggy.x > 1040 && oggy.x < 1200) oggy.x = oggy.dir > 0 ? 1200 : 1040;
+    SP.drawBackground(ctx, th, cam, t);
+    ctx.save(); ctx.translate(-Math.round(cam), 0);
+    plats.forEach(function (p) { SP.drawPlatform(ctx, p, th, t); });
+    SP.drawDecor(ctx, th, WORLD, t);
+    SP.drawProp(ctx, 'page', 340, 330 + Math.sin(t * 3) * 5, t, {});
+    SP.drawProp(ctx, 'page', 630, 270 + Math.sin(t * 3 + 1) * 5, t, { collected: true });
+    SP.drawProp(ctx, 'checkpoint', 820, 480, t, { reached: false });
+    SP.drawProp(ctx, 'checkpoint', 1320, 480, t, { reached: true });
+    SP.drawProp(ctx, 'gate', 1560, 480, t, { open: false });
+    SP.drawProp(ctx, 'gate', 1760, 480, t, { open: true });
+    SP.drawProp(ctx, 'exit', 2250, 480, t, { open: Math.floor(t / 3) % 2 === 0 });
+    for (var i = 0; i < 6; i++) SP.drawProp(ctx, i % 2 ? 'coin' : 'pizza', 160 + i * 380, 430, t);
+    if ($('optOggy').checked && SP.drawCharacter) {
+      ctx.save(); ctx.translate(oggy.x, 480);
+      SP.drawCharacter(ctx, 'oggy', 'run', t, { face: oggy.dir, vx: 0 });
+      ctx.restore();
+    }
+    ctx.restore();
+    if ($('optOverlay').checked && SP.drawOverlay) SP.drawOverlay(ctx, th, cam, t);
+    // nhãn
+    ctx.save();
+    ctx.fillStyle = 'rgba(23,35,61,0.8)'; OG.util.roundRectPath(ctx, 10, 10, 330, 34, 12); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.font = OG.font(15, 'bold'); ctx.textBaseline = 'middle';
+    var d = S.getTheme(th) || (SP.SCENERY_BUILTIN && SP.SCENERY_BUILTIN[th]) || {};
+    ctx.fillText(th + (d.name ? ' — ' + d.name : '') + '  cam ' + Math.round(cam), 22, 28);
+    ctx.restore();
+  }
+
+  // ---- lưới decor ----
+  var CELL_W = 160, CELL_H = 170;
+  function decorKinds() {
+    var f = ($('decorFilter').value || '').trim().toLowerCase();
+    return S.listDecor().filter(function (k) { return !f || k.toLowerCase().indexOf(f) >= 0; });
+  }
+  function drawDecorGrid(ctx, t) {
+    var kinds = decorKinds(), cols = Math.floor(960 / CELL_W), rows = Math.max(1, Math.ceil(kinds.length / cols));
+    var hgt = rows * CELL_H;
+    if (ctx.canvas.height !== hgt) ctx.canvas.height = hgt;
+    ctx.fillStyle = '#fff6df'; ctx.fillRect(0, 0, 960, hgt);
+    kinds.forEach(function (k, i) {
+      var cx = (i % cols) * CELL_W, cy = Math.floor(i / cols) * CELL_H;
+      ctx.fillStyle = i % 2 ? '#eaf6ff' : '#f2fbe8'; ctx.fillRect(cx + 2, cy + 2, CELL_W - 4, CELL_H - 4);
+      ctx.fillStyle = '#d9c7a3'; ctx.fillRect(cx + 2, cy + CELL_H - 34, CELL_W - 4, 6);
+      ctx.save();
+      ctx.beginPath(); ctx.rect(cx + 2, cy + 2, CELL_W - 4, CELL_H - 4); ctx.clip();
+      // co nhỏ decor to (đền, tháp…) cho vừa ô
+      var big = /pyramid|temple|eiffel|tower|pagoda|palm|tree|sakura|bamboo|volcano|mountain|karst|fridge|clock|house|torii|windmill|lamp|lantern|flag|stall|sphinx|boat|igloo|sofa|pine|snowman|chimney|rocket|cactus/.test(k);
+      var sc = big ? 0.55 : 0.85;
+      var ok = S.drawDecor(ctx, k, cx + CELL_W / 2, cy + CELL_H - 34, sc, t + i * 0.37, {});
+      ctx.restore();
+      ctx.fillStyle = ok ? INK : '#e5484d'; ctx.font = OG.font(12, 'bold'); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(k + (ok ? '' : ' (dự phòng)'), cx + CELL_W / 2, cy + CELL_H - 15);
+    });
+  }
+
+  // ---- lưới lớp parallax ----
+  var LAYER_CFG = {
+    hills: { color: '#8fd27a', flowers: true }, mountains: { color: '#8fa8d8', snow: true, face: true }, waves: { y: 440 },
+    decorRow: { decor: 'tree', y: 470, scale: 0.6, spacing: 200 }, clouds: { y: 160, count: 5 }, city: { y: 460 }, sea: { y: 380 },
+    dunes: { y: 460 }, forest: { y: 470 }, snowHills: { y: 460 }, stars: {}, volcanoes: { y: 470 }, karsts: { y: 460 }, fields: { y: 440 },
+    kitchenWall: {}, kitchenCounter: { y: 400 }, roofHouses: { y: 500 }, caveCeiling: {}, caveRocks: { y: 500 }, roachEyes: { y: 170, height: 200 }
+  };
+  function drawLayerGrid(ctx, t) {
+    var kinds = S.listLayers(), cols = 2, cw = 480, ch = 270, rows = Math.ceil(kinds.length / cols);
+    if (ctx.canvas.height !== rows * ch) ctx.canvas.height = rows * ch;
+    var lcam = t * 60;
+    kinds.forEach(function (k, i) {
+      var cx = (i % cols) * cw, cy = Math.floor(i / cols) * ch;
+      ctx.save(); ctx.beginPath(); ctx.rect(cx, cy, cw, ch); ctx.clip();
+      ctx.translate(cx, cy); ctx.scale(0.5, 0.5);
+      var dark = /stars|cave|roach/.test(k);
+      var g = ctx.createLinearGradient(0, 0, 0, 540); g.addColorStop(0, dark ? '#241c3a' : '#8ed8f8'); g.addColorStop(1, dark ? '#4d3d6b' : '#fdf3d0');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, 960, 540);
+      var L = Object.assign({ kind: k, parallax: 0.5 }, LAYER_CFG[k] || {});
+      S.drawLayer(ctx, L, lcam, t, { id: 'demo' });
+      ctx.restore();
+      ctx.save(); ctx.fillStyle = 'rgba(23,35,61,0.8)'; ctx.fillRect(cx + 6, cy + 6, 170, 24);
+      ctx.fillStyle = '#fff'; ctx.font = OG.font(13, 'bold'); ctx.textBaseline = 'middle'; ctx.fillText(k, cx + 14, cy + 18); ctx.restore();
+      ctx.strokeStyle = '#10192b'; ctx.lineWidth = 2; ctx.strokeRect(cx + 1, cy + 1, cw - 2, ch - 2);
+    });
+  }
+
+  // ---- kiểu sàn ----
+  var PAT_COLORS = {
+    plain: ['#e9a34f', '#75bd59'], grass: ['#c98b4f', '#6cc35a'], tiles: ['#fff1d6', '#c98b4f'], wood: ['#b97945', '#f5d28b'], roof: ['#b5523b', '#de7a52'],
+    brick: ['#9c4a3a', '#f0a77e'], stone: ['#8e9ab0', '#c8d0e0'], metal: ['#8a9bb4', '#c8d4e2'], sand: ['#f2c46d', '#ffe3a0'], snow: ['#a9d6f2', '#ffffff'],
+    ice: ['#9fd8f5', '#e2f6ff'], cave: ['#3d3352', '#6d5c90'], cloud: ['#e8f4ff', '#ffffff']
+  };
+  function drawPlatGrid(ctx, t) {
+    var pats = SP.PLATFORM_PATTERNS || [], cols = 3, cw = 320, ch = 150, rows = Math.ceil(pats.length / cols);
+    if (ctx.canvas.height !== rows * ch) ctx.canvas.height = rows * ch;
+    ctx.fillStyle = '#cfefff'; ctx.fillRect(0, 0, 960, rows * ch);
+    pats.forEach(function (p, i) {
+      var c = PAT_COLORS[p] || ['#999999', '#bbbbbb'];
+      S.registerTheme('__demo_' + p, { platformStyle: { floor: { pattern: p, fill: c[0], top: c[1], hazard: p === 'metal' }, ledge: { pattern: p, fill: c[0], top: c[1] } } });
+      var cx = (i % cols) * cw, cy = Math.floor(i / cols) * ch;
+      ctx.save(); ctx.beginPath(); ctx.rect(cx, cy, cw, ch); ctx.clip();
+      ctx.fillStyle = i % 2 ? '#bfe6ff' : '#d8f1ff'; ctx.fillRect(cx, cy, cw, ch);
+      ctx.translate(cx, cy - 380);
+      SP.drawPlatform(ctx, { x: 10, y: 480, w: cw - 20, h: 60, isFloor: true }, '__demo_' + p, t);
+      SP.drawPlatform(ctx, { x: 70, y: 418, w: 180, h: 22 }, '__demo_' + p, t);
+      ctx.restore();
+      ctx.fillStyle = INK; ctx.font = OG.font(13, 'bold'); ctx.textBaseline = 'middle'; ctx.fillText(p, cx + 12, cy + 16);
+    });
+  }
+
+  // ---- hạt môi trường + đạo cụ ----
+  function drawAmbProps(ctx, t) {
+    var kinds = SP.AMBIENT_KINDS || [], cw = 320, ch = 140;
+    ctx.fillStyle = '#10192b'; ctx.fillRect(0, 0, 960, 420);
+    kinds.forEach(function (k, i) {
+      var cx = (i % 3) * cw, cy = Math.floor(i / 3) * ch;
+      ctx.save(); ctx.beginPath(); ctx.rect(cx + 2, cy + 2, cw - 4, ch - 4); ctx.clip();
+      var g = ctx.createLinearGradient(0, cy, 0, cy + ch); g.addColorStop(0, /fire|stars|spark/.test(k) ? '#2b2350' : '#76c9ee'); g.addColorStop(1, /fire|stars|spark/.test(k) ? '#4d3d6b' : '#d8f3ff');
+      ctx.fillStyle = g; ctx.fillRect(cx, cy, cw, ch);
+      ctx.translate(cx, cy); ctx.scale(cw / 960, ch / 540);
+      SP.drawAmbient(ctx, { kind: k, count: 40 }, t * 30, t);
+      ctx.restore();
+      ctx.fillStyle = '#fff'; ctx.font = OG.font(13, 'bold'); ctx.textBaseline = 'middle'; ctx.fillText(k, cx + 12, cy + 16);
+    });
+  }
+
+  // ---- vòng lặp ----
+  var ctxT = $('theme').getContext('2d'), ctxD = $('decor').getContext('2d'), ctxL = $('layers').getContext('2d');
+  var ctxP = $('plats').getContext('2d'), ctxA = $('amb').getContext('2d');
+  var last = performance.now(), sim = 0, fps = 0, frames = 0, fpsT = 0, slow = 0;
+  function frame(now) {
+    var dt = Math.min(0.05, (now - last) / 1000); last = now;
+    sim += dt * parseFloat($('optSpeed').value);
+    var t = fixedT != null ? fixedT : sim;
+    var t0 = performance.now();
+    drawThemeView(ctxT, t, fixedT != null ? 0 : dt * parseFloat($('optSpeed').value));
+    var themeMs = performance.now() - t0;
+    if ((frames % 2) === 0) { drawDecorGrid(ctxD, t); drawLayerGrid(ctxL, t); }
+    if ((frames % 3) === 0) { drawPlatGrid(ctxP, t); drawAmbProps(ctxA, t); }
+    frames++; fpsT += dt; slow = slow * 0.9 + themeMs * 0.1;
+    if (fpsT > 0.5) { fps = Math.round(frames / fpsT); frames = 0; fpsT = 0; }
+    var cs = OG.Decor.cacheStats();
+    $('stats').textContent = fps + ' fps · khung chủ đề ' + slow.toFixed(1) + ' ms · cache ' + cs.tiles + ' lớp/' + cs.sprites + ' ảnh · decor ' + S.listDecor().length +
+      ' · lớp ' + S.listLayers().length + (window.__demoErrors.length ? ' · LỖI: ' + window.__demoErrors.length : '');
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

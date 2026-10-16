@@ -107,6 +107,8 @@
       var away = -b.dirToPlayer(arena);
       var x = U.clamp(b.cx() + away * 170, 60, W - 60);
       if (Math.abs(x - px) < 200) x = U.clamp(px + (px < W / 2 ? 320 : -320), 60, W - 60);
+      // Bánh không rơi dưới mặt quầy: Dee Dee ăn dưới quầy thì người chơi không giẫm được (lỗi "Dee Dee ở bếp").
+      x = K.clearSpot(arena, x, b.w / 2 + 4);
       b.food = { x: x, y: -30, vy: 0, landed: false };
       K.text(arena, x, 120, 'Bánh kem!', '#f29bb8');
     }
@@ -182,10 +184,12 @@
           if (b.stateDone()) b.choose(arena);
           break;
         case 'walk':
-          b.faceToPlayer(arena);
+          // Đi về phía người chơi nhưng dừng ở chỗ trống (không chui xuống dưới quầy — ở đó không giẫm được).
+          var tx = K.clearSpot(arena, K.pcx(arena), b.w / 2 + 4);
+          b.face = tx < b.cx() ? -1 : 1;
           b.vx = b.face * spd([55, 65, 75]);
-          if (Math.abs(K.pcx(arena) - b.cx()) < 20) b.vx = 0;
-          b.setAnim('walk');
+          if (Math.abs(tx - b.cx()) < 20) { b.vx = 0; b.faceToPlayer(arena); }
+          b.setAnim(b.vx ? 'walk' : 'idle');
           if (b.stateDone()) { b.vx = 0; b.choose(arena); }
           break;
         case 'rollWind':
@@ -282,6 +286,7 @@
     };
 
     b.onPhase = function () { /* giữ nguyên đồ ăn nếu đang rơi */ };
+    b.onBreather = updateFood; // bánh vẫn rơi / vẫn giật được khi Dee Dee nghỉ thở
 
     b.drawBehind = function (ctx, arena, t) {
       if (b.food) drawFood(ctx, b.food, floorY, t);

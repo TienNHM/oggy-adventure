@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#17233d">
+<title>Story Demo — Oggy Adventure</title>
+<!-- TRANG XEM THỬ của agent story-ui (src/story/). Sinh từ index.html: cùng DOM + thứ tự script, thêm thanh công cụ
+     để mở từng scene v2 với dữ liệu hành trình thật. Mở trực tiếp qua file://. -->
+<style>
+:root{--ink:#17233d;--cream:#fff6df;--gold:#ffc94a;--blue:#52c5ee;--orange:#f27a43;--secondary:#52b9df}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#10192b;font-family:"Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",Arial,sans-serif;color:white}
+#wrap{height:100%;display:grid;place-items:center;padding:12px}
+#gameShell{width:min(1100px,100%,calc((100vh - 24px) * 16 / 9));position:relative;aspect-ratio:16/9;max-height:calc(100vh - 24px);border:5px solid #fff0c9;border-radius:20px;overflow:hidden;box-shadow:0 18px 60px #0009;background:#8adcf4}
+canvas{display:block;width:100%;height:100%;touch-action:none}
+#hud{position:absolute;inset:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:12px 16px;pointer-events:none;text-shadow:0 2px 3px #26334c}
+.pill{background:#17233ddd;border:2px solid #fff4d6;border-radius:99px;padding:7px 12px;font-weight:900;font-size:clamp(11px,1.5vw,16px)}
+#hudLeft,#hudRight{display:flex;gap:8px;align-items:center}
+#pauseBtn{position:absolute;top:10px;left:50%;transform:translateX(-50%);width:40px;height:40px;padding:0;border-radius:12px;background:#17233dbb;border:2px solid #fff;font-size:18px;box-shadow:0 3px 0 #080e1c88}
+#overlay{position:absolute;inset:0;display:grid;place-items:center;background:linear-gradient(#15213b88,#15213bcc);padding:18px;overflow:auto}
+.panel{width:min(520px,94%);background:#fff6df;color:#25314a;border:5px solid #fff;border-radius:24px;padding:clamp(18px,3vw,30px);text-align:center;box-shadow:0 12px 0 #b87542}
+.panel h1{font-size:clamp(27px,5vw,48px);margin:0 0 8px;color:#ed713c;text-shadow:2px 3px #ffd36b}
+.panel p{line-height:1.5;margin:8px 0 18px;font-weight:700}
+button{border:0;border-radius:14px;padding:12px 20px;background:#f27a43;color:white;font-size:17px;font-weight:900;cursor:pointer;box-shadow:0 5px 0 #b74b2b;font-family:inherit}
+button:active{transform:translateY(3px);box-shadow:0 2px 0 #b74b2b}
+#pauseBtn:active{transform:translateX(-50%) translateY(2px)}
+.secondary{background:#52b9df;box-shadow:0 5px 0 #2582aa}
+.actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+#toast{position:absolute;top:22%;left:50%;transform:translateX(-50%);background:#17233ddd;border:2px solid white;border-radius:14px;padding:10px 16px;font-weight:900;opacity:0;transition:opacity .2s;pointer-events:none;text-align:center;z-index:5}
+#mobileControls{position:absolute;bottom:12px;left:12px;right:12px;display:none;justify-content:space-between;pointer-events:none}
+.pad{display:flex;gap:10px}
+.touch{pointer-events:auto;width:58px;height:58px;padding:0;border-radius:18px;background:#17233dbb;border:2px solid #fff;color:white;font-size:25px;box-shadow:0 4px 0 #080e1c88;touch-action:none;user-select:none;-webkit-user-select:none}
+.touch.held{background:#f27a43cc}
+@media(pointer:coarse),(max-width:700px){#mobileControls{display:flex}#gameShell{border-width:3px;border-radius:12px}#hud{padding:7px}.pill{padding:5px 8px}}
+/* Điện thoại dựng đứng: khung 16:9 rất nhỏ → gợi ý xoay ngang (game vẫn chơi được). */
+@media(orientation:portrait) and (max-width:700px){#wrap{align-content:center;gap:14px}#wrap::after{content:"📱 Xoay ngang điện thoại để chơi dễ hơn";font-weight:800;font-size:14px;opacity:.85;text-align:center}}
+#gameShell.touch-on #mobileControls{display:flex}
+#gameShell.touch-off #mobileControls,#mobileControls.hidden{display:none!important}
+.small{font-size:12px;opacity:.8}
+.hidden{display:none!important}
+</style>
+<!-- Style của module tính năng (load sau để có thể ghi đè) -->
+<link rel="stylesheet" href="../../src/ui/ui.css">
+<link rel="stylesheet" href="../../src/social/social.css">
+<link rel="stylesheet" href="../../src/story/story.css">
+</head>
+<body>
+<div id="wrap"><div id="gameShell">
+  <canvas id="game" width="960" height="540" aria-label="Oggy Adventure game"></canvas>
+  <!-- HUD mặc định: OG.Menus.updateHud() cập nhật; agent UI được thay nội dung bên trong #hud -->
+  <div id="hud">
+    <div id="hudLeft"><div class="pill" id="level">🏡 Nhà Oggy</div><div class="pill" id="objective">🍕 0/5</div></div>
+    <div id="hudRight"><div class="pill" id="coins">🪙 0</div><div class="pill" id="lives">❤️❤️❤️</div><div class="pill" id="score">⭐ 0</div></div>
+  </div>
+  <button id="pauseBtn" type="button" aria-label="Tạm dừng" style="display:none">⏸</button>
+  <div id="toast"></div>
+  <div id="mobileControls">
+    <div class="pad"><button class="touch" data-key="left" aria-label="Trái">◀</button><button class="touch" data-key="right" aria-label="Phải">▶</button></div>
+    <div class="pad"><button class="touch" data-key="action" aria-label="Tương tác">✦</button><button class="touch" data-key="jump" aria-label="Nhảy">⬆</button></div>
+  </div>
+  <!-- Lớp panel (menu, tạm dừng, kết quả...) do OG.DOM.panel() điều khiển -->
+  <div id="overlay" style="display:none"></div>
+</div></div>
+
+<!-- ===== THỨ TỰ LOAD SCRIPT (không dùng ES modules để chạy được qua file://) ===== -->
+<!-- 1. Core (agent Tích hợp) -->
+<script src="../../src/core/namespace.js"></script>
+<script src="../../src/core/events.js"></script>
+<script src="../../src/core/save.js"></script>
+<script src="../../src/core/input.js"></script>
+<script src="../../src/core/camera.js"></script>
+<script src="../../src/core/physics.js"></script>
+<script src="../../src/core/dom.js"></script>
+<script src="../../src/core/scenes.js"></script>
+<script src="../../src/core/loop.js"></script>
+<script src="../../src/core/scenery-registry.js"></script>
+<script src="../../src/core/journeys.js"></script>
+<!-- 2. Dữ liệu (agent Tích hợp) -->
+<script src="../../src/data/characters.js"></script>
+<script src="../../src/data/levels.js"></script>
+<!-- 3. Đồ hoạ (agent Sprites) -->
+<script src="../../src/gfx/sprites.js"></script>
+<script src="../../src/gfx/skins.js"></script>
+<script src="../../src/gfx/scenery.js"></script>
+<script src="../../src/gfx/decor.js"></script>
+<script src="../../src/gfx/decor-places.js"></script>
+<script src="../../src/gfx/decor-home.js"></script>
+<!-- 4. Âm thanh (agent Audio) -->
+<script src="../../src/audio/audio.js"></script>
+<script src="../../src/audio/music.js"></script>
+<!-- 5. Gameplay (agent Tích hợp) — đăng ký scene mặc định -->
+<script src="../../src/game/particles.js"></script>
+<script src="../../src/game/progress.js"></script>
+<script src="../../src/game/difficulty.js"></script>
+<script src="../../src/game/game.js"></script>
+<script src="../../src/game/player.js"></script>
+<script src="../../src/game/enemies.js"></script>
+<script src="../../src/game/collectibles.js"></script>
+<script src="../../src/game/level.js"></script>
+<script src="../../src/game/boss-scene.js"></script>
+<script src="../../src/game/default-scenes.js"></script>
+<!-- 6. Trùm (agent Bosses) -->
+<script src="../../src/bosses/bosses.js"></script>
+<script src="../../src/bosses/joey.js"></script>
+<script src="../../src/bosses/marky.js"></script>
+<script src="../../src/bosses/deedee.js"></script>
+<script src="../../src/bosses/trio.js"></script>
+<!-- 7. Bản đồ & nhiệm vụ (agent World & Quests) -->
+<script src="../../src/world/extraLevels.js"></script>
+<script src="../../src/world/world.js"></script>
+<script src="../../src/world/journey-map.js"></script>
+<script src="../../src/world/quests.js"></script>
+<!-- 8. Giao diện & cửa hàng (agent Menus & Shop) -->
+<script src="../../src/ui/menus.js"></script>
+<script src="../../src/ui/hud.js"></script>
+<script src="../../src/ui/shop.js"></script>
+<!-- 9. Xã hội (agent Social) -->
+<script src="../../src/social/social.js"></script>
+<script src="../../src/social/leaderboard.js"></script>
+<!-- 10. Hành trình học tập v2 (agent story-ui) — docs/STORY.md -->
+<script src="../../src/story/story.js"></script>
+<script src="../../src/story/learn.js"></script>
+<script src="../../src/story/guide.js"></script>
+<script src="../../src/story/scenes.js"></script>
+<!-- 11. Dữ liệu hành trình (mỗi agent journey-<id> chỉ sửa thư mục của mình): theme → content → extras → journey -->
+<script src="../../src/journeys/home/theme.js"></script>
+<script src="../../src/journeys/home/content.js"></script>
+<script src="../../src/journeys/home/extras.js"></script>
+<script src="../../src/journeys/home/journey.js"></script>
+<script src="../../src/journeys/vietnam/theme.js"></script>
+<script src="../../src/journeys/vietnam/content.js"></script>
+<script src="../../src/journeys/vietnam/extras.js"></script>
+<script src="../../src/journeys/vietnam/journey.js"></script>
+<script src="../../src/journeys/world/theme.js"></script>
+<script src="../../src/journeys/world/content.js"></script>
+<script src="../../src/journeys/world/extras.js"></script>
+<script src="../../src/journeys/world/journey.js"></script>
+<script src="../../src/journeys/science/theme.js"></script>
+<script src="../../src/journeys/science/content.js"></script>
+<script src="../../src/journeys/science/extras.js"></script>
+<script src="../../src/journeys/science/journey.js"></script>
+<!-- 12. Khởi động (agent Tích hợp) — LUÔN CUỐI -->
+<script src="../../src/core/main.js"></script>
+
+<style>
+#demoBar{position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:center;padding:8px;background:#0b1222ee;border-top:2px solid #fff4d6;font-size:14px}
+#demoBar select,#demoBar button{font:inherit;font-weight:800;border-radius:10px;padding:7px 10px;min-height:0;box-shadow:none}
+#demoBar select{background:#fff6df;color:#17233d;border:2px solid #17233d}
+#demoBar label{font-weight:800}
+#wrap{padding-bottom:70px}
+</style>
+<div id="demoBar">
+  <label>Hành trình <select id="demoJ"></select></label>
+  <button data-demo="journeySelect">Chọn hành trình</button>
+  <button data-demo="journeyMap">Bản đồ</button>
+  <label>Truyện <select id="demoC"></select></label><button data-demo="comic">▶ Truyện</button>
+  <button data-demo="card">Thẻ mới</button>
+  <button data-demo="quiz">Câu đố</button>
+  <button data-demo="notebook">Sổ tay</button>
+  <button data-demo="level">Màn 1 (dẫn đường)</button>
+  <button data-demo="journeyEnd">Kết thúc</button>
+  <button data-demo="unlock" class="secondary">Mở hết thẻ</button>
+</div>
+<script>
+/* Thanh công cụ xem thử (chạy sau main.js). Chỉ gọi API công khai của OG. */
+(function () {
+  'use strict';
+  var OG = window.OG;
+  var $ = function (id) { return document.getElementById(id); };
+  function jid() { return $('demoJ').value; }
+  function fillComics() {
+    var j = OG.Journeys.get(jid()) || { comics: {} };
+    $('demoC').innerHTML = Object.keys(j.comics || {}).map(function (c) { return '<option>' + OG.util.escapeHtml(c) + '</option>'; }).join('');
+  }
+  function start() {
+    $('demoJ').innerHTML = OG.Journeys.ids().map(function (id) { return '<option>' + id + '</option>'; }).join('');
+    $('demoJ').addEventListener('change', fillComics);
+    fillComics();
+    var acts = {
+      journeySelect: function () { OG.Scenes.go('journeySelect', { back: 'menu' }); },
+      journeyMap: function () { OG.Game.newRun({ journeyId: jid() }); OG.Scenes.go('journeyMap', { journeyId: jid() }); },
+      comic: function () { OG.Scenes.go('comic', { journeyId: jid(), comicId: $('demoC').value, onDone: function () { OG.Scenes.go('journeyMap', { journeyId: jid() }); } }); },
+      card: function () {
+        var c = OG.Journeys.cardsOf(jid())[0]; if (!c) return;
+        OG.Scenes.go('journeyMap', { journeyId: jid() });
+        OG.Scenes.push('card', { journeyId: jid(), cardId: c.id, isNew: true });
+      },
+      quiz: function () {
+        var q = (OG.Journeys.get(jid()).quizzes || [])[0]; if (!q) return;
+        OG.Game.newRun({ journeyId: jid() });
+        OG.Game.startLevel(OG.Journeys.levelIds(jid())[0]);
+        OG.Learn.openQuiz(jid(), q.id, { levelId: null, gateId: null });
+      },
+      notebook: function () { OG.Learn.openNotebook(jid(), 'journeyMap', { journeyId: jid() }); },
+      level: function () { OG.Story.startJourney(jid(), { skipIntro: true }); OG.Story.playLevel(OG.Journeys.levelIds(jid())[0]); },
+      journeyEnd: function () { OG.Scenes.go('journeyEnd', { journeyId: jid() }); },
+      unlock: function () { OG.Journeys.cardsOf(jid()).forEach(function (c) { OG.Learn.unlockCard(jid(), c.id, { silent: true }); }); OG.DOM.toast('Đã mở hết thẻ 📒'); }
+    };
+    Array.prototype.forEach.call(document.querySelectorAll('[data-demo]'), function (b) {
+      b.addEventListener('click', function () { b.blur(); acts[b.getAttribute('data-demo')](); });
+    });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { setTimeout(start, 0); });
+  else setTimeout(start, 0);
+})();
+</script>
+</body>
+</html>

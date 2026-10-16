@@ -56,7 +56,28 @@
     SOCIAL_SHARE: 'social:share',       // {method, ok}
     SOCIAL_NAME_CHANGE: 'social:nameChange', // {name}
     SOCIAL_ONLINE_SUBMIT: 'social:onlineSubmit', // {entry, ok, rank}
-    LEADERBOARD_CLEAR: 'leaderboard:clear' // {}
+    LEADERBOARD_CLEAR: 'leaderboard:clear', // {}
+
+    // ---- v2: Hành trình học tập (docs/STORY.md mục 7) ----
+    JOURNEY_SELECT: 'journey:select',     // {journeyId, difficulty}
+    JOURNEY_COMPLETE: 'journey:complete', // {journeyId, cards, totalCards}
+    AREA_ENTER: 'area:enter',             // {journeyId, areaId, levelId}
+    AREA_COMPLETE: 'area:complete',       // {journeyId, areaId}
+    PAGE_COLLECT: 'page:collect',         // {journeyId, levelId, cardId, x, y, isNew}
+    CARD_UNLOCK: 'card:unlock',           // {journeyId, cardId, count, total}
+    CARD_OPEN: 'card:open',               // {journeyId, cardId, from:'level'|'notebook'}
+    QUIZ_OPEN: 'quiz:open',               // {journeyId, quizId, levelId, gateId}
+    QUIZ_ANSWER: 'quiz:answer',           // {journeyId, quizId, choice, correct, tries}
+    QUIZ_PASS: 'quiz:pass',               // {journeyId, quizId, tries, firstTry, levelId, gateId}
+    GATE_OPEN: 'gate:open',               // {levelId, gateId, quizId, x}
+    COMIC_START: 'comic:start',           // {journeyId, comicId, panels}
+    COMIC_END: 'comic:end',               // {journeyId, comicId, skipped}
+    GUIDE_TALK: 'guide:talk',             // {journeyId, charId, levelId, spot, text}
+    NOTEBOOK_OPEN: 'notebook:open',       // {journeyId}
+    CHECKPOINT_REACH: 'checkpoint:reach', // {levelId, index, x, y}
+    PLAYER_RESPAWN: 'player:respawn',     // {cause:'fall'|'softfail', x, y, levelId}
+    DIFFICULTY_CHANGE: 'difficulty:change', // {mode, prev}
+    ASSIST_ON: 'assist:on'                // {levelId, level, fails}
   };
 
   OG.Events = {

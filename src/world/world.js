@@ -1032,6 +1032,8 @@
     if (!OG.Scenes || !OG.Scenes.register) return;
     OG.Scenes.register('worldmap', scene);
     World.enabled = true;
+    // v2: bản đồ hành trình vẽ canvas (src/world/journey-map.js) thay bản panel DOM của src/story.
+    if (World.journeyMap && typeof World.journeyMap.register === 'function') U.safe('World.journeyMap.register', World.journeyMap.register, World.journeyMap);
   };
 
   World.focusLevel = function (levelId) {

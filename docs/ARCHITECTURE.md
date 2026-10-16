@@ -3,6 +3,14 @@
 Tài liệu này là **hợp đồng chung** giữa 7 agent: 1 agent Tích hợp và 6 agent tính năng làm việc song song.
 Ai cũng phải tuân theo. Nếu có mâu thuẫn giữa tài liệu này và chú thích trong code thì **tài liệu này được ưu tiên**.
 
+> **v2 — Hành trình học tập:** định dạng dữ liệu hành trình, API `OG.Journeys`, `OG.Scenery`, `OG.Difficulty`,
+> `OG.Story/Learn/Guide`, level hooks, scene và event mới, danh sách nhân vật cần vẽ và **quyền sở hữu file giai đoạn v2**
+> nằm trong **[`docs/STORY.md`](STORY.md)**. Với phần v2, `STORY.md` được ưu tiên (bảng sở hữu mục 1 dưới đây là của v1).
+>
+> **Trạng thái v2 (đã tích hợp):** menu chính lấy `📖 PHIÊU LƯU HỌC TẬP` làm nút chính → chọn chế độ (`modeSelect`) →
+> chọn hành trình → truyện → bản đồ hành trình canvas (`src/world/journey-map.js`) → màn chơi → trùm → … → `journeyEnd`
+> (lưu điểm, bảng xếp hạng). Chiến dịch cổ điển v1 vẫn còn (nút `▶ CHƠI CỔ ĐIỂN`).
+
 ---
 
 ## 0. Ràng buộc kỹ thuật
@@ -70,9 +78,12 @@ Quy tắc:
                  src/core/loop.js        OG.Loop
  2. Data         src/data/characters.js  OG.Data.characters/skins/playable
                  src/data/levels.js      OG.Data.levels
- 3. Sprites      src/gfx/sprites.js      OG.Sprites (nhân vật)
-                 src/gfx/skins.js        skin oggy_chef/oggy_super + phụ kiện skin (OG.Sprites.skinGfx)
-                 src/gfx/scenery.js      OG.Sprites (nền, sàn, đạo cụ)
+ 3. Sprites      src/gfx/sprites.js      OG.Sprites (nhân vật + NPC v2, phụ kiện, chân dung)
+                 src/gfx/skins.js        skin oggy_chef/oggy_super/oggy_explorer/... + phụ kiện skin (OG.Sprites.skinGfx)
+                 src/gfx/scenery.js      OG.Sprites (nền, sàn, đạo cụ) — bộ vẽ ThemeDef v2
+                 src/gfx/decor.js        OG.Decor + thư viện decor/lớp parallax (lõi, thiên nhiên)
+                 src/gfx/decor-places.js decor nhà cửa, danh thắng
+                 src/gfx/decor-home.js   decor đồ trong nhà, gag nền, khoa học
  4. Audio        src/audio/audio.js      OG.Audio
                  src/audio/music.js      OG.Audio.tracks
  5. Game         src/game/particles.js   OG.Particles
@@ -87,15 +98,22 @@ Quy tắc:
  6. Bosses       src/bosses/bosses.js    OG.Bosses (registry)
                  src/bosses/joey.js, marky.js, deedee.js, trio.js
  7. World        src/world/extraLevels.js  3 màn phụ basement/bathroom/attic (registerLevel lúc load)
-                 src/world/world.js      OG.World
+                 src/world/world.js      OG.World (scene 'worldmap')
+                 src/world/journey-map.js OG.World.journeyMap (scene 'journeyMap' canvas, đăng ký trong World.init)
                  src/world/quests.js     OG.Quests
  8. UI           src/ui/menus.js         OG.Menus
                  src/ui/hud.js           OG.Menus.updateHud/drawHud
                  src/ui/shop.js          OG.Shop
  9. Social       src/social/social.js    OG.Social
                  src/social/leaderboard.js
-10. Boot         src/core/main.js        LUÔN CUỐI
+10. Story (v2)   src/story/story.js, learn.js, guide.js, scenes.js   (+ <link> src/story/story.css)
+11. Journeys     src/journeys/<home|vietnam|world|science>/theme.js → content.js → extras.js → journey.js
+12. Boot         src/core/main.js        LUÔN CUỐI
 ```
+v2 thêm vào nhóm có sẵn: `src/core/scenery-registry.js` + `src/core/journeys.js` (sau loop.js), `src/gfx/decor.js`
+→ `decor-places.js` → `decor-home.js` (sau scenery.js, trước mọi `src/journeys/*/theme.js`), `src/game/difficulty.js`
+(sau progress.js), `src/world/journey-map.js` (ngay sau world.js). Thứ tự init: `Difficulty, Audio, Sprites, Bosses, World,
+Quests, Menus, Shop, Social, Learn, Guide, Story`, rồi `OG.Journeys.init()` (kiểm tra dữ liệu). Chi tiết: `docs/STORY.md`.
 
 **Các giai đoạn chạy:**
 - *Thời điểm load*: file chỉ khai báo API và có thể gọi `OG.Bosses.register(...)` hoặc `OG.Data.register*`.
@@ -157,7 +175,7 @@ Joey chạy nhanh và thỉnh thoảng lao gấp đôi, Marky đi chậm và nh�
 | portalFrame / portalDoor | `#f4d45b` / `#5b9be8` | cửa EXIT |
 | oggyHead / oggyBody / oggyEar / oggyFeet / oggyMuzzle | `#328be7` `#2877d5` `#2471cb` `#263b9b` `#d9f0ff` | Oggy |
 | roachBody / roachShell / roachLeg | `#7d3e9b` `#b56bc7` `#4b285d` | gián con |
-| joey / marky / deedee | `#c45bd1` / `#5fae4e` / `#e08a3c` | bộ ba gián |
+| joey / marky / deedee | `#c45bd1` / `#5fae4e` / `#3f8de0` | bộ ba gián (v2: Dee Dee **xanh dương** như bản gốc; shell `#86c3f7`, chân `#1f4f96`) |
 | jack / olivia / oliviaAccent | `#58b84a` / `#f7f1ea` / `#f29bb8` | nhân vật phụ |
 | danger / success | `#e5484d` / `#3fbf6f` | trạng thái |
 
@@ -180,9 +198,11 @@ Mỗi lần đổi scene, `OG.Input.reset()` được gọi để tránh kẹt p
 | Scene | Chủ sở hữu | Mặc định (MVP) | Yêu cầu |
 |---|---|---|---|
 | `boot` | Tích hợp | chuyển ngay sang `menu` | — |
-| `menu` | **Menus** | panel MVP, nút Bắt đầu | Chơi: `OG.Game.newRun(); OG.Scenes.go('worldmap')` |
+| `menu` | **Menus** | panel MVP, nút Bắt đầu | v2: nút chính `[data-act="journey"]` (📖 PHIÊU LƯU HỌC TẬP) → `modeSelect`; `[data-act="play"]` (▶ CHƠI CỔ ĐIỂN): `OG.Game.newRun(); OG.Scenes.go('worldmap')`; `[data-act="notebook"]` → `notebookHub` |
+| `modeSelect` | **Menus** (v2) | — | Bé chơi / Thử thách (`[data-act="mode"][data-arg]`), nhớ lựa chọn → `journeySelect{back:'modeSelect'}` |
+| `notebookHub` | **Menus** (v2) | — | Sổ tay khám phá: `[data-act="book"][data-arg=jid]` → `notebook` |
 | `charselect` | **Menus** | (chưa có) | xem `src/ui/menus.js` |
-| `settings` | **Menus** | (chưa có) | |
+| `settings` | **Menus** | (chưa có) | v2: thêm 🎮 Chế độ chơi (`[data-act="diff"]`) và 👆 Chạm để nhảy (`[data-act="tapjump"]`, `settings.tapJump`) |
 | `shop` | **Menus & Shop** (`OG.Shop`) | (chưa có) | `params.back` = scene quay về |
 | `worldmap` | **World** | tự vào màn `run.nextLevel` | chọn màn rồi gọi `OG.Game.startLevel(id)` |
 | `level` | Tích hợp | gameplay | `params.levelId` |
@@ -190,7 +210,9 @@ Mỗi lần đổi scene, `OG.Input.reset()` được gọi để tránh kẹt p
 | `pause` | **Menus** | panel Tạm dừng | push; `drawBelow:true`; phát `game:pause`; Esc/P để tiếp tục (`pop`) |
 | `gameover` | **Menus** | panel MVP | `params.result` (RunResult); gọi `OG.Social.mountResult(panel, result)` |
 | `victory` | **Menus** | panel MVP | như trên |
-| `leaderboard` | **Social** | (chưa có) | `params.back` |
+| `leaderboard` | **Social** | (chưa có) | `params.back`, `params.backParams` (vd từ `journeyEnd`) |
+| `journeyMap` | **World** (v2, canvas) | bản DOM dự phòng trong `src/story/scenes.js` | xem `docs/STORY.md` mục 6.5 |
+| `journeySelect, comic, card, quiz, notebook, journeyEnd` | **story-ui** (v2) | — | xem `docs/STORY.md` mục 6.5 |
 
 Tiện ích vẽ nền dùng chung: `OG.drawTitleBackdrop(ctx)` (bếp kèm nhân vật đã chọn) và `OG.drawLastPlayScene(ctx)` (khung cảnh màn hoặc boss gần nhất, đứng yên).
 
@@ -204,7 +226,9 @@ boot → menu → [newRun] → worldmap → level ─(đủ pizza + chạm EXIT,
    Esc/P/nút ⏸/mất focus → push pause  (pause → push settings{overlay} → pop)
    gameover/victory → Social.mountResult (nhập tên, lưu điểm, chia sẻ) → leaderboard{back, backParams:{result}} → quay lại
 ```
-Menu chính: CHƠI (`newRun` → worldmap), Nhân vật (`charselect`), Cửa hàng (`shop`), Xếp hạng (`leaderboard`), Cài đặt (`settings`).
+Menu chính (v2): **📖 PHIÊU LƯU HỌC TẬP** (nút chính, Enter) → `modeSelect` → `journeySelect` (luồng hành trình: `docs/STORY.md` mục 3),
+▶ CHƠI CỔ ĐIỂN (`newRun` → worldmap), 📒 Sổ tay khám phá (`notebookHub`), Nhân vật (`charselect`), Cửa hàng (`shop`),
+Xếp hạng (`leaderboard`), Cài đặt (`settings`). Giao diện cho trẻ em: nút ≥ 56 px (`.ui-panel button`), nút cảm ứng 74 px.
 Màn phụ (`basement`, `bathroom`, `attic`) là tuỳ chọn: lượt chơi kết thúc (victory) khi xong `lair`.
 
 ---
@@ -310,7 +334,8 @@ Cấu trúc `OG.Save.data` (khoá localStorage `oggyAdventure.save.v1`; kỷ l�
 { v, coins, bestScore, playerName, selectedChar, unlockedChars:[charId],
   ownedSkins:[skinId], equippedSkins:{charId:skinId}, inventory:{itemId:count},
   progress:{ unlocked:[levelId], levels:{ levelId:{completed,bestScore,stars,bestTime,plays} } },
-  settings:{ masterVolume:1, musicVolume:0.6, sfxVolume:0.8, muted:false, touchControls:'auto'|'on'|'off' },
+  settings:{ masterVolume:1, musicVolume:0.6, sfxVolume:0.8, muted:false, touchControls:'auto'|'on'|'off',
+            tapJump:'auto'|'on'|'off' /* v2: chạm nửa phải để nhảy */, difficulty:'kid'|'challenge' /* v2 */ },
   stats:{ plays, deaths, stomps, pizzas, coins, bossesDefeated, victories },
   ext:{ quests:{...}, social:{...}, ... } }
 ```
@@ -474,7 +499,10 @@ OG.Menus: init() (đăng ký menu, charselect, settings, pause, gameover, victor
 OG.Shop:  init() (đăng ký 'shop'), listItems(), buy(itemId) -> bool,
           getRunModifiers(charId) -> Modifiers, getLevelModifiers(levelId, charId) -> Modifiers
 HudState = { scene, levelId, levelName, icon, pizzas, goal, lives, maxLives, score, coins, shield, time,
-             boss:null|{id,name,hp,maxHp}, quests:[{id,text,done,progress,target}] }
+             boss:null|{id,name,hp,maxHp}, quests:[{id,text,done,progress,target}],
+             pages?:{have,total} /* v2: trang sách, OG.Learn cập nhật */ }
+// v2: ở màn hành trình HUD hiện pill "📖 have/total" (#pages) và ẨN đồng hồ + danh sách nhiệm vụ (bé chơi thong thả).
+// OG.Menus.showsPages = true → OG.Learn không vẽ thêm pill trang sách trên canvas.
 Modifiers = { extraLives, speedMul, jumpMul, magnet(px), shield(int), coinMul, scoreMul }
 ```
 Scene gameover và victory **phải** gọi `OG.Social.mountResult(panelEl, result)`.
@@ -517,3 +545,5 @@ Leaderboard lưu trong `OG.Save.ns('social').leaderboard`, tối đa 10 mục. K
   toast nhiệm vụ không lặp, khiên/nam châm/tim có tác dụng, giữ phím ←/→ qua lúc đổi scene, Enter trên nút đang focus,
   dữ liệu lưu vào localStorage, và số listener/setInterval không tăng sau nhiều lượt chơi lại.
   Mọi `console.error`, ngoại lệ trong frame/listener/timer, `ctx.save/restore` lệch và lời gọi `alert/confirm/prompt` đều là lỗi (thoát mã 1).
+- **Phần v2** (`journeyChecks`, `difficultyChecks`) chơi HẾT cả 4 hành trình (38 màn, 19 trận trùm) và quét font — chi tiết ở
+  `docs/STORY.md` mục 11. Toàn bộ smoke test chạy khoảng 30–40 giây.

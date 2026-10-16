@@ -8,11 +8,17 @@
  *   oggy_super    Siêu Mèo Oggy    — áo choàng đỏ bay, mặt nạ, huy hiệu ngôi sao, thắt lưng vàng, ủng đỏ
  *   oggy_ninja    Oggy Ninja       — lông tối, băng đô đỏ có dải bay, khăn che mặt (skin có sẵn trong data)
  *   oggy_gold     Oggy Hoàng Kim   — lông vàng + vương miện (skin có sẵn trong data)
+ *   oggy_explorer Oggy Thám Hiểm   — mũ thám hiểm + ba lô (v2, hành trình Vòng quanh thế giới)
+ *   oggy_astronaut Oggy Phi Hành Gia — mũ kính + áo du hành + bình dưỡng khí (v2, Khoa học & Vũ trụ)
+ *   oggy_scientist Oggy Nhà Khoa Học — áo blouse trắng + kính bảo hộ trên trán (v2)
  *
  * Phụ kiện (gfx) mà Sprites hiểu (chỉ áp cho mèo):
  *   hat: 'chef' | 'crown' | 'beret'   hatColor
  *   cape: màu áo choàng   mask: màu mặt nạ che mắt   emblem: màu huy hiệu ngực   belt: màu thắt lưng
  *   belly: màu bụng (đè)   headband: màu băng đô   faceMask: màu khăn che mặt   apron: bool   scarf: màu khăn cổ   bow: bool (nơ dùng màu accent)
+ *   coat: màu áo blouse   goggles: bool (kính bảo hộ)
+ *   accessory: 'nonla'|'beret'|'helmet'|'scarf'|'spacesuit'|'explorer' (phụ kiện hành trình; opts.accessory của
+ *              drawCharacter được ưu tiên hơn)
  * Skin đăng ký sau có thể tự khai báo trường `gfx` trong đối tượng skin, Sprites sẽ ưu tiên dùng nó. */
 (function () {
   'use strict';
@@ -25,6 +31,9 @@
     oggy_super: { cape: '#e5484d', mask: '#e5484d', emblem: '#ffc94a', belt: '#ffc94a' },
     oggy_ninja: { headband: '#e5484d', faceMask: '#1d2029', belly: '#4a5160' },
     oggy_gold: { hat: 'crown', hatColor: '#ffd84a', belly: '#fff3c4' },
+    oggy_explorer: { accessory: 'explorer' },
+    oggy_astronaut: { accessory: 'spacesuit' },
+    oggy_scientist: { coat: '#ffffff', goggles: true },
     jack_army: { hat: 'beret', hatColor: '#4f5d33' },
     olivia_rose: { bow: true }
   };
@@ -33,7 +42,8 @@
   for (var k in GFX) if (!S.skinGfx[k]) S.skinGfx[k] = GFX[k];
 
   // Danh sách id skin của Oggy do Sprites hỗ trợ (để Shop/Menus/demo tham khảo).
-  S.OGGY_SKINS = ['oggy_default', 'oggy_chef', 'oggy_super', 'oggy_ninja', 'oggy_gold'];
+  S.OGGY_SKINS = ['oggy_default', 'oggy_chef', 'oggy_super', 'oggy_ninja', 'oggy_gold',
+    'oggy_explorer', 'oggy_astronaut', 'oggy_scientist'];
 
   // Skin mới — đăng ký vào OG.Data (nếu Data đã có). Không ghi đè skin cùng id đã tồn tại.
   var NEW_SKINS = [
@@ -48,6 +58,25 @@
       desc: 'Áo choàng đỏ tung bay — gián nhìn thấy là chạy mất dép.',
       colors: { body: '#2a6fd6', feet: '#d63b42', belly: '#e9f4ff' },
       gfx: GFX.oggy_super
+    },
+    // v2 — giá xu tạm đặt, Integrator có thể chỉnh trong Shop.
+    {
+      id: 'oggy_explorer', charId: 'oggy', name: 'Oggy Thám Hiểm', price: 300,
+      desc: 'Mũ thám hiểm và ba lô, sẵn sàng đi vòng quanh thế giới.',
+      colors: {},
+      gfx: GFX.oggy_explorer
+    },
+    {
+      id: 'oggy_astronaut', charId: 'oggy', name: 'Oggy Phi Hành Gia', price: 450,
+      desc: 'Mũ kính tròn và áo du hành, bay lên vũ trụ thôi!',
+      colors: { feet: '#c9d3df' },
+      gfx: GFX.oggy_astronaut
+    },
+    {
+      id: 'oggy_scientist', charId: 'oggy', name: 'Oggy Nhà Khoa Học', price: 350,
+      desc: 'Áo blouse trắng và kính bảo hộ, cùng làm thí nghiệm nào.',
+      colors: {},
+      gfx: GFX.oggy_scientist
     }
   ];
 

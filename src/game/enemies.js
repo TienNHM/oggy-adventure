@@ -27,11 +27,13 @@
         score: T.score || 50, t: Math.random() * 3, deadT: 0
       };
       if (T.init) T.init(e, src);
+      OG.util.call('Difficulty', 'scaleEnemy', e); // tốc độ theo độ khó
       return e;
     },
 
     update: function (e, dt, world) {
       e.t += dt;
+      e.prevY = e.y; // đỉnh hitbox frame trước: phép giẫm bù chuyển động (Marky nhảy cò cò)
       if (!e.alive) { e.deadT += dt; return; }
       var T = types[e.type] || types.roach;
       T.update(e, dt, world);
@@ -44,7 +46,14 @@
     },
 
     // Hộp gây sát thương (thu nhỏ 3px cho công bằng).
-    hurtbox: function (e) { return { x: e.x + 3, y: e.y + 3, w: e.w - 6, h: e.h - 3 }; },
+    // OG.Difficulty có thể thu nhỏ thêm (chế độ 'kid').
+    hurtbox: function (e) {
+      var box = { x: e.x + 3, y: e.y + 3, w: e.w - 6, h: e.h - 3 };
+      // Loại có hurtTop (vd Dee Dee bụng mềm): phần trên cùng không gây đau.
+      var T = types[e.type];
+      if (T && T.hurtTop) { var cut = e.h * T.hurtTop; box.y = e.y + cut; box.h = e.h - cut; }
+      return OG.util.call('Difficulty', 'enemyHurtbox', box) || box;
+    },
 
     // Bị giẫm.
     kill: function (e) { e.alive = false; e.deadT = 0; }
@@ -124,14 +133,33 @@
   });
 
   // Dee Dee: to béo, đi chậm, thỉnh thoảng dừng lại "ăn" (attack) — giẫm được mọi lúc.
+  // Sửa lỗi "Dee Dee ở bếp" (màn kitchen / home-kitchen-1): Dee Dee đứng chắn khe hẹp giữa hai bục,
+  // lừ đừ đi qua lại nên bé khó canh nhịp nhảy qua. Giờ Dee Dee:
+  //  - không bao giờ đứng dưới bục một chiều (ở đó không giẫm được) — tầm tuần tra bị kẹp lại;
+  //  - khi người chơi tới gần (≤140px) thì đứng yên ăn bánh (mục tiêu đứng im, dễ giẫm/nhảy qua);
+  //  - bụng mềm: chỉ nửa dưới gây đau (hurtTop), nửa trên coi như đầu để giẫm.
+  function underLedge(world, x0, x1, top) {
+    var ps = (world && world.platforms) || [];
+    for (var i = 0; i < ps.length; i++) {
+      var a = ps[i];
+      if (a.isFloor || a.y >= OG.FLOOR_Y - 1) continue;
+      if (a.y > top - 70 && a.y < top + 10 && x1 > a.x && x0 < a.x + a.w) return true;
+    }
+    return false;
+  }
   Enemies.registerType('deedee', {
-    w: 50, h: 50, score: 80,
-    init: function (e) { e.eatT = 0; e.nextEat = 2 + Math.random() * 2; },
-    update: function (e, dt) {
+    w: 50, h: 50, score: 80, hurtTop: 0.45,
+    init: function (e) { e.eatT = 0; e.nextEat = 2 + Math.random() * 2; e.calm = 0; },
+    update: function (e, dt, world) {
+      var p = world && world.player;
+      var near = p && Math.abs(p.x + p.w / 2 - (e.x + e.w / 2)) < 140 && p.y + p.h > e.y - 160;
+      if (near) { e.calm = 0.6; e.eatT = Math.max(e.eatT, 0.2); }
       if (e.eatT > 0) { e.eatT -= dt; return; }
       e.nextEat -= dt;
       if (e.nextEat <= 0) { e.eatT = 1; e.nextEat = 3 + Math.random() * 2; return; }
+      var ox = e.x;
       patrol(e, dt, e.speed);
+      if (underLedge(world, e.x, e.x + e.w, e.y)) { e.x = ox; e.dir *= -1; }
     },
     draw: drawTrio('deedee', function (e) { return e.eatT > 0 ? 'attack' : 'walk'; })
   });

@@ -427,7 +427,11 @@
   // Scene → bản nhạc. Scene không có trong bảng (vd 'boot', scene lạ) giữ nguyên nhạc hiện tại.
   var SCENE_MUSIC = {
     menu: 'menu', charselect: 'menu', settings: 'menu', shop: 'menu', leaderboard: 'menu',
-    worldmap: 'worldmap', victory: 'victory', gameover: 'gameover'
+    worldmap: 'worldmap', victory: 'victory', gameover: 'gameover',
+    // v2 (Tích hợp nối): menu hành trình dùng nhạc menu, bản đồ hành trình dùng nhạc bản đồ.
+    // 'comic' không có trong bảng → giữ nhạc đang phát.
+    modeSelect: 'menu', journeySelect: 'menu', notebookHub: 'menu', notebook: 'menu',
+    journeyMap: 'worldmap', journeyEnd: 'victory'
   };
   var CHAR_PITCH = { oggy: 1, jack: 0.88, olivia: 1.15 };
 
@@ -517,6 +521,17 @@
     on('skin:equip', function () { playSfx('select'); });
     on('leaderboard:submit', function (p) { if (p.rank != null && p.rank >= 0) playSfx('quest'); });
     on('ui:click', function () { playSfx('click'); });
+
+    // ---- v2: hành trình học tập (docs/STORY.md mục 7). Trả lời sai chỉ có âm nhẹ, KHÔNG dùng âm "thua". ----
+    on('page:collect', function () { playSfx('collect'); });
+    on('card:unlock', function () { playSfx('quest'); });
+    on('quiz:answer', function (p) { if (!p.correct) playSfx('select', { pitch: 0.75, vol: 0.6 }); });
+    on('quiz:pass', function () { playSfx('victory', { vol: 0.7 }); });
+    on('gate:open', function () { playSfx('unlock'); });
+    on('checkpoint:reach', function () { playSfx('coin'); });
+    on('guide:talk', function () { playSfx('click', { pitch: 1.3, vol: 0.6 }); });
+    on('player:respawn', function () { playSfx('powerup', { vol: 0.6 }); });
+    on('journey:complete', function () { Audio.playMusic('victory'); });
 
     on('settings:change', function (p) {
       if (p.key === 'musicVolume' || p.key === 'sfxVolume' || p.key === 'masterVolume' || p.key === 'muted') applyVolumes();

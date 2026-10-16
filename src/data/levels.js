@@ -21,6 +21,9 @@
  *   map: {x, y},                // vị trí nút trên bản đồ thế giới (toạ độ 960x540)
  *   quests: [{id, type, target, text, reward}] // nhiệm vụ của màn (OG.Quests diễn giải)
  * }
+ * Màn của HÀNH TRÌNH v2 dùng cùng định dạng + field mở rộng (journey, areaId, pages, quizGates,
+ * guideSpots, checkpoints, comicTriggers...) — xem docs/STORY.md. Chúng do OG.Journeys biên dịch,
+ * KHÔNG nằm trong Data.levels (Data.levelIndex trả -1).
  * Loại quest chuẩn: collect_all | no_damage | stomp_n | time_under | coins_n | boss_no_damage | complete
  */
 (function () {
@@ -34,7 +37,7 @@
       width: 1900, spawn: { x: 70, y: 420 }, goal: 5,
       platforms: [[0, 480, 1900, 60], [260, 405, 150, 18], [500, 345, 160, 18], [760, 415, 170, 18], [1030, 350, 160, 18], [1300, 410, 180, 18], [1570, 340, 160, 18]],
       pizzas: [[180, 440], [315, 365], [555, 305], [820, 375], [1090, 310], [1370, 370], [1630, 300]],
-      coins: [[440, 415], [470, 415], [960, 420], [990, 420], [1240, 415], [1520, 290]],
+      coins: [[440, 415], [470, 415], [1140, 305], [1170, 305], [1240, 415], [1520, 290]], // v2: dời 2 xu khỏi chỗ Dee Dee đứng (x=955)
       enemies: [{ type: 'roach', x: 620, speed: 75 }, { type: 'roach', x: 1120, speed: 75 }, { type: 'roach', x: 1490, speed: 75 }, { type: 'deedee', x: 955, range: 25, speed: 35 }],
       exit: { x: 1780 },
       boss: 'deedee',
@@ -93,9 +96,11 @@
   ];
 
   // Tra cứu theo id hoặc chỉ số.
+  // Màn của hành trình v2 (OG.Journeys) không nằm trong Data.levels nhưng vẫn tra được theo id.
   Data.getLevel = function (idOrIndex) {
     if (typeof idOrIndex === 'number') return Data.levels[idOrIndex] || null;
     for (var i = 0; i < Data.levels.length; i++) if (Data.levels[i].id === idOrIndex) return Data.levels[i];
+    if (OG.Journeys && OG.Journeys.getLevel) return OG.Journeys.getLevel(idOrIndex);
     return null;
   };
   Data.levelIndex = function (id) {

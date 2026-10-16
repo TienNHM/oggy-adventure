@@ -1,5 +1,5 @@
 # Deploy Oggy Adventure lên GitHub Pages mỗi khi push vào master.
-# Chạy smoke test trước; chỉ đóng gói các file game (bỏ tests/, legacy/).
+# Chạy smoke test trước; chỉ đóng gói các file game (bỏ tests/, legacy/, tools/).
 name: Deploy GitHub Pages
 
 on:
@@ -20,19 +20,21 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Smoke test
         run: node tests/smoke.js
 
       - name: Đóng gói site
+        # assets/ = ảnh chụp thẻ kiến thức + credits.js. KHÔNG đóng gói tools/ (công cụ chỉ dùng lúc soạn nội dung).
         run: |
           mkdir _site
-          cp -r index.html src docs CNAME .nojekyll robots.txt sitemap.xml llms.txt site.webmanifest _site/
+          cp -r index.html src docs assets CNAME .nojekyll robots.txt sitemap.xml llms.txt site.webmanifest _site/
+          rm -f _site/assets/photos/*/_entries.json
 
       - uses: actions/configure-pages@v5
 
