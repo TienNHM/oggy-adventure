@@ -18,20 +18,20 @@
 /* AUTO-SUMMARY (tự sinh khi chạy "write")
  * Danh sách (16 ảnh):
  *   k_veggie         CC BY-SA 4.0   Dietmar Rabich
- *   k_water          CC BY 2.0      Shixart1985
+ *   k_water          Public domain  USEPA Environmental-Protection-Agency
  *   k_handwash       CC BY-SA 4.0   Davyimage
  *   k_fruit          CC BY-SA 4.0   PattayaPatrol
  *   g_plant          CC BY-SA 3.0   Fasaxc
  *   g_seed           CC BY-SA 4.0   B. Domangue
  *   g_bee            Public domain  John Severns
  *   g_ladybug        CC BY-SA 4.0   Andrea Bonifazi
- *   r_cloud          CC BY-SA 4.0   Michal Klajban
+ *   r_cloud          CC BY-SA 4.0   Lance Vanlewen
  *   r_wind           CC BY-SA 2.0   achille.ballabeni
  *   r_rainbow        CC BY-SA 4.0   Basile Morin
- *   r_sun            Public domain  NASA Goddard Space Flight Center from Greenbelt, M
+ *   r_sun            Public domain  Courtesy of NASA/SDO and the AIA, EVE, and HMI sci
  *   r_moon           CC0            Cbaile19
  *   b_magnet         CC BY-SA 4.0   Maciej J. Mrowinski
- *   b_recycle        CC BY-SA 4.0   Grendelkhan
+ *   b_recycle        CC BY 2.0      epSos .de
  *   b_sort           CC0            M!dgard
  */
 OG.Photos.register("home", /* BEGIN-ENTRIES */ {
@@ -49,19 +49,15 @@ OG.Photos.register("home", /* BEGIN-ENTRIES */ {
   },
   "k_water": {
     "file": "k_water.webp",
-    "w": 800,
-    "h": 533,
-    "author": "Shixart1985",
-    "license": "CC BY 2.0",
-    "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+    "w": 682,
+    "h": 682,
+    "author": "USEPA Environmental-Protection-Agency",
+    "license": "Public domain",
+    "licenseUrl": "https://creativecommons.org/publicdomain/mark/1.0/",
     "source": "Wikimedia Commons",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Person_pours_water_from_a_bottle_into_a_glass_in_a_kitchen.jpg",
-    "title": "Person pours water from a bottle into a glass in a kitchen",
-    "note": "Đã thu nhỏ, chuyển sang WebP",
-    "focus": {
-      "x": 0.52,
-      "y": 0.55
-    }
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Water_pouring_from_a_faucet_into_a_clear_glass_cup._(15054813052).jpg",
+    "title": "Water pouring from a faucet into a clear glass cup. (15054813052)",
+    "note": "Đã thu nhỏ, chuyển sang WebP"
   },
   "k_handwash": {
     "file": "k_handwash.webp",
@@ -142,18 +138,14 @@ OG.Photos.register("home", /* BEGIN-ENTRIES */ {
   "r_cloud": {
     "file": "r_cloud.webp",
     "w": 800,
-    "h": 443,
-    "author": "Michal Klajban",
+    "h": 450,
+    "author": "Lance Vanlewen",
     "license": "CC BY-SA 4.0",
     "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
     "source": "Wikimedia Commons",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Rain_over_Beinn_Eich,_Luss_Hills,_Scotland.jpg",
-    "title": "Rain over Beinn Eich, Luss Hills, Scotland",
-    "note": "Đã thu nhỏ, chuyển sang WebP",
-    "focus": {
-      "x": 0.5,
-      "y": 0.4
-    }
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:White_Cumulus_Clouds_against_Blue_Sky_(2).jpg",
+    "title": "White Cumulus Clouds against Blue Sky (2)",
+    "note": "Đã thu nhỏ, chuyển sang WebP"
   },
   "r_wind": {
     "file": "r_wind.webp",
@@ -189,15 +181,15 @@ OG.Photos.register("home", /* BEGIN-ENTRIES */ {
   },
   "r_sun": {
     "file": "r_sun.webp",
-    "w": 800,
-    "h": 450,
-    "author": "NASA Goddard Space Flight Center from Greenbelt, MD, USA",
+    "w": 664,
+    "h": 664,
+    "author": "Courtesy of NASA/SDO and the AIA, EVE, and HMI science teams.",
     "license": "Public domain",
     "licenseUrl": "https://creativecommons.org/publicdomain/mark/1.0/",
     "source": "Wikimedia Commons",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:SDO_AIA_Full-Disk_View_of_Launching_Filament_(4540790187).jpg",
-    "title": "SDO AIA Full-Disk View of Launching Filament (4540790187)",
-    "note": "Đã thu nhỏ, chuyển sang WebP"
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:SDO_20130714_000007_4096_4500_(AIA).jpg",
+    "title": "SDO 20130714 000007 4096 4500 (AIA)",
+    "note": "Đã cắt bỏ dòng chữ ở góc, thu nhỏ, chuyển sang WebP"
   },
   "r_moon": {
     "file": "r_moon.webp",
@@ -234,13 +226,13 @@ OG.Photos.register("home", /* BEGIN-ENTRIES */ {
   "b_recycle": {
     "file": "b_recycle.webp",
     "w": 800,
-    "h": 600,
-    "author": "Grendelkhan",
-    "license": "CC BY-SA 4.0",
-    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "h": 533,
+    "author": "epSos .de",
+    "license": "CC BY 2.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
     "source": "Wikimedia Commons",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Bales_of_PET_bottles_closeup.jpg",
-    "title": "Bales of PET bottles closeup",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Trash_Recycling_with_Disposal_Containers.jpg",
+    "title": "Trash Recycling with Disposal Containers",
     "note": "Đã thu nhỏ, chuyển sang WebP"
   },
   "b_sort": {
