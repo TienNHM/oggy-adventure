@@ -19,7 +19,7 @@
  * Danh sách (19 ảnh):
  *   eg_pyramid       CC BY-SA 2.0   Ricardo Liberato
  *   eg_nile          CC BY 4.0      Vyacheslav Argenberg
- *   eg_hiero         CC BY-SA 2.0   Bernard DUPONT from FRANCE
+ *   eg_hiero         CC BY-SA 3.0   Edfu_Temple_032010_21.jpg : User:MatthiasKabel der
  *   eg_camel         CC BY-SA 4.0   لا روسا
  *   fr_eiffel        CC BY 2.0      Fred Romero from Paris, France
  *   fr_croissant     CC BY-SA 3.0   SKopp
@@ -30,10 +30,10 @@
  *   jp_train         CC BY-SA 4.0   MaedaAkihiko
  *   am_forest        CC BY-SA 2.0   lubasi
  *   am_macaw         CC BY-SA 4.0   Charles J. Sharp
- *   am_sloth         CC BY-SA 4.0   Charles J. Sharp
+ *   am_sloth         CC BY 2.0      Marissa Strniste from Upala, Costa Rica
  *   am_frog          CC BY 3.0      Michael Gäbler
  *   ar_bear          CC BY-SA 4.0   Andreas Weith
- *   ar_ice           Public domain  NASA Goddard Space Flight Center from Greenbelt, M
+ *   ar_ice           CC BY-SA 4.0   AWeith
  *   ar_aurora        Public domain  United States Air Force photo by Senior Airman Jos
  *   ar_penguin       CC BY 4.0      John Hardin
  */
@@ -65,17 +65,17 @@ OG.Photos.register("world", /* BEGIN-ENTRIES */ {
   "eg_hiero": {
     "file": "eg_hiero.webp",
     "w": 800,
-    "h": 532,
-    "author": "Bernard DUPONT from FRANCE",
-    "license": "CC BY-SA 2.0",
-    "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0",
+    "h": 534,
+    "author": "Edfu_Temple_032010_21.jpg : User:MatthiasKabel derivative work: JMCC1 ( talk )",
+    "license": "CC BY-SA 3.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
     "source": "Wikimedia Commons",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Colorful_Hieroglyphs_and_Starred_Ceiling_..._(36473972566).jpg",
-    "title": "Colorful Hieroglyphs and Starred Ceiling ... (36473972566)",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Edfu_Temple_032010_21_d2.jpg",
+    "title": "Edfu Temple 032010 21 d2",
     "note": "Đã thu nhỏ, chuyển sang WebP",
     "focus": {
-      "x": 0.45,
-      "y": 0.6
+      "x": 0.5,
+      "y": 0.4
     }
   },
   "eg_camel": {
@@ -229,17 +229,17 @@ OG.Photos.register("world", /* BEGIN-ENTRIES */ {
   "am_sloth": {
     "file": "am_sloth.webp",
     "w": 800,
-    "h": 533,
-    "author": "Charles J. Sharp",
-    "license": "CC BY-SA 4.0",
-    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "h": 600,
+    "author": "Marissa Strniste from Upala, Costa Rica",
+    "license": "CC BY 2.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
     "source": "Wikimedia Commons",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Brown-throated_sloth_(Bradypus_variegatus)_female.jpg",
-    "title": "Brown-throated sloth (Bradypus variegatus) female",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Up-Close_Sloth_(6854263759).jpg",
+    "title": "Up-Close Sloth (6854263759)",
     "note": "Đã thu nhỏ, chuyển sang WebP",
     "focus": {
-      "x": 0.4,
-      "y": 0.5
+      "x": 0.6,
+      "y": 0.55
     }
   },
   "am_frog": {
@@ -277,17 +277,17 @@ OG.Photos.register("world", /* BEGIN-ENTRIES */ {
   "ar_ice": {
     "file": "ar_ice.webp",
     "w": 800,
-    "h": 533,
-    "author": "NASA Goddard Space Flight Center from Greenbelt, MD, USA",
-    "license": "Public domain",
-    "licenseUrl": "https://creativecommons.org/publicdomain/mark/1.0/",
+    "h": 450,
+    "author": "AWeith",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
     "source": "Wikimedia Commons",
-    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Sea_Ice_in_the_Chukchi_Sea_(7348953402).jpg",
-    "title": "Sea Ice in the Chukchi Sea (7348953402)",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Arctic_ocean_drift_ice,_the_realm_of_the_polar_bear.jpg",
+    "title": "Arctic ocean drift ice, the realm of the polar bear",
     "note": "Đã thu nhỏ, chuyển sang WebP",
     "focus": {
       "x": 0.5,
-      "y": 0.6
+      "y": 0.55
     }
   },
   "ar_aurora": {
