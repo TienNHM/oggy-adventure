@@ -538,12 +538,16 @@ const COURSE_DESCRIPTION = clip('Giáo trình miễn phí bằng tiếng Việt 
 const FAVICON = 'data:image/svg+xml,' + encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#f27a43"/>' +
   '<text x="32" y="45" font-size="36" text-anchor="middle" font-family="Segoe UI,system-ui,Arial" font-weight="800" fill="#fff">{ }</text></svg>');
-const OG_IMAGE = '/learn/assets/og-oggy.jpg';
+// Ảnh chia sẻ mạng xã hội (Open Graph 1200×630) — tạo bằng tools/learn-site/make-og.py rồi commit.
+const OG_IMAGE = '/learn/assets/og-learn.png';
+// Ảnh minh hoạ ở hero landing page (chụp menu game) — khác ảnh chia sẻ.
+const HERO_IMAGE = '/learn/assets/og-oggy.jpg';
 const CSS_FILE = path.join(HERE, 'assets', 'learn.css');
 // 💡 Khái niệm: cache busting — gắn ?v=<hash nội dung> vào link CSS. Sửa CSS thì hash đổi, trình duyệt
 //   buộc phải tải bản mới thay vì dùng bản cũ trong cache (GitHub Pages cho cache 10 phút).
 const CSS_VERSION = createHash('sha256').update(fs.readFileSync(CSS_FILE)).digest('hex').slice(0, 10);
-const OG_IMAGE_SRC = path.join(ROOT, 'docs', 'screenshots', '01-menu.jpg');
+const OG_IMAGE_SRC = path.join(HERE, 'assets', 'og-learn.png');
+const HERO_IMAGE_SRC = path.join(ROOT, 'docs', 'screenshots', '01-menu.jpg');
 
 /** Script nhỏ trong <head>: đặt theme đã lưu TRƯỚC khi vẽ trang (tránh nháy sáng/tối). */
 const HEAD_SCRIPT = `<script>(function(){var d=document.documentElement;d.className+=' js';try{var t=localStorage.getItem('oggyLearn.theme');if(t==='dark'||t==='light')d.setAttribute('data-theme',t);}catch(e){}})();</script>`;
@@ -716,7 +720,7 @@ function footer() {
 /**
  * Bọc <html> đầy đủ: meta SEO, Open Graph, Twitter card, JSON-LD.
  * @param {{title:string, description:string, url:string, type?:string, ld?:Object[], body:string,
- *          bodyClass?:string, alternateMd?:string, modified?:string, published?:string}} o
+ *          bodyClass?:string, modified?:string, published?:string}} o
  */
 function htmlPage(o) {
   const canonical = abs(o.url);
@@ -740,13 +744,14 @@ function htmlPage(o) {
 <meta property="og:description" content="${esc(o.description)}">
 <meta property="og:url" content="${esc(canonical)}">
 <meta property="og:image" content="${abs(OG_IMAGE)}">
-<meta property="og:image:alt" content="Menu chính của game Oggy Adventure">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Học lập trình game với Oggy: giáo trình JavaScript miễn phí bằng tiếng Việt">
 ${o.modified ? `<meta property="article:modified_time" content="${esc(o.modified)}">` : ''}
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="${esc(o.title)}">
 <meta name="twitter:description" content="${esc(o.description)}">
 <meta name="twitter:image" content="${abs(OG_IMAGE)}">
-${o.alternateMd ? `<link rel="alternate" type="text/markdown" href="${esc(o.alternateMd)}" title="Bản Markdown gốc">` : ''}
 <link rel="icon" href="${FAVICON}">
 <link rel="sitemap" type="application/xml" href="/learn/sitemap.xml">
 <link rel="stylesheet" href="/learn/assets/learn.css?v=${CSS_VERSION}">
@@ -972,8 +977,7 @@ ${footer()}`;
 
   return htmlPage({
     title: titleTag, description: p.description, url: p.url, ld, body,
-    bodyClass: 'kind-' + p.kind, modified: dateMod, type: pageType,
-    alternateMd: '/' + p.rel
+    bodyClass: 'kind-' + p.kind, modified: dateMod, type: pageType
   });
 }
 
@@ -1080,7 +1084,7 @@ function landingPage() {
         </div>
       </div>
       <figure class="hero-art">
-        <img src="${OG_IMAGE}" width="960" height="540" alt="Màn hình menu chính của game Oggy Adventure: mèo Oggy và ba chú gián" fetchpriority="high">
+        <img src="${HERO_IMAGE}" width="960" height="540" alt="Màn hình menu chính của game Oggy Adventure: mèo Oggy và ba chú gián" fetchpriority="high">
         <figcaption>Game bạn sẽ đọc code: <b>Oggy Adventure</b> (~70 file JS, 38 màn, 4 trùm)</figcaption>
       </figure>
     </div>
@@ -1168,8 +1172,7 @@ ${footer()}`;
   return htmlPage({
     title: COURSE_NAME + ': giáo trình lập trình game JavaScript miễn phí',
     description: clip(COURSE_DESCRIPTION, 158), url: LANDING_URL, type: 'website',
-    ld: [courseLd, faqLd, crumbs.ld], body, bodyClass: 'kind-landing', modified: dateMod,
-    alternateMd: '/docs/learn/README.md'
+    ld: [courseLd, faqLd, crumbs.ld], body, bodyClass: 'kind-landing', modified: dateMod
   });
 }
 
@@ -1226,6 +1229,7 @@ if (solutions.length) {
 // CSS + ảnh OG + ảnh được link trong tài liệu.
 writeFile('learn/assets/learn.css', fs.readFileSync(CSS_FILE));
 if (fs.existsSync(OG_IMAGE_SRC)) writeFile(OG_IMAGE.slice(1), fs.readFileSync(OG_IMAGE_SRC));
+if (fs.existsSync(HERO_IMAGE_SRC)) writeFile(HERO_IMAGE.slice(1), fs.readFileSync(HERO_IMAGE_SRC));
 for (const [rel, url] of mediaToCopy) writeFile(url.slice(1), fs.readFileSync(path.join(ROOT, rel)));
 
 // Sitemap: /learn/sitemap.xml (chỉ trang khoá học) và /sitemap.xml đầy đủ.

@@ -60,8 +60,12 @@ jobs:
         # Tạo _site/learn/... và ghi đè _site/sitemap.xml bằng bản đầy đủ (trang chủ + mọi trang learn).
         # Link tương đối trỏ tới file không tồn tại → build thoát mã 1 → không deploy.
         working-directory: tools/learn-site
+        # Sau khi dựng HTML, bỏ bản Markdown thô (docs/learn, docs/design) khỏi gói deploy:
+        # nếu không, Google thấy cùng một nội dung ở 2 URL (/learn/... và /docs/learn/...md) → trùng lặp.
+        # Bản .md vẫn đọc được trên GitHub; ảnh/SVG cần cho trang đã được build.mjs copy sang _site/learn/.
         run: |
           node build.mjs --out ../../_site
+          rm -rf ../../_site/docs/learn ../../_site/docs/design
           node check-site.mjs ../../_site
 
       - uses: actions/configure-pages@v5
