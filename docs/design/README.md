@@ -169,9 +169,15 @@ flowchart LR
 
 ## Tự kiểm tra sau khi sửa
 
+Công cụ [render-svg.js](render-svg.js) (Node, không cần thư viện) gửi từng khối Mermaid tới Kroki, lưu SVG vào `svg/`, và kiểm tra mọi
+link tương đối + anchor `#...` trong các file `.md` ở đây. Tên file SVG lấy từ link `(svg/<tên>.svg)` ngay dưới mỗi khối.
+
 ```bash
-# Vẽ lại SVG (cần mạng) và kiểm tra link tương đối trong docs/design/*.md
-node <script render của bạn>   # POST từng khối mermaid tới https://kroki.io/mermaid/svg
+node docs/design/render-svg.js            # vẽ lại toàn bộ SVG (cần mạng) + kiểm tra link
+node docs/design/render-svg.js --links    # chỉ kiểm tra link, không cần mạng
+node docs/design/render-svg.js 04         # chỉ vẽ lại file có tên chứa "04"
+
 git grep -nE "Scenes\.(register|go|push)\('" -- src   # đối chiếu tên scene
 git grep -nE "setState\('[a-zA-Z]+'" -- src/bosses     # đối chiếu trạng thái trùm
+git grep -nE "Save\.ns\('[a-z]+'\)" -- src             # đối chiếu các ngăn ext.* của SaveData
 ```

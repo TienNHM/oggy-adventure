@@ -20,6 +20,14 @@ const path = require('path');
 const https = require('https');
 
 const DIR = __dirname;
+// Bỏ các khối code rào bằng ``` (xét theo DÒNG bắt đầu bằng ```, để chuỗi ``` nằm giữa câu không làm lệch cặp).
+function stripFences(text) {
+  let inFence = false;
+  return text.split(/\r?\n/).filter((line) => {
+    if (/^\s*```/.test(line)) { inFence = !inFence; return false; }
+    return !inFence;
+  }).join('\n');
+}
 const OUT = path.join(DIR, 'svg');
 const KROKI = 'https://kroki.io/mermaid/svg';
 const RETRIES = 5;
@@ -82,21 +90,42 @@ function blocks(file) {
   return out;
 }
 
+// Tạo "anchor" (#...) của tiêu đề Markdown theo cách GitHub làm: chữ thường, bỏ dấu câu, khoảng trắng → '-'.
+function slugsOf(mdPath) {
+  const text = stripFences(fs.readFileSync(mdPath, 'utf8'));
+  const seen = {};
+  const out = new Set();
+  for (const line of text.split(/\r?\n/)) {
+    const h = line.match(/^#{1,6}\s+(.*)$/);
+    if (!h) continue;
+    let s = h[1].replace(/`/g, '').trim().toLowerCase()
+      .replace(/[^\p{L}\p{M}\p{N}\s_-]/gu, '').replace(/\s/g, '-');
+    if (seen[s] != null) { seen[s]++; s = s + '-' + seen[s]; } else seen[s] = 0;
+    out.add(s);
+  }
+  return out;
+}
+
 function checkLinks() {
   let bad = 0, total = 0;
   for (const f of mdFiles()) {
-    const text = fs.readFileSync(path.join(DIR, f), 'utf8').replace(/```[\s\S]*?```/g, '');
+    const text = stripFences(fs.readFileSync(path.join(DIR, f), 'utf8'));
     const re = /\]\(([^)\s]+)\)/g;
     let m;
     while ((m = re.exec(text))) {
       const href = m[1];
-      if (/^(https?:|mailto:|#)/.test(href)) continue;
+      if (/^(https?:|mailto:)/.test(href)) continue;
       total++;
-      const target = path.resolve(DIR, decodeURIComponent(href.split('#')[0]));
-      if (!fs.existsSync(target)) { bad++; console.log('LINK HỎNG: ' + f + ' → ' + href); }
+      const [file, anchor] = href.split('#');
+      const target = file ? path.resolve(DIR, decodeURIComponent(file)) : path.join(DIR, f);
+      if (!fs.existsSync(target)) { bad++; console.log('LINK HỎNG: ' + f + ' → ' + href); continue; }
+      // Kiểm tra cả #anchor khi link trỏ tới một file Markdown.
+      if (anchor && target.endsWith('.md') && !slugsOf(target).has(decodeURIComponent(anchor))) {
+        bad++; console.log('ANCHOR HỎNG: ' + f + ' → ' + href);
+      }
     }
   }
-  console.log('Link tương đối: ' + total + ' link, ' + bad + ' hỏng');
+  console.log('Link tương đối: ' + total + ' link, ' + bad + ' hỏng (kể cả anchor)');
   return bad;
 }
 

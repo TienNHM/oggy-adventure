@@ -337,6 +337,7 @@ git grep -n "⚠️ Bẫy" -- src/core    # mọi bẫy trong engine
 4. Sau đó đọc theo bài học bạn đang học.
 
 Sơ đồ module, scene, event và vòng đời frame: [`ARCHITECTURE-DIAGRAMS.md`](ARCHITECTURE-DIAGRAMS.md).
+Muốn đào sâu hơn (mô hình dữ liệu, class diagram, sequence diagram từng luồng, state machine của boss/quiz/audio, sơ đồ triển khai và 10 quyết định thiết kế): [`docs/design/`](../design/README.md).
 
 ---
 
@@ -385,6 +386,7 @@ Sơ đồ module, scene, event và vòng đời frame: [`ARCHITECTURE-DIAGRAMS.m
 ## 9. Tài liệu liên quan
 
 - [`ARCHITECTURE-DIAGRAMS.md`](ARCHITECTURE-DIAGRAMS.md): sơ đồ Mermaid về module, scene, event, vòng đời frame, cây thư mục.
+- [`docs/design/`](../design/README.md): 60 sơ đồ thiết kế chi tiết — mô hình dữ liệu, class diagram, sequence diagram, state machine, component & deployment, và các bản ghi quyết định thiết kế (ADR).
 - [`CODE_STYLE.md`](CODE_STYLE.md): quy ước comment, JSDoc, refactor; **bắt buộc đọc** trước khi nộp bài tập đầu tiên.
 - [`docs/ARCHITECTURE.md`](../ARCHITECTURE.md): hợp đồng API v1 (thứ tự load, toạ độ, scene, event, API từng module).
 - [`docs/STORY.md`](../STORY.md): hợp đồng v2 (dữ liệu hành trình, độ khó, truyện, thẻ, câu đố).

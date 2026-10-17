@@ -160,7 +160,6 @@ riêng `breather` trên mặt đất luôn giẫm được. Mũi tên "GIẪM!" 
 
 ```mermaid
 stateDiagram-v2
-  direction LR
   [*] --> intro
   intro --> walk : choose
   walk --> rollWind : choose, đòn roll/roll3
@@ -189,7 +188,6 @@ Nguồn: `startAction`, `think`, `endRollAtWall`, `finishEating`, `onHurt` trong
 
 ```mermaid
 stateDiagram-v2
-  direction LR
   [*] --> intro
   intro --> dashWind : choose, đòn dash
   dashWind --> dash : stateDone (hướng lao chốt lúc telegraph)
@@ -222,7 +220,6 @@ Nguồn: [src/bosses/joey.js](../../src/bosses/joey.js). Mỗi chuỗi trong `pa
 
 ```mermaid
 stateDiagram-v2
-  direction LR
   [*] --> intro
   intro --> Chon
   state "choose()" as Chon
