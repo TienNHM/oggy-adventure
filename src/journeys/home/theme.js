@@ -1,5 +1,22 @@
-/* Hành trình "home" — CẢNH NỀN theo chủ đề (Cuốn Bách Khoa Kỳ Diệu).
- * Chủ sở hữu v2: agent journey-home (CHỈ src/journeys/home/). Hợp đồng ThemeDef: docs/STORY.md mục 4.
+// @ts-check
+/* ============================================================================
+ * Hành trình "home" — CẢNH NỀN THEO CHỦ ĐỀ (ThemeDef khai báo) + DECOR RIÊNG 'home-*'
+ * ----------------------------------------------------------------------------
+ * Vai trò:      Đăng ký 5 chủ đề cảnh nền cho các khu của hành trình home và các decor riêng dùng trong
+ *               chủ đề. Chạy lúc LOAD (chỉ đăng ký); bộ vẽ src/gfx/scenery.js gọi các hàm vẽ ở đây mỗi frame.
+ * Khái niệm:    theme khai báo (declarative theme: mô tả "cảnh có gì" bằng dữ liệu — trời, lớp, sàn, decor —
+ *               bộ vẽ chung tự lo "vẽ thế nào") · parallax (lớp xa cuộn chậm hơn camera tạo chiều sâu) ·
+ *               procedural drawing · registry decor theo tên · hash giả ngẫu nhiên ổn định · hình dự phòng (fallback)
+ * Bài học:      docs/learn/12-data-driven-man-cau-do-hanh-trinh.md · docs/learn/08-camera-parallax.md ·
+ *               docs/learn/07-ve-canvas-procedural-cache.md
+ * Phụ thuộc:    OG.Scenery.registerTheme / registerDecor (LOAD — core/scenery-registry.js nạp trước) ·
+ *               OG.W, OG.H, OG.FLOOR_Y (LOAD, có giá trị dự phòng) · OG.Decor.face, OG.font (lúc CHẠY)
+ * Event:        (không)
+ * API công khai: (không) — chỉ đăng ký chủ đề 'home-kitchen', 'home-garden', 'home-roof', 'home-roof-night',
+ *               'home-basement' và decor 'home-fruitbasket', 'home-herbpot', 'home-sunflower', ...
+ * Đọc tiếp:     src/core/scenery-registry.js (registry + hình dự phòng) → src/gfx/scenery.js (drawBackground đọc
+ *               ThemeDef) → src/journeys/home/content.js
+ * Dữ liệu:      ThemeDef, SceneryLayer, PlatformPaint, DecorFn (src/types.d.ts; đặc tả docs/STORY.md mục 4)
  *
  * 5 chủ đề: home-kitchen, home-garden, home-roof (ban ngày, cầu vồng), home-roof-night (trăng sao),
  * home-basement (xưởng chế tạo ấm áp, không đáng sợ).
@@ -7,18 +24,23 @@
  *   thư viện decor chung; riêng lớp 'hills' tham chiếu theo tên (thiếu thì OG.Scenery vẽ đồi dự phòng).
  * - Decor riêng: OG.Scenery.registerDecor('home-...') (x = tâm, y = mặt đất, không gian thế giới).
  * - Sàn/bục: drawCustom.platform (trả true) + platformStyle làm dự phòng cho bộ vẽ khác.
- * Mọi đồ vật đều có khuôn mặt dễ thương, viền ink #17233d dày. */
+ * - Hệ toạ độ: lớp parallax vẽ trong toạ độ MÀN HÌNH (0..960 × 0..540, gốc góc trên-trái), tự trừ camX × hệ số;
+ *   decor và sàn/bục vẽ trong toạ độ THẾ GIỚI (camera đã translate sẵn).
+ * Mọi đồ vật đều có khuôn mặt dễ thương, viền ink #17233d dày.
+ * ========================================================================== */
 (function () {
   'use strict';
   var OG = window.OG;
   var S = OG.Scenery;
   var TAU = Math.PI * 2;
   var INK = '#17233d';
+  // Kích thước màn hình logic (px) và mặt sàn chính (px, toạ độ y). Đọc lúc LOAD, có dự phòng.
   var W = OG.W || 960, H = OG.H || 540, FLOOR = OG.FLOOR_Y || 480;
 
   // ---------------------------------------------------------------------------
   // Tiện ích vẽ
   // ---------------------------------------------------------------------------
+  // Chia lấy dư luôn dương: trong JS (-30 % 100) = -30, ta cần 70 để hình lặp không "giật" khi giá trị âm.
   function wrap(x, span) { return ((x % span) + span) % span; }
   // Chấm tròn tô màu hiện tại (mỗi chấm một path riêng để không bị nối nét).
   function dot(ctx, x, y, r) { ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); }
@@ -58,6 +80,8 @@
   }
   // Vẽ hợp của nhiều vòng tròn với viền ngoài sạch: tô viền dày từng vòng trước, rồi tô màu đè lên.
   // circles: [[x, y, r], ...]
+  // 💡 Khái niệm: stroke từng vòng sẽ để lại nét viền CẮT NGANG bên trong đám mây. Mẹo 2 lượt: lượt 1 tô
+  //   vòng to hơn (r + lw/2) bằng màu viền, lượt 2 tô vòng nhỏ hơn (r − lw/2) bằng màu nền → chỉ còn viền ngoài.
   function blob(ctx, circles, fill, stroke, lw) {
     var i;
     ctx.fillStyle = stroke || INK;
@@ -114,16 +138,23 @@
     ctx.closePath();
   }
   // Lặp một hình theo chu kỳ span trên màn hình (parallax px).
+  // 💡 Khái niệm: parallax — lớp ở xa cuộn theo camX × px (px < 1, vd 0.1) nên trôi chậm hơn sàn → cảm giác sâu.
+  //   Chỉ vẽ đủ số bản sao phủ 960 px (thêm 1 bản mỗi bên) thay vì cả màn dài 2000 px: đó là culling đơn giản.
+  //   fn(xMànHình, chỉSốBảnSao) — chỉ số giúp mỗi bản sao khác nhau một chút (qua hash).
   function repeat(camX, px, span, fn) {
     var off = wrap(camX * px, span);
     for (var i = -1; i <= Math.ceil(W / span) + 1; i++) fn(i * span - off, i + Math.floor(camX * px / span));
   }
   // Số giả ngẫu nhiên ổn định theo chỉ số.
+  // ⚠️ Bẫy: đừng dùng Math.random() khi vẽ cảnh nền — mỗi frame ra số khác nên nhà/sao nhảy lung tung.
+  //   hash(i) cùng i luôn ra cùng số 0..1 → cảnh "ngẫu nhiên" nhưng đứng yên.
   function hash(i) { var x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); }
 
   // ---------------------------------------------------------------------------
   // DECOR RIÊNG (thế giới; x = tâm, y = mặt đất). Nhỏ gọn (≤ ~70 px) để không che bục.
   // ---------------------------------------------------------------------------
+  // Bọc hàm vẽ cục bộ fn(ctx, t, opts) — vẽ quanh gốc (0,0) = tâm chân — thành DecorFn đúng hợp đồng.
+  // Không cần save/restore ở đây: OG.Scenery.drawDecor đã bọc mỗi lần vẽ decor trong save()/restore().
   function decor(kind, fn) {
     S.registerDecor(kind, function (ctx, x, y, s, t, o) {
       ctx.translate(x, y); ctx.scale(s, s);
@@ -320,6 +351,8 @@
   // ---------------------------------------------------------------------------
   // Sàn/bục vẽ riêng (trả true để bộ vẽ chung không vẽ đè)
   // ---------------------------------------------------------------------------
+  // a = Platform {x, y, w, h, isFloor} toạ độ thế giới, góc trên-trái. Sàn chính nằm ở y = 480, bục cao hơn
+  // (y nhỏ hơn) → ngưỡng 470 tách hai loại kể cả khi dữ liệu không gắn cờ isFloor.
   function isFloor(a) { return a.isFloor || a.y > 470; }
 
   function kitchenPlatform(ctx, a) {
@@ -327,6 +360,8 @@
       // gạch ô bàn cờ mint/kem
       ctx.save();
       ctx.beginPath(); ctx.rect(a.x, a.y, a.w, a.h); ctx.clip();
+      // Neo lưới gạch vào bội số của sz theo toạ độ thế giới (không theo a.x) → các đoạn sàn tách bởi hố
+      // vẫn khớp hoa văn với nhau như một sàn liền.
       var sz = 30, x0 = Math.floor(a.x / sz) * sz;
       for (var x = x0; x < a.x + a.w; x += sz) for (var y = a.y; y < a.y + a.h; y += sz) {
         ctx.fillStyle = ((x / sz + (y - a.y) / sz) & 1) ? '#bfeadb' : '#fff6df';
@@ -490,6 +525,12 @@
     ctx.fillStyle = '#e48a5a'; ctx.fillRect(0, FLOOR, W, 8);
   }
 
+  // Mẫu ThemeDef: base = chủ đề v1 dự phòng · sky = dải màu trời (gradient) · layers xếp XA → GẦN ·
+  // platformStyle = kiểu tô sàn/bục dự phòng nếu drawCustom.platform không vẽ · decor = đồ vật đặt theo
+  // chu kỳ (every px, bắt đầu từ start px, toạ độ thế giới) · ambient = hạt bay lớp phủ màn hình.
+  // ⚠️ Bẫy: với lớp 'custom', field parallax chỉ để mô tả — hàm draw nhận camX THÔ và tự nhân hệ số
+  //   (vd kitchenWall dùng camX * 0.08). Sửa parallax ở đây mà quên sửa trong hàm thì không thấy gì đổi.
+  // 🧪 Thử: đổi ambient 'bubbles' thành { kind: 'snow', color: '#ffffff' } rồi vào màn home-kitchen-1: tuyết rơi trong bếp.
   S.registerTheme('home-kitchen', {
     name: 'Nhà bếp', base: 'kitchen',
     sky: { top: '#fff1d6', bottom: '#ffe2b8', clouds: false },

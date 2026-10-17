@@ -1,20 +1,44 @@
-/* Hành trình "home" — NỘI DUNG HỌC: thẻ kiến thức, câu đố, truyện tranh.
- * Chủ sở hữu v2: agent journey-home (CHỈ src/journeys/home/). Hợp đồng: docs/STORY.md mục 2.
- * Gọi OG.Journeys.register({id:'home', cards, quizzes, comics}) — được GỘP với journey.js.
+// @ts-check
+/* ============================================================================
+ * Hành trình "home" — NỘI DUNG HỌC: THẺ KIẾN THỨC, CÂU ĐỐ, TRUYỆN TRANH
+ * ----------------------------------------------------------------------------
+ * Vai trò:      Khai báo toàn bộ nội dung học của hành trình home (20 thẻ, 13 câu đố, các truyện tranh)
+ *               kèm hình minh hoạ vẽ bằng canvas. OG.Learn mở thẻ / câu đố khi bé chạm trang sách / cổng;
+ *               OG.Story chiếu truyện. Gọi OG.Journeys.register({ id: 'home', cards, quizzes, comics }) —
+ *               được GỘP với phần khung trong journey.js.
+ * Khái niệm:    data-driven design (nội dung là dữ liệu thuần) · tham chiếu chéo bằng id (thẻ ↔ câu đố ↔ màn) ·
+ *               procedural drawing (vẽ thủ tục: hình tạo bằng lệnh Canvas 2D, không dùng ảnh) ·
+ *               higher-order function (hàm nhận/trả hàm: icon(fn) bọc phần chuẩn hoá toạ độ)
+ * Bài học:      docs/learn/12-data-driven-man-cau-do-hanh-trinh.md · docs/learn/07-ve-canvas-procedural-cache.md
+ * Phụ thuộc:    OG.Journeys.register (LOAD) · OG.font (lúc CHẠY, khi vẽ chữ trong hình)
+ * Event:        (không)
+ * API công khai: (không) — chỉ đăng ký dữ liệu
+ * Đọc tiếp:     src/journeys/home/journey.js (màn nào đặt trang sách / cổng nào) → src/story/learn.js (cách thẻ
+ *               và câu đố được hiển thị) → src/core/journeys.js (validate kiểm tham chiếu id)
+ * Dữ liệu:      CardDef, QuizDef, PanelDef, DrawIconFn, IconSpec (src/types.d.ts; đặc tả docs/STORY.md mục 2.3–2.5)
  *
  * 4 khu: kitchen (dinh dưỡng, vệ sinh, an toàn bếp) · garden (cây, côn trùng có ích, vòng tuần hoàn nước)
  *        roof (mây, mưa, cầu vồng, gió, Mặt Trời, Mặt Trăng) · basement (nam châm, điện an toàn, tái chế).
- * Câu chữ: ngắn, tích cực, chính xác (trẻ 5–10 tuổi). Mọi hình minh hoạ vẽ bằng canvas. */
+ * Câu chữ: ngắn, tích cực, chính xác (trẻ 5–10 tuổi). Mọi hình minh hoạ vẽ bằng canvas.
+ * ========================================================================== */
 (function () {
   'use strict';
   var OG = window.OG;
   var TAU = Math.PI * 2;
-  var INK = '#17233d';
+  var INK = '#17233d';   // màu viền "mực" chung của mọi hình (phong cách hoạt hình viền đậm)
 
   // ---------------------------------------------------------------------------
   // Bộ vẽ hình minh hoạ: mỗi hình vẽ trong ô 100×100, tâm (0,0).
   // icon(fn) -> drawIcon(ctx, x, y, size, t) đúng hợp đồng CardDef/IconSpec.
   // ---------------------------------------------------------------------------
+  // 💡 Khái niệm: chuẩn hoá hệ toạ độ — mỗi hình chỉ cần vẽ trong ô 100×100 tâm (0,0); icon() dời gốc tới
+  //   (x, y) và scale theo size, nên cùng một hình dùng được cho thẻ to (sổ tay) lẫn đáp án nhỏ (câu đố).
+  //   ctx.save()/restore() lưu rồi khôi phục transform + màu, để hình này không "rò" trạng thái sang hình sau.
+  /**
+   * Bọc hàm vẽ cục bộ thành DrawIconFn đúng hợp đồng (x, y = tâm, size = cạnh ô, px).
+   * @param {function(CanvasRenderingContext2D, number): void} fn  vẽ trong ô 100×100 tâm (0,0); nhận (ctx, t giây)
+   * @returns {DrawIconFn}
+   */
   function icon(fn) {
     return function (ctx, x, y, size, t) {
       ctx.save();
@@ -100,6 +124,7 @@
   }
 
   // ---- NHÀ BẾP ----
+  // Hình nào có hoạt ảnh thì dùng t (giây) trong Math.sin(t * k) — lặp mượt, không cần lưu trạng thái.
   var veggies = icon(function (ctx, t) {
     // cà rốt
     ctx.save(); ctx.translate(-22, 6); ctx.rotate(-0.35);
@@ -122,6 +147,8 @@
   var waterGlass = icon(function (ctx, t) {
     ctx.beginPath(); ctx.moveTo(-28, -38); ctx.lineTo(28, -38); ctx.lineTo(22, 40); ctx.lineTo(-22, 40); ctx.closePath();
     ctx.fillStyle = 'rgba(220,242,255,0.9)'; ctx.fill();
+    // 💡 Khái niệm: clip (cắt vùng vẽ) — mặt nước gợn sóng vẽ tràn ra ngoài, nhưng chỉ phần trong lòng cốc hiện.
+    //   save() trước clip() để restore() gỡ vùng cắt; nét viền cốc vẽ lại sau đó, đè lên nước.
     ctx.save(); ctx.clip();
     var w = Math.sin(t * 3) * 3;
     ctx.fillStyle = '#6cc6f2';
@@ -649,10 +676,16 @@
   // ---------------------------------------------------------------------------
   // Đăng ký nội dung
   // ---------------------------------------------------------------------------
+  // 💡 Khái niệm: cùng id 'home' với journey.js → OG.Journeys GỘP (cards/quizzes nối theo id, comics gộp khoá).
+  //   Tách file theo vai trò: người viết nội dung chỉ sửa file này, người thiết kế màn sửa journey.js.
   OG.Journeys.register({
     id: 'home',
 
     // ---- THẺ KIẾN THỨC (20 thẻ, mỗi khu 5) ----
+    // Mẫu CardDef: id duy nhất trong hành trình (được pages[].card và quiz.cardId tham chiếu), areaId = khu,
+    // fact 1–2 câu (validate cảnh báo nếu quá dài), drawIcon = hình canvas (ưu tiên hơn icon).
+    // 🧪 Thử: đổi id 'k_veggie' thành 'k_veggie2' rồi chạy node tests/smoke.js — validate báo lỗi
+    //   "thẻ không tồn tại" ở pages[] của màn home-kitchen-1 (tham chiếu id bị gãy).
     cards: [
       // Nhà bếp
       { id: 'k_veggie', areaId: 'kitchen', title: 'Đĩa ăn cầu vồng', drawIcon: veggies,
@@ -704,6 +737,9 @@
     ],
 
     // ---- CÂU ĐỐ MỞ CỬA (13 câu; mỗi câu gắn với thẻ đã gặp trước đó) ----
+    // Mẫu QuizDef: 2–3 choices CÓ HÌNH (bé chưa đọc giỏi), answer = chỉ số đáp án đúng (đếm từ 0),
+    // hint hiện khi chọn sai, explain hiện khi đúng, cardId = thẻ được mở khoá nếu bé chưa nhặt.
+    // ⚠️ Bẫy: thêm/bớt/đổi thứ tự choices mà quên sửa answer → đáp án "đúng" bị chấm sai.
     quizzes: [
       { id: 'q_wash', areaId: 'kitchen', cardId: 'k_handwash',
         question: 'Trước khi ăn cơm, em cần làm gì?',
@@ -776,6 +812,9 @@
     ],
 
     // ---- TRUYỆN TRANH ----
+    // comics: { comicId: [PanelDef] }. Mẫu PanelDef: bg = id chủ đề cảnh nền | {theme, camX} (dời cảnh để đỡ
+    // lặp) | 'color:#hex' | hàm vẽ; chars[].x, y là TỈ LỆ khung 0..1 (vị trí chân), không phải px;
+    // bubbles[].who = charId của nhân vật có trong panel (bong bóng có đuôi chỉ vào) hoặc 'narrator'.
     comics: {
       // Mở đầu hành trình
       intro: [

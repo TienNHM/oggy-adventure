@@ -1,8 +1,24 @@
-/* Hành trình "vietnam" — NỘI DUNG HỌC: thẻ kiến thức, câu đố, truyện tranh.
- * Chủ sở hữu v2: agent journey-vietnam (CHỈ src/journeys/vietnam/). Hợp đồng: docs/STORY.md mục 2.
+// @ts-check
+/* ============================================================================
+ * Hành trình "vietnam" — NỘI DUNG HỌC: THẺ KIẾN THỨC, CÂU ĐỐ, TRUYỆN TRANH
+ * ----------------------------------------------------------------------------
+ * Vai trò:      Khai báo thẻ, câu đố, truyện tranh của hành trình vietnam. Đăng ký cùng id 'vietnam' nên được
+ *               GỘP với khung khu/màn trong journey.js. OG.Learn hiển thị thẻ/câu đố, OG.Story chiếu truyện.
+ * Khái niệm:    data-driven design · tham chiếu chéo bằng id · tái sử dụng tài nguyên vẽ (decor cảnh nền dùng
+ *               lại làm hình thẻ) · higher-order function (dec, icon trả về DrawIconFn) · procedural drawing
+ * Bài học:      docs/learn/12-data-driven-man-cau-do-hanh-trinh.md · docs/learn/07-ve-canvas-procedural-cache.md
+ * Phụ thuộc:    OG.Journeys.register (LOAD) · lúc CHẠY: OG.Scenery.drawDecor (decor 'vietnam-*' trong theme.js),
+ *               OG.Decor.face (tuỳ chọn)
+ * Event:        (không)
+ * API công khai: (không) — chỉ đăng ký dữ liệu
+ * Đọc tiếp:     src/journeys/vietnam/journey.js → src/journeys/vietnam/theme.js (decor được mượn làm hình thẻ)
+ *               → src/story/learn.js
+ * Dữ liệu:      CardDef, QuizDef, PanelDef, DrawIconFn, IconSpec (src/types.d.ts; docs/STORY.md mục 2.3–2.5)
+ *
  * Hình minh hoạ thẻ: phần lớn dùng lại decor 'vietnam-*' (theme.js) qua OG.Scenery.drawDecor (tự có hình dự phòng);
  * hình phụ của câu đố (lều tuyết, tủ lạnh, quả bóng...) vẽ tại đây.
- * Kiến thức: câu ngắn, chính xác, số liệu làm tròn an toàn, phù hợp trẻ 5–10 tuổi. */
+ * Kiến thức: câu ngắn, chính xác, số liệu làm tròn an toàn, phù hợp trẻ 5–10 tuổi.
+ * ========================================================================== */
 (function () {
   'use strict';
   var OG = window.OG;
@@ -14,6 +30,7 @@
   function fillInk(ctx, c, w) { ctx.fillStyle = c; ctx.fill(); ink(ctx, w); }
   function circle(ctx, x, y, r) { ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); }
   // Viền ngoài cho hình ghép nhiều vòng tròn.
+  // Stroke nét dày gấp đôi rồi fill đè lên: nửa trong của nét bị màu nền che, chỉ còn viền ngoài dày w.
   function fillOut(ctx, c, w) { ink(ctx, w * 2); ctx.fillStyle = c; ctx.fill(); }
   function face(ctx, x, y, s, mood) {
     if (OG.Decor && typeof OG.Decor.face === 'function') { OG.Decor.face(ctx, x, y, s, mood); return; }
@@ -24,6 +41,16 @@
   }
 
   // Icon từ decor 'vietnam-<kind>': k = tỉ lệ so với ô 100 px, dy = vị trí mặt đất (tỉ lệ ô, tính từ tâm).
+  // 💡 Khái niệm: tái sử dụng — decor vẽ Tháp Rùa cho CẢNH NỀN cũng là hình THẺ Hồ Gươm. Decor neo ở mặt đất
+  //   (y = chân) còn icon neo ở tâm ô, nên dời xuống dy × size để hình nằm giữa ô.
+  /**
+   * Tạo DrawIconFn vẽ decor 'vietnam-<kind>' vừa ô vuông size (px), (x, y) = tâm ô.
+   * @param {string} kind        tên decor không kèm tiền tố 'vietnam-'
+   * @param {number} [k=0.75]    tỉ lệ decor so với ô 100 px
+   * @param {number} [dy=0.42]   vị trí mặt đất của decor, tính theo tỉ lệ cạnh ô từ tâm xuống
+   * @param {Object} [opts]      opts truyền thẳng cho decor
+   * @returns {DrawIconFn}
+   */
   function dec(kind, k, dy, opts) {
     return function (ctx, x, y, size, t) {
       ctx.save();
@@ -144,6 +171,9 @@
   });
 
   // ---- Hình thẻ kiến thức ----
+  // Bảng tên → hình; chỉnh k / dy từng hình để mọi decor (cao thấp khác nhau) trông vừa khung thẻ.
+  // 🧪 Thử: đổi pho: dec('pho', 0.75, 0.44) thành dec('pho', 1.5, 0.44) rồi mở sổ tay: bát phở to tràn khung.
+  /** @type {Object<string, DrawIconFn>} */
   var ICON = {
     turtletower: dec('turtletower', 0.7, 0.4),
     pho: dec('pho', 0.75, 0.44),
@@ -175,6 +205,7 @@
 
   OG.Journeys.register({
     id: 'vietnam',
+    // Mẫu CardDef: id (duy nhất trong hành trình) được pages[].card trong journey.js và quiz.cardId tham chiếu.
     cards: [
       // ---- Hà Nội ----
       { id: 'hn_hoguom', areaId: 'hanoi', title: 'Hồ Gươm', drawIcon: ICON.turtletower,
@@ -232,6 +263,8 @@
         fact: 'Đồng bằng sông Cửu Long là vựa lúa lớn nhất Việt Nam. Gạo ở đây được bán đi nhiều nước trên thế giới!' }
     ],
 
+    // Mẫu QuizDef: answer = chỉ số (từ 0) của đáp án đúng; mỗi choice có hình (icon) vì bé có thể chưa đọc giỏi.
+    // ⚠️ Bẫy: đổi thứ tự choices mà quên sửa answer → game chấm sai đáp án.
     quizzes: [
       { id: 'q_hn_capital', areaId: 'hanoi', cardId: 'hn_hoguom', question: 'Thủ đô của Việt Nam là thành phố nào?',
         choices: [{ text: 'Hà Nội', icon: ICON.turtletower }, { text: 'Bắc Cực', icon: igloo }],

@@ -1,21 +1,49 @@
-/* Hành trình "world" — Vòng quanh thế giới. CẤU TRÚC: khu, màn, trùm, người dẫn đường.
- * Chủ sở hữu v2: agent journey-world (CHỈ src/journeys/world/). Hợp đồng: docs/STORY.md mục 2–3.
+// @ts-check
+/* ============================================================================
+ * Hành trình "world" (Vòng quanh thế giới) — CẤU TRÚC: KHU, MÀN, TRÙM, NGƯỜI DẪN ĐƯỜNG
+ * ----------------------------------------------------------------------------
+ * Vai trò:      Khai báo khung hành trình world: thông tin chung, 5 khu, 10 màn. OG.Journeys biên dịch dữ liệu
+ *               này thành LevelDef cho OG.Level chạy; không có logic game ở đây.
+ * Khái niệm:    data-driven design (thiết kế hướng dữ liệu) · hàm nhà máy (factory) cho dữ liệu kẻ địch, có
+ *               dự phòng khi loại riêng chưa đăng ký · field tuỳ biến trong dữ liệu (costume) · thứ tự load
+ * Bài học:      docs/learn/12-data-driven-man-cau-do-hanh-trinh.md
+ * Phụ thuộc:    OG.Journeys.register (LOAD) · OG.Enemies.types (LOAD — extras.js phải nạp TRƯỚC file này) ·
+ *               tham chiếu kiểm lúc CHẠY bởi OG.Journeys.validate: chủ đề 'world-*' (theme.js), thẻ/câu đố/truyện
+ *               (content.js), trùm joey/marky/deedee/trio
+ * Event:        (không)
+ * API công khai: (không) — chỉ gọi OG.Journeys.register({ id: 'world', ... })
+ * Đọc tiếp:     src/journeys/world/content.js → src/journeys/world/extras.js (gián mặc trang phục) → src/core/journeys.js
+ * Dữ liệu:      JourneyDef → AreaDef → LevelDef (src/types.d.ts; đặc tả docs/STORY.md mục 2–2.2)
+ *
  * Thứ tự load trong thư mục: theme.js → content.js → extras.js → journey.js (file này).
+ * Toạ độ: thế giới (px), gốc góc trên-trái màn; sàn y = 480; platforms [x, y, w, h] góc trên-trái; pizzas/coins/pages tâm.
  *
  * 5 khu × 2 màn + 1 trùm/khu: egypt (Joey) · france (Marky) · japan (Dee Dee) · amazon (Joey) · arctic (bộ ba).
  * Thiết kế màn cho trẻ 5–10 tuổi: bục rộng (≥160 px), bậc cao 70–80 px, hố ≤ 90 px, ít gián, gián đi chậm,
  * 2 checkpoint/màn, trang sách dễ thấy (1 trang đặt trên bục cao để thưởng).
- * Truyện trước trận trùm: area.boss.intro (OG.Game.finishStage chiếu trước trận, lần đầu). */
+ * Truyện trước trận trùm: area.boss.intro (OG.Game.finishStage chiếu trước trận, lần đầu).
+ * ========================================================================== */
 (function () {
   'use strict';
   var OG = window.OG;
 
   // Gián du lịch (extras.js). Dự phòng 'roach' nếu loại riêng chưa đăng ký.
+  // ⚠️ Bẫy: kiểm tra chạy lúc LOAD (khi register bên dưới dựng dữ liệu), nên extras.js phải đứng TRƯỚC journey.js
+  //   trong index.html. Đảo thứ tự thì mọi con gián âm thầm thành 'roach' thường, mất trang phục.
+  /**
+   * Tạo dữ liệu một con gián "đi du lịch" mặc trang phục theo xứ.
+   * @param {number} x            vị trí xuất phát, toạ độ thế giới (px)
+   * @param {number} [range=70]   nửa quãng tuần tra quanh x (px)
+   * @param {string} [costume]    'mummy' | 'beret' | 'headband' | 'leaf' | 'earmuff' (extras.js đọc qua init)
+   * @returns {EnemySpawn & {costume?: string}}  tốc độ cố định 55 px/giây (OG.Difficulty còn nhân hệ số)
+   */
   function roach(x, range, costume) {
     var hasType = OG.Enemies && OG.Enemies.types && OG.Enemies.types['world-roach'];
     return { type: hasType ? 'world-roach' : 'roach', x: x, range: range || 70, speed: 55, costume: costume };
   }
 
+  // 💡 Khái niệm: data-driven design — cả hành trình (5 khu, 10 màn) chỉ là một object dữ liệu. Thêm màn mới =
+  //   thêm một phần tử vào levels[]; OG.Journeys.validate kiểm tra tham chiếu, OG.Level tự chạy, không sửa engine.
   OG.Journeys.register({
     id: 'world',
     order: 3,
@@ -35,6 +63,8 @@
         intro: 'egypt_intro', outro: 'egypt_outro',
         boss: { bossId: 'joey', intro: 'egypt_boss' },
         levels: [
+          // Mẫu LevelDef: hố = khe giữa 2 đoạn sàn y = 480 (1100..1180, rộng 80 px).
+          // 🧪 Thử: đổi 'mummy' trong enemies thành 'beret' — gián Ai Cập đội mũ nồi Pháp (dữ liệu quyết định hình).
           {
             id: 'world-egypt-1', name: 'Kim tự tháp Giza', width: 2400, spawn: { x: 70, y: 420 }, goal: 5,
             platforms: [[0, 480, 1100, 60], [1180, 480, 1220, 60],
@@ -50,7 +80,7 @@
               { x: 240, lines: ['Chào em! Ta là Giáo sư Cú. Nhặt trang sách để học điều mới nhé!', 'Ăn đủ pizza rồi mới tới cửa ra. Cố lên nào!'] },
               { x: 1260, charId: 'camel', lines: ['Chào bạn! Tớ là Lạc Đà. Sa mạc nóng lắm, nhớ uống nước nhé!', 'Bí mật nè: bướu của tớ không chứa nước đâu!'] }
             ],
-            quizGate: { quiz: 'q_pyramid' }
+            quizGate: { quiz: 'q_pyramid' }   // không có x → cổng đặt ở cửa EXIT
           },
           {
             id: 'world-egypt-2', name: 'Bờ sông Nile', width: 2600, spawn: { x: 70, y: 420 }, goal: 5,

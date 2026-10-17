@@ -1,5 +1,23 @@
-/* Hành trình "vietnam" — CẢNH NỀN theo chủ đề + thư viện decor/lớp parallax riêng (tiền tố 'vietnam-').
- * Chủ sở hữu v2: agent journey-vietnam (CHỈ src/journeys/vietnam/). Hợp đồng ThemeDef: docs/STORY.md mục 4.
+// @ts-check
+/* ============================================================================
+ * Hành trình "vietnam" — CẢNH NỀN THEO CHỦ ĐỀ + THƯ VIỆN DECOR / LỚP PARALLAX 'vietnam-*'
+ * ----------------------------------------------------------------------------
+ * Vai trò:      Đăng ký ~30 decor, 7 lớp parallax và 7 chủ đề cảnh nền của hành trình vietnam (lúc LOAD).
+ *               Bộ vẽ chung src/gfx/scenery.js đọc ThemeDef rồi gọi các hàm vẽ ở đây mỗi frame; content.js
+ *               mượn decor ở đây làm hình thẻ kiến thức.
+ * Khái niệm:    theme khai báo (ThemeDef: cảnh là dữ liệu) · registry decor / lớp theo tên · lớp có tham số
+ *               (vietnam-row nhận danh sách items trong dữ liệu) · hàm trợ giúp sinh phần lặp của dữ liệu
+ *               (theme() dựng platformStyle + drawCustom từ một bảng style ngắn) · parallax · procedural drawing
+ * Bài học:      docs/learn/12-data-driven-man-cau-do-hanh-trinh.md · docs/learn/08-camera-parallax.md ·
+ *               docs/learn/07-ve-canvas-procedural-cache.md
+ * Phụ thuộc:    OG.Scenery.registerDecor / registerLayer / registerTheme / drawDecor (LOAD) ·
+ *               OG.util.roundRectPath (lúc CHẠY) · OG.Decor.face (tuỳ chọn) · OG.W, OG.H (LOAD, có dự phòng)
+ * Event:        (không)
+ * API công khai: (không) — chỉ đăng ký tên 'vietnam-*' vào OG.Scenery
+ * Đọc tiếp:     src/core/scenery-registry.js → src/gfx/scenery.js → src/journeys/vietnam/content.js
+ * Dữ liệu:      ThemeDef, SceneryLayer, PlatformPaint, DecorFn (src/types.d.ts; docs/STORY.md mục 4)
+ *
+ * Hợp đồng ThemeDef: docs/STORY.md mục 4.
  *
  * Chủ đề: vietnam-hanoi · vietnam-halong · vietnam-halongcave · vietnam-hue · vietnam-hoian · vietnam-saigon · vietnam-mientay
  * Decor (x = tâm, y = mặt đất, vẽ trong không gian thế giới; cao ~100 px ở scale 1):
@@ -8,14 +26,16 @@
  *   benthanh, banhmi, banhmicart, scooter, monkey, coconut, floatboat, fruits, rice, dragon
  * Lớp (màn hình): vietnam-water, vietnam-row, vietnam-karsts, vietnam-skyline, vietnam-ricefield,
  *   vietnam-stalactites, vietnam-garland
- * Phong cách: viền ink #17233d dày bo tròn, màu tươi, đồ vật có khuôn mặt (OG.Decor.face nếu có). */
+ * Phong cách: viền ink #17233d dày bo tròn, màu tươi, đồ vật có khuôn mặt (OG.Decor.face nếu có).
+ * ========================================================================== */
 (function () {
   'use strict';
   var OG = window.OG;
   var S = OG.Scenery;
   var TAU = Math.PI * 2;
   var INK = '#17233d';
-  var D = {}; // name -> fn(ctx, x, y, s, t, o) (dùng trực tiếp trong lớp parallax)
+  /** @type {Object<string, DecorFn>} name (không tiền tố) -> hàm vẽ decor; lớp parallax gọi thẳng, khỏi tra registry */
+  var D = {};
 
   // ---------------------------------------------------------------------------
   // Tiện ích vẽ
@@ -53,6 +73,14 @@
   }
 
   // Đăng ký decor: fn(ctx, t, o) vẽ quanh gốc (0,0) = chân, hướng lên là y âm.
+  // 💡 Khái niệm: một hàm vẽ, hai lối vào — lưu vào bảng D (lớp parallax trong file gọi trực tiếp, nhanh) và
+  //   registry OG.Scenery với tiền tố 'vietnam-' (dữ liệu ThemeDef / thẻ kiến thức tra theo tên).
+  //   translate + scale đưa mọi decor về cùng quy ước "vẽ quanh chân ở (0,0)", nên tự vẽ không cần biết x, y, s.
+  /**
+   * Đăng ký decor 'vietnam-<name>'.
+   * @param {string} name  tên ngắn (không tiền tố)
+   * @param {function(CanvasRenderingContext2D, number, any): void} fn  vẽ quanh chân (0,0); nhận (ctx, t giây, opts)
+   */
   function reg(name, fn) {
     var draw = function (ctx, x, y, s, t, o) {
       ctx.save();
@@ -736,6 +764,9 @@
   });
 
   // Hàng decor lặp (nhiều kiểu xen kẽ): {items:[{kind, scale, opts, dy}], y, spacing, parallax, scale}
+  // 💡 Khái niệm: parallax + culling — lớp dịch theo cam × px (px < 1 → trôi chậm hơn sàn, trông xa hơn) và chỉ
+  //   vẽ các ô i nằm trong khung 960 px (first .. first + W/span + 3) thay vì mọi ô của cả màn.
+  //   items lặp vòng theo chỉ số ô (i mod số item) nên cùng một ô luôn ra cùng một decor khi camera di chuyển.
   S.registerLayer('vietnam-row', function (ctx, L, cam, t) {
     var px = L.parallax == null ? 0.3 : L.parallax, span = L.spacing || 240, y = L.y == null ? 440 : L.y;
     var items = L.items || [{ kind: 'tree' }];
@@ -865,6 +896,8 @@
     }
     ctx.restore();
   }
+  // Tạo hàm drawCustom.platform từ bảng style st. a = Platform {x, y, w, h, isFloor} (thế giới, góc trên-trái);
+  // sàn chính ở y = 480 nên y > 470 coi là sàn. Trả true = đã vẽ, bộ vẽ chung không vẽ đè.
   function platformFn(st) {
     return function (ctx, a, t) {
       var floor = a.isFloor || a.y > 470;
@@ -893,6 +926,15 @@
       return true;
     };
   }
+  // 💡 Khái niệm: hàm trợ giúp cho dữ liệu — 7 chủ đề đều cần platformStyle (dự phòng) + drawCustom.platform (vẽ
+  //   thật) cùng một kiểu; theme() dựng cả hai từ bảng st ngắn gọn rồi mới registerTheme. Lưu ý: hàm SỬA def.
+  /**
+   * Hoàn thiện rồi đăng ký một ThemeDef: thêm platformStyle + drawCustom.platform sinh từ st (SỬA trực tiếp def).
+   * @param {string} id   id chủ đề, tiền tố 'vietnam-'
+   * @param {ThemeDef} def
+   * @param {{fill: string, top: string, topH?: number, texture?: string, lines?: string, ledgeFill?: string,
+   *          ledgeTop?: string, ledgeTexture?: string, ledgeDeco?: string}} st  bảng màu / hoa văn sàn và bục
+   */
   function theme(id, def, st) {
     def.platformStyle = {
       floor: { fill: st.fill, top: st.top, topH: st.topH || 10, radius: 0 },
@@ -907,6 +949,9 @@
   // ===========================================================================
   // CHỦ ĐỀ
   // ===========================================================================
+  // Mẫu ThemeDef: layers xếp XA → GẦN (parallax 0.08 → 0.42), y là toạ độ màn hình của chân hàng decor.
+  // Tham số thứ 3 là bảng style sàn/bục cho theme() ở trên.
+  // 🧪 Thử: đổi texture: 'brick' thành 'tile' (hoặc 'sand', 'stone') rồi vào màn vietnam-hanoi-1: sàn đổi hoa văn.
   // Hà Nội: Hồ Gươm, Tháp Rùa, cầu Thê Húc, phố cổ nhà ống.
   theme('vietnam-hanoi', {
     name: 'Hà Nội', base: 'garden',

@@ -1,6 +1,22 @@
-/* Hành trình "science" — Khoa học & Vũ trụ. CẤU TRÚC: khu, màn, trùm, người dẫn đường.
- * Chủ sở hữu v2: agent journey-science (CHỈ src/journeys/science/). Hợp đồng: docs/STORY.md mục 2–3.
+// @ts-check
+/* ============================================================================
+ * Hành trình "science" (Khoa học & Vũ trụ) — CẤU TRÚC: KHU, MÀN, TRÙM, NGƯỜI DẪN ĐƯỜNG
+ * ----------------------------------------------------------------------------
+ * Vai trò:      Khai báo khung hành trình science: thông tin chung, 4 khu, 8 màn (tự vẽ hình học, không
+ *               dùng `from`). OG.Journeys biên dịch dữ liệu này thành LevelDef cho OG.Level chạy.
+ * Khái niệm:    data-driven design (thiết kế hướng dữ liệu) · hàm trợ giúp sinh dữ liệu (npc) · hằng dữ liệu
+ *               dùng chung (DINO, CELL…) · tham chiếu theo tên (chủ đề, thẻ, câu đố, loại địch, trùm)
+ * Bài học:      docs/learn/12-data-driven-man-cau-do-hanh-trinh.md
+ * Phụ thuộc:    OG.Journeys.register (LOAD; thiếu thì bỏ qua cả file) · tham chiếu kiểm lúc CHẠY bởi
+ *               OG.Journeys.validate: chủ đề 'science-*' (theme.js), thẻ/câu đố/truyện (content.js),
+ *               loại địch 'science-crab' / 'science-astroroach' (extras.js), trùm joey/marky/deedee/trio
+ * Event:        (không)
+ * API công khai: (không) — chỉ gọi OG.Journeys.register({ id: 'science', ... })
+ * Đọc tiếp:     src/journeys/science/content.js → src/journeys/science/extras.js (kẻ địch riêng) → src/core/journeys.js
+ * Dữ liệu:      JourneyDef → AreaDef → LevelDef (src/types.d.ts; đặc tả docs/STORY.md mục 2–2.2)
+ *
  * Thứ tự load trong thư mục: theme.js → content.js → extras.js → journey.js (file này).
+ * Toạ độ: thế giới (px), gốc góc trên-trái màn; sàn y = 480; platforms [x, y, w, h] góc trên-trái; pizzas/coins/pages tâm.
  *
  * Cốt truyện: Rô-bốt Bíp chế cỗ máy thời gian; Joey, Marky, Dee Dee lấy mất và bấm lung tung.
  * Oggy cùng Bíp đuổi theo qua 4 khu, mỗi khu 2 màn + 1 trận trùm:
@@ -18,7 +34,16 @@
   var DINO = { charId: 'dino', name: 'Khủng Long Con' };
   var CELL = { charId: 'blood_cell', name: 'Hồng Cầu' };
 
-  // Điểm nói chuyện của NPC phụ (charId + name riêng).
+  // 💡 Khái niệm: hàm sinh dữ liệu — guideSpot của NPC phụ luôn cần charId + name; gói vào npc(DINO, x, lines)
+  //   để dữ liệu màn ngắn gọn và không gõ sai tên nhân vật ở mỗi màn.
+  /**
+   * Tạo một guideSpot (điểm NPC đứng nói chuyện) cho NPC phụ.
+   * @param {{charId: string, name: string}} who  NPC (charId có trong src/data/characters.js)
+   * @param {number} x          vị trí đứng, toạ độ thế giới (px), chân trên sàn
+   * @param {string[]} lines    các câu thoại lần lượt hiện trong bong bóng
+   * @param {Object} [extra]    field thêm (vd { card: 'id' }), chép đè vào kết quả
+   * @returns {{x: number, lines: string[], charId: string, name: string}}
+   */
   function npc(who, x, lines, extra) {
     var s = { x: x, lines: lines, charId: who.charId, name: who.name };
     if (extra) for (var k in extra) s[k] = extra[k];
@@ -44,6 +69,7 @@
         intro: 'dino_intro', outro: 'dino_outro',
         boss: { bossId: 'joey' },
         levels: [
+          // Mẫu LevelDef tự vẽ hình học: id có tiền tố 'science-'; goal (số pizza cần ăn) ≤ số pizza trong màn.
           {
             id: 'science-dino-1', name: 'Thung lũng dương xỉ', width: 2200, spawn: { x: 70, y: 420 }, goal: 4,
             platforms: [[0, 480, 2200, 60],
@@ -63,6 +89,7 @@
           },
           {
             id: 'science-dino-2', name: 'Bãi hoá thạch', width: 2400, spawn: { x: 70, y: 420 }, goal: 5,
+            // Hố = khe giữa 2 đoạn sàn y = 480 (1180..1260, rộng 80 px); bục [1140, 400] bắc ngang phía trên.
             platforms: [[0, 480, 1180, 60], [1260, 480, 1140, 60],
               [320, 400, 170, 18], [600, 345, 160, 18], [900, 405, 170, 18], [1140, 400, 160, 18],
               [1480, 405, 170, 18], [1700, 345, 170, 18], [1980, 405, 170, 18]],
@@ -143,6 +170,7 @@
               [1360, 400, 160, 18], [1640, 405, 170, 18], [1900, 350, 160, 18]],
             pizzas: [[190, 440], [385, 365], [660, 310], [965, 365], [1220, 310], [1440, 360], [1725, 365], [1980, 310], [2100, 440]],
             coins: [[500, 440], [1060, 440], [1290, 440], [1560, 440]],
+            // Loại địch riêng (extras.js) tham chiếu theo TÊN; nếu chưa đăng ký, OG.Enemies.create dùng 'roach'.
             enemies: [{ type: 'science-crab', x: 760, range: 60, speed: 50 }, { type: 'science-crab', x: 1820, range: 60, speed: 50 }],
             exit: { x: 2180 },
             checkpoints: [1000, 1720],

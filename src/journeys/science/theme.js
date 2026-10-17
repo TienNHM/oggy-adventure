@@ -1,5 +1,26 @@
-/* Hành trình "science" — CẢNH NỀN theo chủ đề. Chủ sở hữu v2: agent journey-science (CHỈ src/journeys/science/).
+// @ts-check
+/* ============================================================================
+ * Hành trình "science" — CẢNH NỀN THEO CHỦ ĐỀ + THƯ VIỆN DECOR / LỚP PARALLAX 'science-*'
+ * ----------------------------------------------------------------------------
+ * Vai trò:      Đăng ký decor, lớp parallax và 5 chủ đề cảnh nền của hành trình science (chạy lúc LOAD).
+ *               Bộ vẽ chung src/gfx/scenery.js đọc ThemeDef rồi gọi lại các hàm vẽ ở đây mỗi frame;
+ *               content.js còn mượn decor ở đây làm hình thẻ kiến thức.
+ * Khái niệm:    theme khai báo (ThemeDef: cảnh là dữ liệu) · registry decor / lớp theo tên ·
+ *               lớp có tham số (một hàm vẽ dùng lại với decor/spacing/scale khác nhau trong dữ liệu) ·
+ *               parallax · procedural drawing · hoạt ảnh theo thời gian t
+ * Bài học:      docs/learn/12-data-driven-man-cau-do-hanh-trinh.md · docs/learn/08-camera-parallax.md ·
+ *               docs/learn/07-ve-canvas-procedural-cache.md
+ * Phụ thuộc:    OG.Scenery.registerDecor / registerLayer / registerTheme / drawDecor (LOAD; thiếu OG.Scenery thì
+ *               bỏ qua cả file) · OG.W, OG.H (LOAD, có dự phòng)
+ * Event:        (không)
+ * API công khai: (không) — chỉ đăng ký tên 'science-*' vào OG.Scenery
+ * Đọc tiếp:     src/core/scenery-registry.js (drawDecor / drawLayer tự save/restore) → src/gfx/scenery.js
+ *               → src/journeys/science/content.js (decorIcon dùng lại decor ở đây)
+ * Dữ liệu:      ThemeDef, SceneryLayer, PlatformPaint, DecorFn (src/types.d.ts; docs/STORY.md mục 4)
+ *
  * Hợp đồng ThemeDef: docs/STORY.md mục 4. Mọi tên riêng có tiền tố 'science-'.
+ * Hệ toạ độ: decor + sàn/bục vẽ trong toạ độ THẾ GIỚI (x = tâm, y = mặt đất); lớp parallax vẽ trong toạ độ
+ *   MÀN HÌNH (0..960 px, gốc góc trên-trái) và tự trừ cam × parallax.
  *
  * Chủ đề: science-lab (phòng thí nghiệm, chỉ dùng cho truyện tranh) · science-dino (thời khủng long)
  *         · science-body (bên trong cơ thể) · science-ocean (đại dương sâu) · science-space (Hệ Mặt Trời).
@@ -8,7 +29,8 @@
  *   -timemachine.
  * Lớp parallax riêng (màn hình): science-row, -longnecks, -vessels, -cells, -bigheart, -rays, -kelp, -whale,
  *   -fishes, -planets, -moonhills, -labwall.
- * Tất cả vẽ bằng canvas, tự chứa (không phụ thuộc thư viện decor chung) nên luôn có hình. */
+ * Tất cả vẽ bằng canvas, tự chứa (không phụ thuộc thư viện decor chung) nên luôn có hình.
+ * ========================================================================== */
 (function () {
   'use strict';
   var OG = window.OG;
@@ -68,6 +90,9 @@
   // DECOR (thế giới; x = tâm, y = mặt đất). OG.Scenery.drawDecor đã save/restore quanh mỗi lời gọi.
   // =====================================================================================
 
+  // 💡 Khái niệm: registry theo tên — đăng ký 1 lần ở đây, rồi bất kỳ dữ liệu nào (ThemeDef.decor, lớp
+  //   'science-row', thẻ kiến thức) chỉ cần ghi chuỗi 'science-volcano'. Tên sai → OG.Scenery vẽ hình dự phòng
+  //   thay vì làm vỡ game. Tham số: (ctx, x tâm, y mặt đất, s = tỉ lệ, t = giây, o = opts tuỳ chọn).
   // Núi lửa tí hon có mặt, phun khói tròn như kẹo bông.
   S.registerDecor('science-volcano', function (ctx, x, y, s, t, o) {
     ctx.translate(x, y); ctx.scale(s, s);
@@ -388,7 +413,11 @@
   // LỚP PARALLAX (màn hình, phủ ngang 960 px). layer = {kind, parallax, y, height, color, spacing, scale, decor, opts}
   // =====================================================================================
 
+  // ⚠️ Bẫy: hàm đăng ký qua registerLayer nhận (ctx, layer, camX, t, theme) — KHÁC thứ tự với layer.draw của
+  //   lớp 'custom' (ctx, camX, t, layer, theme). Nhầm thứ tự thì `cam * px` thành NaN và lớp biến mất im lặng.
   // Hàng decor lặp lại (tự chứa, không phụ thuộc 'decorRow' của thư viện chung).
+  // 💡 Khái niệm: lớp có tham số — cùng một hàm, dữ liệu theme chọn decor / spacing / scale / offset khác nhau
+  //   (xem science-dino: một hàng núi lửa xa và một hàng dương xỉ gần dùng chung 'science-row').
   S.registerLayer('science-row', function (ctx, L, cam, t) {
     var px = L.parallax == null ? 0.3 : L.parallax, span = L.spacing || 260, off = L.offset || 0;
     for (var i = -1; i < W / span + 2; i++) {
@@ -587,6 +616,7 @@
     ctx.fillStyle = top; ctx.fillRect(a.x, a.y, a.w, topH || 9);
     ctx.fillStyle = INK; ctx.fillRect(a.x, a.y + (topH || 9), a.w, 2.5);
   }
+  // a = Platform {x, y, w, h, isFloor} (thế giới, góc trên-trái). Sàn chính ở y = 480 → y > 470 coi là sàn.
   function isFloor(a) { return a.isFloor || a.y > 470; }
 
   function dinoPlatform(ctx, a) {
@@ -653,6 +683,11 @@
   // CHỦ ĐỀ
   // =====================================================================================
 
+  // Mẫu ThemeDef: layers xếp XA → GẦN (parallax tăng dần 0.06 → 0.42); 'mountains' là lớp thư viện chung,
+  // 'science-*' là lớp đăng ký ở trên. decor đặt theo chu kỳ every px từ start px (thế giới);
+  // fossil đặt y: 515 tức là NẰM TRONG lớp đất dưới mặt sàn 480.
+  // 🧪 Thử: đổi parallax của lớp 'science-longnecks' 0.2 → 0.9 rồi chạy trong màn science-dino-1: đàn khủng long
+  //   trôi gần bằng tốc độ sàn, cảm giác "ở xa" mất hẳn.
   // Thời khủng long: trời cam ấm, núi lửa cười, khủng long cổ dài nhai lá ở xa.
   S.registerTheme('science-dino', {
     name: 'Thời khủng long', base: 'garden',
@@ -671,7 +706,7 @@
       { kind: 'science-bone', every: 1300, start: 980, scale: 0.8, opts: { rot: -0.15 } }
     ],
     ambient: { kind: 'leaves', color: 'rgba(120,190,90,0.7)' },
-    drawCustom: { platform: function (ctx, a, t) { return dinoPlatform(ctx, a, t); } }
+    drawCustom: { platform: function (ctx, a, t) { return dinoPlatform(ctx, a); } }
   });
 
   // Bên trong cơ thể: hồng ấm, mạch máu mềm mại, hồng cầu trôi, trái tim đập ở xa.

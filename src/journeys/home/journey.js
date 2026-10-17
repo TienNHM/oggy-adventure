@@ -1,54 +1,100 @@
-/* Hành trình "home" — Cuốn Bách Khoa Kỳ Diệu. CẤU TRÚC: khu, màn, trùm, người dẫn đường.
- * Chủ sở hữu v2: agent journey-home (CHỈ src/journeys/home/). Hợp đồng: docs/STORY.md mục 2–3.
- * Thứ tự load trong thư mục: theme.js → content.js → extras.js → journey.js (file này).
+// @ts-check
+/* ============================================================================
+ * Hành trình "home" (Cuốn Bách Khoa Kỳ Diệu) — CẤU TRÚC: KHU, MÀN, TRÙM, NGƯỜI DẪN ĐƯỜNG
+ * ----------------------------------------------------------------------------
+ * Vai trò:      Khai báo "bộ khung" của hành trình home: thông tin chung (tên, màu, người dẫn đường),
+ *               4 khu và 8 màn chơi. Không có logic game nào ở đây — OG.Journeys đọc dữ liệu này,
+ *               OG.Level / OG.Learn / OG.Story biến nó thành màn chơi thật.
+ * Khái niệm:    data-driven design (thiết kế hướng dữ liệu: nội dung là dữ liệu, engine chỉ "chạy" dữ liệu) ·
+ *               đăng ký nhiều lần cùng id rồi gộp (merge by id) · tái sử dụng hình học màn cũ bằng `from` ·
+ *               hàm nhà máy (factory) nhỏ để bớt lặp dữ liệu
+ * Bài học:      docs/learn/12-data-driven-man-cau-do-hanh-trinh.md
+ * Phụ thuộc:    OG.Journeys.register (đọc lúc LOAD — core/journeys.js phải nạp trước).
+ *               Tham chiếu theo TÊN (kiểm lúc CHẠY bởi OG.Journeys.validate): chủ đề 'home-*' (theme.js),
+ *               thẻ/câu đố/truyện (content.js), trùm deedee/marky/joey/trio, màn v1 kitchen/garden/roof/lair.
+ * Event:        (không)
+ * API công khai: (không) — chỉ gọi OG.Journeys.register({ id: 'home', ... })
+ * Đọc tiếp:     src/journeys/home/content.js (thẻ, câu đố, truyện mà file này tham chiếu)
+ *               → src/journeys/home/theme.js (chủ đề cảnh nền 'home-*') → src/core/journeys.js (compileLevel, validate)
+ * Dữ liệu:      JourneyDef → AreaDef → LevelDef (src/types.d.ts; đặc tả docs/STORY.md mục 2–2.2)
  *
- * 4 khu × 2 màn + 1 trận trùm mỗi khu: Nhà bếp (Dee Dee) → Khu vườn (Marky) → Mái nhà (Joey) → Tầng hầm (bộ ba).
- * Màn 1 của mỗi khu: hình học mới, DỄ (bục rộng, bước nhảy thấp, hố ≤ 90 px có bục bắc cầu).
- * Màn 2 của mỗi khu: TÍCH HỢP LẠI màn v1 (`from:`) nhưng bớt địch, địch chậm, goal thấp hơn.
- * Mỗi màn: 2–3 trang sách (1 trang đặt trên bục cao để thưởng), ≥ 1 cổng câu đố, 2 điểm dẫn đường,
- * checkpoint giữa màn. Câu đố luôn đặt SAU trang sách chứa kiến thức của nó. */
+ * Thứ tự load trong thư mục: theme.js → content.js → extras.js → journey.js (file này, xem index.html).
+ *
+ * Thiết kế màn (dành cho trẻ 5–10 tuổi):
+ *  - 4 khu × 2 màn + 1 trận trùm mỗi khu: Nhà bếp (Dee Dee) → Khu vườn (Marky) → Mái nhà (Joey) → Tầng hầm (bộ ba).
+ *  - Màn 1 của mỗi khu: hình học mới, DỄ (bục rộng, bước nhảy thấp, hố ≤ 90 px có bục bắc cầu).
+ *  - Màn 2 của mỗi khu: TÍCH HỢP LẠI màn v1 (`from:`) nhưng bớt địch, địch chậm, goal thấp hơn.
+ *  - Mỗi màn: 2–3 trang sách (1 trang đặt trên bục cao để thưởng), ≥ 1 cổng câu đố, 2 điểm dẫn đường,
+ *    checkpoint giữa màn. Câu đố luôn đặt SAU trang sách chứa kiến thức của nó.
+ *
+ * Toạ độ trong file: toạ độ THẾ GIỚI (px), gốc góc trên-trái màn chơi; sàn chính ở y = 480.
+ *   platforms: [x, y, w, h] (góc trên-trái) · pizzas/coins: [x, y] (tâm) · pages: {x, y} (tâm) ·
+ *   exit/quizGate/guideSpots/checkpoints: chỉ cần x (đứng trên sàn).
+ * ========================================================================== */
 (function () {
   'use strict';
   var OG = window.OG;
 
-  // Địch hiền: gián con đi chậm, phạm vi tuần tra ngắn (OG.Difficulty 'kid' còn nhân thêm 0.7).
+  // 💡 Khái niệm: hàm nhà máy (factory) cho DỮ LIỆU — mỗi màn chỉ ghi roach(950, 70, 45) thay vì
+  //   lặp lại cả object { type, x, range, speed }. Muốn đổi loại địch của cả hành trình chỉ sửa 1 chỗ.
+  /**
+   * Tạo dữ liệu một con gián "hiền" (đi chậm, phạm vi tuần tra ngắn).
+   * OG.Difficulty ở chế độ 'kid' còn nhân thêm tốc độ × 0.7.
+   * @param {number} x        vị trí xuất phát, toạ độ thế giới (px)
+   * @param {number} [range=70]  nửa quãng tuần tra quanh x (px)
+   * @param {number} [speed=45]  tốc độ đi (px/giây)
+   * @returns {EnemySpawn}
+   */
   function roach(x, range, speed) { return { type: 'roach', x: x, range: range || 70, speed: speed || 45 }; }
 
+  // 💡 Khái niệm: đăng ký nhiều lần cùng id — file này chỉ khai "khung" (areas), content.js khai
+  //   cards/quizzes/comics với cùng id 'home'; OG.Journeys GỘP lại (mảng gộp theo id, field khác ghi đè).
   OG.Journeys.register({
     id: 'home',
     order: 1,
     title: 'Cuốn Bách Khoa Kỳ Diệu',
     emoji: '📖',
     description: 'Lũ gián làm tung trang sách khắp nhà! Cùng Olivia nhặt lại và khám phá điều kỳ diệu.',
-    guide: { charId: 'olivia', name: 'Olivia' },
+    guide: { charId: 'olivia', name: 'Olivia' },   // người dẫn đường: charId phải có trong src/data/characters.js
+    // Màu UI riêng của hành trình (thẻ chọn, khung truyện, sổ tay) — UI đọc từ dữ liệu, không hard-code theo id.
     palette: { primary: '#ed713c', secondary: '#52b9df', accent: '#ffc94a', bg: '#fff6df', ink: '#17233d' },
-    intro: 'intro',
+    intro: 'intro',                                // id truyện tranh trong content.js (chiếu lần đầu)
     ending: { comic: 'ending', title: 'CUỐN SÁCH ĐÃ LÀNH! 📖',
       text: 'Bạn đã nhặt lại mọi trang sách và học được bao điều kỳ diệu. Giỏi quá!' },
     areas: [
       // =====================================================================
       // KHU 1 — NHÀ BẾP: dinh dưỡng, uống nước, rửa tay, an toàn bếp
       // =====================================================================
+      // Mẫu AreaDef: sceneryTheme là chủ đề mặc định cho mọi màn trong khu (và cho đấu trường trùm);
+      // intro/outro/boss.intro là id truyện tranh; bossId tham chiếu trùm đã đăng ký trong src/bosses/.
       {
         id: 'kitchen', name: 'Nhà bếp', emoji: '🍳', sceneryTheme: 'home-kitchen', music: 'kitchen',
         intro: 'kitchen_intro', outro: 'kitchen_outro',
         boss: { bossId: 'deedee', intro: 'kitchen_boss' },
         levels: [
+          // Mẫu LevelDef đầy đủ (màn tự vẽ hình học). id BẮT BUỘC có tiền tố 'home-' và duy nhất toàn game.
           {
             id: 'home-kitchen-1', name: 'Bữa sáng cầu vồng', icon: '🥕',
-            width: 2000, spawn: { x: 70, y: 420 }, goal: 5,
+            width: 2000, spawn: { x: 70, y: 420 }, goal: 5,   // goal = số pizza cần ăn để mở EXIT (≤ số pizza)
+            // ⚠️ Bẫy: platforms[0] nên là sàn y = 480 (validate cảnh báo nếu không). Muốn có hố thì TÁCH sàn thành
+            //   nhiều đoạn y = 480 (xem khu vườn bên dưới), đừng xoá sàn.
             platforms: [[0, 480, 2000, 60], [280, 400, 170, 18], [520, 340, 170, 18], [800, 400, 190, 18],
               [1060, 340, 170, 18], [1480, 400, 180, 18], [1700, 340, 160, 18]],
             pizzas: [[170, 440], [365, 360], [880, 360], [1145, 300], [1420, 440], [1570, 360], [1780, 300]],
             coins: [[1000, 440], [1040, 440], [1300, 440], [1880, 440]],
             enemies: [roach(950, 70, 45), roach(1610, 80, 45)],
             exit: { x: 1880 },
+            // ---- field v2 của hành trình ----
+            // pages: trang sách (tâm x, y) — chạm vào thì OG.Learn mở thẻ `card` (id trong content.js).
             pages: [
               { card: 'k_veggie', x: 470, y: 440 },
               { card: 'k_water', x: 760, y: 440 },
               { card: 'k_handwash', x: 625, y: 300 }    // trên bục cao: trang "thưởng"
             ],
+            // Cổng câu đố: x số = tường chặn giữa màn; bỏ x = cổng đặt ở cửa EXIT.
+            // ⚠️ Bẫy: đặt cổng TRƯỚC trang sách chứa đáp án thì bé phải đoán mò — luôn đặt sau (x lớn hơn).
             quizGate: { quiz: 'q_wash', x: 1330 },
+            // NPC đứng ở x; thiếu charId/name thì dùng người dẫn đường của hành trình (Olivia).
             guideSpots: [
               { x: 230, lines: ['Chào bạn! Mình là Olivia. Cùng nhặt trang sách nhé!',
                 'Chạm vào trang sách 📄 để mở thẻ kiến thức.',
@@ -56,10 +102,13 @@
               { x: 1230, charId: 'droplet', name: 'Giọt Nước', lines: ['Mình là Giọt Nước! Uống nước giúp em mát và khoẻ.',
                 'Phía trước có cổng dấu hỏi. Sai cũng không sao, cứ thử lại!'] }
             ],
-            checkpoints: [700, 1380]
+            checkpoints: [700, 1380]   // x của cột cờ hồi sinh; chỉ hiện ở chế độ "Bé chơi" (kid) — thiếu thì OG.Difficulty tự cắm mỗi 600 px
           },
           {
             // Tích hợp lại màn v1 "Nhà bếp náo loạn" (hình học), bớt địch và hạ goal.
+            // 💡 Khái niệm: `from` — compileLevel chép width, spawn, goal, platforms, pizzas, coins, enemies, exit từ màn v1
+            //   'kitchen' rồi GHI ĐÈ bằng field khai ở đây (goal, enemies) → tái sử dụng dữ liệu, không chép tay.
+            // 🧪 Thử: xoá dòng `enemies` bên dưới rồi chơi màn này: lũ gián của màn v1 gốc quay lại.
             id: 'home-kitchen-2', name: 'Bếp nóng, bé an toàn', icon: '🍲', from: 'kitchen', goal: 4,
             enemies: [roach(640, 60, 45), roach(1460, 60, 45)],
             pages: [

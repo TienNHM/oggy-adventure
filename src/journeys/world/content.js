@@ -1,11 +1,29 @@
-/* Hành trình "world" — NỘI DUNG HỌC: thẻ kiến thức, câu đố, truyện tranh.
- * Chủ sở hữu v2: agent journey-world (CHỈ src/journeys/world/). Hợp đồng: docs/STORY.md mục 2.
+// @ts-check
+/* ============================================================================
+ * Hành trình "world" — NỘI DUNG HỌC: THẺ KIẾN THỨC, CÂU ĐỐ, TRUYỆN TRANH
+ * ----------------------------------------------------------------------------
+ * Vai trò:      Khai báo thẻ, câu đố, truyện tranh của hành trình world kèm hình minh hoạ canvas. Đăng ký cùng
+ *               id 'world' nên được GỘP với khung khu/màn trong journey.js.
+ * Khái niệm:    data-driven design · tham chiếu chéo bằng id · procedural drawing · higher-order function (ic, bg,
+ *               globeExtra trả về hàm vẽ) · dự phòng khi thiếu module (fallback) · cô lập lỗi hàm vẽ
+ * Bài học:      docs/learn/12-data-driven-man-cau-do-hanh-trinh.md · docs/learn/07-ve-canvas-procedural-cache.md
+ * Phụ thuộc:    OG.Journeys.register (LOAD) · OG.JourneyArt.world (LOAD, do theme.js tạo — thiếu thì dùng hàm dự
+ *               phòng) · lúc CHẠY: OG.Scenery.drawDecor, OG.font
+ * Event:        (không)
+ * API công khai: (không) — đăng ký dữ liệu; gắn thêm drawGlobe, drawPenguin vào OG.JourneyArt.world
+ * Đọc tiếp:     src/journeys/world/journey.js → src/journeys/world/theme.js (WorldArtKit) → src/story/learn.js
+ * Dữ liệu:      CardDef, QuizDef, PanelDef, DrawIconFn, IconSpec (src/types.d.ts; docs/STORY.md mục 2.3–2.5)
+ *
  * Mọi hình minh hoạ vẽ bằng canvas (drawIcon(ctx, x, y, size, t), (x,y) = tâm).
  * Cốt truyện: lũ gián giật Quả Địa Cầu Thần Kỳ của Giáo sư Cú, nó vỡ thành 5 mảnh bay khắp thế giới.
- * Oggy và Giáo sư Cú đi tìm lại; cuối cùng lũ gián xin lỗi và cả nhóm cùng nhau du lịch. */
+ * Oggy và Giáo sư Cú đi tìm lại; cuối cùng lũ gián xin lỗi và cả nhóm cùng nhau du lịch.
+ * ========================================================================== */
 (function () {
   'use strict';
   var OG = window.OG;
+  // ⚠️ Bẫy: A được đọc lúc LOAD — theme.js phải nạp trước file này (index.html đã xếp đúng). Nếu nạp sau, A là {}
+  //   và mọi hình dùng hàm dự phòng đơn giản bên dưới (vd rr chỉ vẽ hình chữ nhật thường) — không lỗi nhưng xấu.
+  /** @type {WorldArtKit} */
   var A = (OG.JourneyArt && OG.JourneyArt.world) || {};
   var TAU = Math.PI * 2;
   var INK = '#17233d';
@@ -33,6 +51,13 @@
   function decor(ctx, kind, x, y, s, t, o) { if (OG.Scenery) OG.Scenery.drawDecor(ctx, kind, x, y, s, t, o); }
 
   // Bọc hàm vẽ trong hộp chuẩn 100×100 (tâm 0,0) rồi co theo size.
+  // 💡 Khái niệm: chuẩn hoá hệ toạ độ — mọi hình vẽ trong ô 100×100 tâm (0,0); ic() dời về (x, y) và scale theo
+  //   size nên cùng một hình dùng cho thẻ to lẫn đáp án nhỏ. try/catch: hình hỏng chỉ mất hình đó, thẻ vẫn mở.
+  /**
+   * Bọc hàm vẽ cục bộ thành DrawIconFn (x, y = tâm, size = cạnh ô, px; mặc định 100).
+   * @param {function(CanvasRenderingContext2D, number): void} fn  vẽ trong ô 100×100 tâm (0,0); nhận (ctx, t giây)
+   * @returns {DrawIconFn}
+   */
   function ic(fn) {
     return function (ctx, x, y, size, t) {
       ctx.save(); ctx.translate(x, y); var k = (size || 100) / 100; ctx.scale(k, k);
@@ -321,6 +346,8 @@
   // ---------------------------------------------------------------------------
   // NỀN TRUYỆN TRANH
   // ---------------------------------------------------------------------------
+  // Nền panel: có comicBg (theme.js) thì trả về HÀM vẽ cảnh + decor + extra; không có thì trả về chuỗi id chủ đề
+  // — PanelDef.bg chấp nhận cả hai dạng, nên truyện vẫn hiện (chỉ thiếu decor / quả địa cầu).
   function bg(theme, items, camX, extra) {
     if (A.comicBg) return A.comicBg(theme, items, camX, extra);
     return theme;
@@ -332,6 +359,9 @@
   // ---------------------------------------------------------------------------
   OG.Journeys.register({
     id: 'world',
+    // Mẫu CardDef: id được pages[].card (journey.js) và quiz.cardId tham chiếu; drawIcon = hình canvas đã bọc ic().
+    // 🧪 Thử: đổi drawIcon: ic(drawPyramid) của eg_pyramid thành ic(drawNile) rồi mở sổ tay: thẻ kim tự tháp mang
+    //   hình sông Nile — hình và chữ chỉ "gắn" với nhau qua dữ liệu.
     cards: [
       // ---- Ai Cập ----
       { id: 'eg_pyramid', areaId: 'egypt', title: 'Kim tự tháp Giza',
@@ -400,6 +430,7 @@
         drawIcon: ic(drawPenguinCard) }
     ],
 
+    // Mẫu QuizDef: answer = chỉ số (từ 0) của đáp án đúng trong choices (ở đây 1 = "Hình tam giác").
     quizzes: [
       { id: 'q_pyramid', areaId: 'egypt', question: 'Nhìn từ bên cạnh, kim tự tháp giống hình gì?',
         choices: [{ text: 'Hình tròn', icon: shape('circle', '#ff8fb1') }, { text: 'Hình tam giác', icon: shape('tri', '#ecbd68') }, { text: 'Hình vuông', icon: shape('square', '#7ed957') }],
@@ -439,6 +470,7 @@
         answer: 0, hint: 'Gợi ý: muốn thấy cực quang, em phải ngước nhìn lên trời.', explain: 'Tuyệt vời! Cực quang là những dải sáng nhảy múa trên trời đêm.', cardId: 'ar_aurora' }
     ],
 
+    // Mẫu PanelDef: bg = hàm từ bg(...) hoặc id chủ đề; chars[].x là TỈ LỆ khung 0..1 (vị trí chân), không phải px.
     comics: {
       // ===== MỞ ĐẦU =====
       intro: [

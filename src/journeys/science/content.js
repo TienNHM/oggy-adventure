@@ -1,10 +1,25 @@
-/* Hành trình "science" — NỘI DUNG HỌC: thẻ kiến thức, câu đố, truyện tranh.
- * Chủ sở hữu v2: agent journey-science (CHỈ src/journeys/science/). Hợp đồng: docs/STORY.md mục 2.
+// @ts-check
+/* ============================================================================
+ * Hành trình "science" — NỘI DUNG HỌC: THẺ KIẾN THỨC, CÂU ĐỐ, TRUYỆN TRANH
+ * ----------------------------------------------------------------------------
+ * Vai trò:      Khai báo thẻ, câu đố, truyện tranh của hành trình science kèm hình minh hoạ canvas.
+ *               Đăng ký cùng id 'science' nên được GỘP với khung khu/màn trong journey.js.
+ * Khái niệm:    data-driven design · tham chiếu chéo bằng id · procedural drawing · higher-order function
+ *               (icon, decorIcon, numberIcon, sceneBg đều trả về hàm vẽ) · tái sử dụng decor làm hình thẻ ·
+ *               cô lập lỗi (try/catch trong hàm vẽ)
+ * Bài học:      docs/learn/12-data-driven-man-cau-do-hanh-trinh.md · docs/learn/07-ve-canvas-procedural-cache.md
+ * Phụ thuộc:    OG.Journeys.register (LOAD; thiếu thì bỏ qua) · lúc CHẠY: OG.Scenery.drawDecor (decor 'science-*'
+ *               của theme.js), OG.Sprites.drawBackground / drawPlatform (nền truyện), OG.font, OG.FLOOR_Y
+ * Event:        (không)
+ * API công khai: (không) — chỉ đăng ký dữ liệu
+ * Đọc tiếp:     src/journeys/science/journey.js → src/story/learn.js (hiển thị thẻ/câu đố) → src/story/story.js (truyện)
+ * Dữ liệu:      CardDef, QuizDef, PanelDef, DrawIconFn, IconSpec (src/types.d.ts; docs/STORY.md mục 2.3–2.5)
  *
  * 4 khu: dino (thời khủng long) · body (bên trong cơ thể) · ocean (đại dương sâu) · space (Hệ Mặt Trời).
  * 18 thẻ (mỗi khu 4–5), 9 câu đố (mỗi khu 2–3), truyện mở đầu / mở-đóng mỗi khu / giữa màn / kết thúc.
  * Mọi hình minh hoạ vẽ bằng canvas: drawIcon(ctx, x, y, size, t) với (x, y) = tâm.
- * Kiến thức chọn lọc: đúng, phổ biến, số tròn an toàn, dành cho trẻ 5–10 tuổi. */
+ * Kiến thức chọn lọc: đúng, phổ biến, số tròn an toàn, dành cho trẻ 5–10 tuổi.
+ * ========================================================================== */
 (function () {
   'use strict';
   var OG = window.OG;
@@ -40,6 +55,13 @@
   }
 
   // Bọc hàm vẽ: dịch về tâm và chuẩn hoá kích thước (vẽ trong khung 100×100, tâm 0,0).
+  // 💡 Khái niệm: cô lập lỗi — một hình vẽ hỏng (vd gọi hàm chưa có) chỉ làm thiếu hình đó; try/catch giữ
+  //   cho scene thẻ/câu đố vẫn chạy. restore() nằm SAU try nên transform luôn được trả lại dù fn ném lỗi.
+  /**
+   * Bọc hàm vẽ cục bộ thành DrawIconFn (x, y = tâm, size = cạnh ô, px; mặc định 64).
+   * @param {function(CanvasRenderingContext2D, number): void} fn  vẽ trong khung 100×100 tâm (0,0); nhận (ctx, t giây)
+   * @returns {DrawIconFn}
+   */
   function icon(fn) {
     return function (ctx, x, y, size, t) {
       ctx.save();
@@ -51,6 +73,8 @@
     };
   }
   // Dùng decor đã đăng ký trong theme.js làm hình (y = mặt đất nên dịch xuống).
+  // Tra decor theo TÊN lúc vẽ (không phải lúc load) → thứ tự file không quan trọng; thiếu decor thì
+  // OG.Scenery tự vẽ hình dự phòng.
   function decorIcon(kind, scale, groundY, opts) {
     return icon(function (ctx, t) {
       if (OG.Scenery && OG.Scenery.drawDecor) OG.Scenery.drawDecor(ctx, kind, 0, groundY, scale, t, opts || {});
@@ -334,6 +358,8 @@
     });
   }
 
+  // Bảng I: tên hình → DrawIconFn đã bọc. Thẻ/câu đố bên dưới chỉ ghi drawIcon: I.longneck.
+  /** @type {Object<string, DrawIconFn>} */
   var I = {};
   Object.keys(draw).forEach(function (k) { I[k] = icon(draw[k]); });
   Object.keys(pick).forEach(function (k) { I[k] = icon(pick[k]); });
@@ -359,6 +385,7 @@
   OG.Journeys.register({
     id: 'science',
 
+    // Mẫu CardDef: id (duy nhất trong hành trình) được pages[].card trong journey.js và quiz.cardId tham chiếu.
     cards: [
       // ---- Thời khủng long ----
       { id: 'dn_herbivore', areaId: 'dino', title: 'Khủng long ăn cỏ',
@@ -406,6 +433,9 @@
         fact: 'Sao Mộc là hành tinh lớn nhất. Hơn một nghìn Trái Đất có thể xếp vừa bên trong nó!', drawIcon: I.jupiter }
     ],
 
+    // Mẫu QuizDef: answer = chỉ số (từ 0) của đáp án đúng trong choices; cardId = thẻ mở khoá khi trả lời đúng.
+    // 🧪 Thử: đổi answer: 0 của q_dn_food thành 1 rồi chơi màn science-dino-1: cổng chỉ mở khi chọn "Cá"
+    //   (dữ liệu sai thì game "sai" theo — engine không biết kiến thức, chỉ đọc dữ liệu).
     quizzes: [
       { id: 'q_dn_food', areaId: 'dino', question: 'Khủng long cổ dài thích ăn gì?',
         choices: [{ text: 'Lá cây', icon: I.leaf }, { text: 'Cá', icon: I.fish }],

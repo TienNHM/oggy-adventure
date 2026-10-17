@@ -1,9 +1,23 @@
-/* Hành trình "world" — PHẦN MỞ RỘNG: kẻ địch riêng của hành trình.
- * Chủ sở hữu v2: agent journey-world (CHỈ src/journeys/world/). Hợp đồng: docs/STORY.md mục 2.8.
+// @ts-check
+/* ============================================================================
+ * Hành trình "world" — PHẦN MỞ RỘNG: KẺ ĐỊCH RIÊNG 'world-roach' (gián mặc trang phục)
+ * ----------------------------------------------------------------------------
+ * Vai trò:      Đăng ký loại kẻ địch 'world-roach' vào registry OG.Enemies; trang phục chọn theo field
+ *               `costume` trong dữ liệu màn (journey.js).
+ * Khái niệm:    registry loại kẻ địch (strategy pattern) · hook init đọc field tuỳ biến từ dữ liệu (EnemySpawn →
+ *               Enemy) · AI tuần tra dùng delta time · lật hình bằng scale(-1, 1) · cô lập lỗi phần vẽ phụ
+ * Bài học:      docs/learn/09-ai-ke-dich-boss.md · docs/learn/12-data-driven-man-cau-do-hanh-trinh.md
+ * Phụ thuộc:    OG.Enemies.registerType (LOAD; thiếu thì bỏ qua) · OG.Sprites.drawCharacter (lúc CHẠY)
+ * Event:        (không)
+ * API công khai: (không) — đăng ký loại 'world-roach'
+ * Đọc tiếp:     src/game/enemies.js (create gọi init(e, src)) → src/journeys/world/journey.js (hàm roach)
+ * Dữ liệu:      EnemyTypeDef, Enemy, EnemySpawn (src/types.d.ts)
  *
  * 'world-roach': gián con "đi du lịch", mặc đồ theo từng xứ (tinh nghịch, không đáng sợ, giẫm được).
  *   Trong LevelDef: { type: 'world-roach', x, range?, speed?, costume: 'mummy'|'beret'|'headband'|'leaf'|'earmuff' }
- *   Hành vi giống 'roach' (đi qua lại ±range); tốc độ dùng e.speed nên OG.Difficulty tự nhân hệ số. */
+ *   Hành vi giống 'roach' (đi qua lại ±range); tốc độ dùng e.speed nên OG.Difficulty tự nhân hệ số.
+ * Hệ toạ độ: e.x, e.y = góc trên-trái hộp va chạm (thế giới, px); draw dời gốc về tâm chân (y âm = lên trên).
+ * ========================================================================== */
 (function () {
   'use strict';
   var OG = window.OG;
@@ -12,6 +26,7 @@
   var INK = '#17233d';
 
   // Màu thân theo trang phục (gián vẫn tím quen thuộc, riêng xác ướp màu vải).
+  /** @type {Object<string, {body: string, shell: string, leg: string}>} costume -> bảng màu truyền cho OG.Sprites */
   var COLORS = {
     mummy: { body: '#e9dcbc', shell: '#f6eedb', leg: '#9c8a66' },
     earmuff: { body: '#7d3e9b', shell: '#b56bc7', leg: '#4b285d' }
@@ -24,6 +39,7 @@
   }
 
   // Phụ kiện vẽ trong hệ toạ độ gián (nhìn sang phải, chân ở y=0, đầu quanh (13,-11)).
+  // Mỗi nhánh if = một trang phục; dải băng / khăn bay dùng Math.sin(t × tần số) nên phấp phới liên tục.
   function costume(ctx, kind, t) {
     ctx.lineJoin = 'round'; ctx.lineCap = 'round';
     if (kind === 'mummy') {
@@ -60,6 +76,8 @@
 
   OG.Enemies.registerType('world-roach', {
     w: 34, h: 28, score: 50,
+    // 💡 Khái niệm: hook init(e, src) — engine dựng e chỉ với field chuẩn (x, range, speed...); loại địch tự
+    //   chép field riêng (costume) từ dữ liệu màn sang e. Thêm tuỳ biến mới không cần sửa src/game/enemies.js.
     init: function (e, src) { e.costume = src.costume || null; },
     update: function (e, dt) {
       e.x += e.dir * e.speed * dt;
@@ -78,6 +96,7 @@
       if (OG.Sprites && OG.Sprites.drawCharacter) OG.Sprites.drawCharacter(ctx, 'roach', e.alive ? 'run' : 'hurt', e.t, opts);
       if (e.costume && e.alive) {
         ctx.save();
+        // Phụ kiện được vẽ cho gián nhìn sang PHẢI; scale(-1, 1) lật gương khi đi sang trái (e.dir < 0).
         ctx.scale(e.dir < 0 ? -1 : 1, 1);
         try { costume(ctx, e.costume, e.t); } catch (err) { /* phụ kiện hỏng thì bỏ qua */ }
         ctx.restore();

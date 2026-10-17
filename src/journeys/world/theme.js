@@ -1,11 +1,58 @@
-/* Hành trình "world" — CẢNH NỀN theo chủ đề + bộ vẽ dùng chung của hành trình.
- * Chủ sở hữu v2: agent journey-world (CHỈ src/journeys/world/). Hợp đồng ThemeDef: docs/STORY.md mục 4.
+// @ts-check
+/* ============================================================================
+ * Hành trình "world" — CẢNH NỀN THEO CHỦ ĐỀ + BỘ VẼ DÙNG CHUNG OG.JourneyArt.world
+ * ----------------------------------------------------------------------------
+ * Vai trò:      Đăng ký lớp parallax, decor và 5 chủ đề cảnh nền 'world-*' (lúc LOAD), đồng thời xuất một bộ
+ *               tiện ích vẽ OG.JourneyArt.world để content.js / extras.js của cùng hành trình dùng lại.
+ * Khái niệm:    theme khai báo (ThemeDef: cảnh là dữ liệu) · registry decor / lớp theo tên · namespace con chia sẻ
+ *               code giữa các file (OG.JourneyArt.world) · closure tạo hàm vẽ từ bảng màu (platformDrawer) ·
+ *               parallax + culling · hash giả ngẫu nhiên ổn định · procedural drawing
+ * Bài học:      docs/learn/12-data-driven-man-cau-do-hanh-trinh.md · docs/learn/08-camera-parallax.md ·
+ *               docs/learn/07-ve-canvas-procedural-cache.md · docs/learn/01-module-pattern-iife-namespace.md
+ * Phụ thuộc:    OG.Scenery.registerLayer / registerDecor / registerTheme / drawDecor (LOAD) · lúc CHẠY:
+ *               OG.Sprites.drawBackground / drawPlatform (comicBg), OG.W, OG.H (đọc mỗi lần qua W(), H())
+ * Event:        (không)
+ * API công khai: OG.JourneyArt.world (WorldArtKit: rr, fs, circle, ell, line, face, shades, starPath, hash, wrap,
+ *               comicBg, drawCroissant, drawSushi, drawMacaw, drawSloth, drawFrog) · tên 'world-*' trong OG.Scenery
+ * Đọc tiếp:     src/journeys/world/content.js (dùng OG.JourneyArt.world) → src/core/scenery-registry.js → src/gfx/scenery.js
+ * Dữ liệu:      ThemeDef, SceneryLayer, PlatformPaint, DecorFn, PanelDef (src/types.d.ts; docs/STORY.md mục 4) ·
+ *               WorldArtKit (@typedef bên dưới)
+ *
+ * Hợp đồng ThemeDef: docs/STORY.md mục 4.
  *
  * Nội dung file:
  *   - OG.JourneyArt.world: tiện ích vẽ (mặt cười, kính râm, bo góc…) + comicBg() cho truyện tranh.
  *   - Decor riêng 'world-*' (tâm x, chân y; thế giới) và lớp parallax 'world-*' (màn hình).
  *   - 5 chủ đề: world-egypt · world-france · world-japan · world-amazon · world-arctic.
- * Mọi hình vẽ bằng canvas, viền ink #17233d dày, đồ vật có mặt cười. Không phụ thuộc thư viện decor chung. */
+ * Mọi hình vẽ bằng canvas, viền ink #17233d dày, đồ vật có mặt cười. Không phụ thuộc thư viện decor chung.
+ * Hệ toạ độ: lớp parallax = MÀN HÌNH (0..960 px, gốc góc trên-trái); decor + sàn/bục = THẾ GIỚI (decor: x tâm, y chân).
+ * ========================================================================== */
+
+/**
+ * @typedef {Object} WorldArtKit  bộ vẽ dùng chung của hành trình world (OG.JourneyArt.world).
+ *   Mọi field đều tuỳ chọn vì content.js có thể chạy khi theme.js chưa nạp — nơi dùng phải kiểm tra trước.
+ * @property {string} [INK]   màu viền "mực"
+ * @property {number} [TAU]   hằng Math.PI * 2 (một vòng tròn, radian)
+ * @property {function(CanvasRenderingContext2D, number, number, number, number, number): void} [rr]
+ *   tạo path hình chữ nhật bo góc (x, y góc trên-trái, w, h, r bán kính góc; px)
+ * @property {Function} [fs]       tô (fill) + viền ink cho path hiện tại: fs(ctx, fill, lw) — lw = 0 thì không viền
+ * @property {Function} [circle]   circle(ctx, x, y, r, fill, lw)
+ * @property {Function} [ell]      ell(ctx, x, y, rx, ry, fill, lw, rot)
+ * @property {Function} [line]     line(ctx, x1, y1, x2, y2, color, lw)
+ * @property {Function} [face]     face(ctx, x, y, s, mood) — khuôn mặt dễ thương, mood: 'o' | 'sleep' | 'cool' | 'grin'
+ * @property {Function} [shades]   shades(ctx, x, y, s) — kính râm
+ * @property {Function} [starPath] starPath(ctx, x, y, rOut, rIn) — path ngôi sao 5 cánh
+ * @property {function(number): number} [hash]          số giả ngẫu nhiên ổn định 0..1 theo chỉ số
+ * @property {function(number, number): number} [wrap]  chia lấy dư luôn dương
+ * @property {Function} [comicBg]  comicBg(themeId, items, camX, extra) -> hàm nền PanelDef.bg
+ * @property {Function} [drawCroissant]
+ * @property {Function} [drawSushi]
+ * @property {Function} [drawMacaw]
+ * @property {Function} [drawSloth]
+ * @property {Function} [drawFrog]
+ * @property {Function} [drawGlobe]    content.js gắn thêm
+ * @property {Function} [drawPenguin]  content.js gắn thêm
+ */
 (function () {
   'use strict';
   var OG = window.OG;
@@ -16,6 +63,7 @@
   // ---------------------------------------------------------------------------
   // Tiện ích vẽ (dùng chung cho theme.js, content.js, extras.js của hành trình này)
   // ---------------------------------------------------------------------------
+  // Đọc kích thước màn hình logic (px) mỗi lần gọi thay vì chụp lúc LOAD → luôn khớp nếu OG.W được gán muộn.
   function W() { return OG.W || 960; }
   function H() { return OG.H || 540; }
   function wrap(x, span) { return ((x % span) + span) % span; }
@@ -90,16 +138,36 @@
   }
 
   // Lặp hình theo ô parallax: fn(screenX, worldIndex). Chỉ số ổn định theo thế giới để hình không "nhảy".
+  // 💡 Khái niệm: parallax + culling — lớp dịch theo cam × px (px nhỏ = ở xa, trôi chậm); vòng lặp chỉ chạy qua các
+  //   ô k đang lọt vào khung 960 px. k gắn với vị trí trong thế giới, nên hash(k) cho cùng một ô luôn ra cùng
+  //   chiều cao / màu khi camera di chuyển (thay vì đổi mỗi frame như Math.random()).
   function tile(L, cam, defSpan, defPx, fn) {
     var px = L.parallax == null ? defPx : L.parallax, span = L.spacing || defSpan;
     var off = cam * px, k = Math.floor(off / span) - 1;
     for (; k * span - off < W() + span; k++) fn(k * span - off, k, span);
   }
 
-  var A = (OG.JourneyArt = OG.JourneyArt || {}).world = {
+  // 💡 Khái niệm: namespace con — các file của hành trình chia sẻ hàm vẽ qua OG.JourneyArt.world thay vì biến
+  //   toàn cục. `OG.JourneyArt || {}` giữ lại kit của hành trình khác nếu đã có (không ghi đè cả OG.JourneyArt).
+  OG.JourneyArt = OG.JourneyArt || {};
+  /** @type {WorldArtKit} */
+  var A = OG.JourneyArt.world = {
     INK: INK, TAU: TAU, rr: rr, fs: fs, circle: circle, ell: ell, line: line, face: face, shades: shades,
     starPath: starPath, hash: hash, wrap: wrap,
-    // Nền truyện tranh: chủ đề + sàn + decor. items: [{kind, x (0..1 hoặc px), y?, scale?, opts?}], extra(ctx, t)?
+    /**
+     * Tạo hàm nền truyện tranh (dùng làm PanelDef.bg): vẽ chủ đề + sàn + vài decor + phần vẽ thêm.
+     * Lỗi khi vẽ nền thì tô màu trời dự phòng, panel vẫn hiện được.
+     * @param {string} themeId   id chủ đề cảnh nền, vd 'world-egypt'
+     * @param {{kind: string, x: number, y?: number, scale?: number, opts?: any}[]} [items]
+     *   decor đặt trong khung: x ≤ 1 hiểu là tỉ lệ bề rộng khung, x > 1 là px; y mặc định 480 (mặt sàn)
+     * @param {number} [camX=0]  độ dời camera giả (px) để mỗi panel nhìn một đoạn cảnh khác
+     * @param {function(CanvasRenderingContext2D, number): void} [extra]  vẽ thêm phía trên (ctx, t giây)
+     * @returns {function(CanvasRenderingContext2D, number, number, number, number, number): void}
+     *   hàm (ctx, x0, y0, w, h, t) đúng hợp đồng PanelDef.bg
+     * @example
+     *   { bg: OG.JourneyArt.world.comicBg('world-egypt', [{ kind: 'world-camel', x: 0.7 }], 300),
+     *     caption: 'Sa mạc nóng quá!' }
+     */
     comicBg: function (themeId, items, camX, extra) {
       return function (ctx, x0, y0, w, h, t) {
         try {
@@ -120,6 +188,9 @@
   // ---------------------------------------------------------------------------
   // Vẽ sàn & bục theo chủ đề (drawCustom.platform). pal: màu + kiểu hoa văn.
   // ---------------------------------------------------------------------------
+  // 💡 Khái niệm: closure — platformDrawer(pal) "nhớ" bảng màu pal và trả về hàm vẽ sàn riêng cho từng chủ đề;
+  //   dữ liệu theme chỉ cần ghi bảng màu + kiểu hoa văn ('bricks' | 'ice' | mặc định chấm).
+  // a = Platform {x, y, w, h, isFloor} (thế giới, góc trên-trái); sàn chính y = 480 nên y > 470 coi là sàn.
   function platformDrawer(pal) {
     return function (ctx, a, t) {
       var floor = a.isFloor || a.y > 470;
@@ -133,7 +204,8 @@
           if (x < a.x - 10) continue;
           if (pal.pattern === 'bricks') {
             ctx.strokeStyle = pal.line; ctx.lineWidth = 2;
-            ctx.strokeRect(x + 2, a.y + 16, 44, 18); ctx.strokeRect(x + 26 - 24 * (k > 0.5), a.y + 36, 44, 18);
+            // Hàng gạch dưới lệch nửa viên hay không tuỳ hash → tường gạch trông tự nhiên nhưng ổn định.
+            ctx.strokeRect(x + 2, a.y + 16, 44, 18); ctx.strokeRect(x + 26 - 24 * (k > 0.5 ? 1 : 0), a.y + 36, 44, 18);
           } else if (pal.pattern === 'ice') {
             ctx.strokeStyle = pal.line; ctx.lineWidth = 2;
             ctx.beginPath(); ctx.moveTo(x + 6, a.y + 22 + k * 10); ctx.lineTo(x + 20, a.y + 30); ctx.lineTo(x + 30, a.y + 24 + k * 8); ctx.stroke();
@@ -416,6 +488,7 @@
   // ---------------------------------------------------------------------------
   // DECOR riêng (thế giới; x = tâm, y = mặt đất). fn(ctx, x, y, scale, t, opts)
   // ---------------------------------------------------------------------------
+  // Bọc fn(ctx, t, opts) — vẽ quanh gốc (0,0) = tâm chân, y âm hướng lên — thành DecorFn đúng hợp đồng.
   function decor(kind, fn) {
     S.registerDecor(kind, function (ctx, x, y, s, t, o) {
       ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
@@ -772,6 +845,9 @@
   // ---------------------------------------------------------------------------
   // CHỦ ĐỀ CẢNH NỀN
   // ---------------------------------------------------------------------------
+  // Mẫu ThemeDef: layers xếp XA → GẦN (parallax 0.08 → 0.42); lớp có thể mang tham số riêng (shade, boats, reeds)
+  // mà hàm lớp tự đọc. platformStyle là dự phòng; drawCustom.platform mới là hình thật (trả true = đã vẽ).
+  // 🧪 Thử: đổi pattern: 'bricks' thành 'ice' rồi vào màn world-egypt-1: sàn sa mạc có vết nứt như băng.
   // Ai Cập: trời nắng vàng, kim tự tháp, sông Nile, lạc đà đeo kính râm, xác ướp vẫy tay.
   S.registerTheme('world-egypt', {
     name: 'Ai Cập', base: 'roof',

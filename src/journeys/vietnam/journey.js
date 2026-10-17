@@ -1,18 +1,44 @@
-/* Hành trình "vietnam" — Vòng quanh Việt Nam. CẤU TRÚC: khu, màn, trùm, người dẫn đường.
- * Chủ sở hữu v2: agent journey-vietnam (CHỈ src/journeys/vietnam/). Hợp đồng: docs/STORY.md mục 2–3.
+// @ts-check
+/* ============================================================================
+ * Hành trình "vietnam" (Vòng quanh Việt Nam) — CẤU TRÚC: KHU, MÀN, TRÙM, NGƯỜI DẪN ĐƯỜNG
+ * ----------------------------------------------------------------------------
+ * Vai trò:      Khai báo khung hành trình vietnam: thông tin chung, 6 khu, 12 màn. OG.Journeys biên dịch
+ *               dữ liệu này thành LevelDef cho OG.Level chạy; không có logic game ở đây.
+ * Khái niệm:    data-driven design (thiết kế hướng dữ liệu) · quy tắc thiết kế màn viết thành con số
+ *               (độ cao bậc, độ rộng hố) · hàm nhà máy (factory) cho dữ liệu kẻ địch · tham chiếu theo tên
+ * Bài học:      docs/learn/12-data-driven-man-cau-do-hanh-trinh.md
+ * Phụ thuộc:    OG.Journeys.register (LOAD) · tham chiếu kiểm lúc CHẠY bởi OG.Journeys.validate: chủ đề
+ *               'vietnam-*' (theme.js), thẻ/câu đố/truyện (content.js), loại địch 'vietnam-roach' (extras.js),
+ *               trùm joey/marky/deedee/trio
+ * Event:        (không)
+ * API công khai: (không) — chỉ gọi OG.Journeys.register({ id: 'vietnam', ... })
+ * Đọc tiếp:     src/journeys/vietnam/content.js → src/journeys/vietnam/extras.js → src/core/journeys.js
+ * Dữ liệu:      JourneyDef → AreaDef → LevelDef (src/types.d.ts; đặc tả docs/STORY.md mục 2–2.2)
+ *
  * Thứ tự load trong thư mục: theme.js → content.js → extras.js → journey.js (file này).
+ * Toạ độ: thế giới (px), gốc góc trên-trái màn; sàn y = 480; platforms [x, y, w, h] góc trên-trái; pizzas/coins/pages tâm.
  *
  * 6 khu × 2 màn + 1 trận trùm/khu (trận cuối: bộ ba 'trio'). Màn DỄ cho trẻ 5–10 tuổi:
  *  - sàn y=480, bục thấp (y=400) rồi bục cao (y≈335) — mỗi bậc ≤ 80 px, khoảng cách ngang ≤ 80 px;
  *  - hố tối đa 90 px và luôn có bục gỗ bắc ngang phía trên; ít địch, đi chậm;
  *  - 2 trang sổ tay/màn: 1 trang dưới đất dễ thấy, 1 trang trên bục cao (thưởng cho bé khéo tay);
  *  - 1 cổng câu đố/màn: màn 1 = cổng giữa màn (sau trang liên quan), màn 2 = cổng ở cửa EXIT;
- *  - 2 điểm người dẫn đường/màn, 1 checkpoint giữa màn. */
+ *  - 2 điểm người dẫn đường/màn, 1 checkpoint giữa màn.
+ * ========================================================================== */
 (function () {
   'use strict';
   var OG = window.OG;
+  // 💡 Khái niệm: tham chiếu theo TÊN — dữ liệu màn chỉ ghi chuỗi loại địch; OG.Enemies tra registry lúc tạo địch.
+  //   Gom tên vào một hằng: đổi loại địch cho cả 12 màn chỉ cần sửa dòng này.
   var ROACH = 'vietnam-roach'; // gián đội nón lá (extras.js); thiếu thì Enemies dùng 'roach'
 
+  /**
+   * Tạo dữ liệu một con gián đội nón lá đi tuần.
+   * @param {number} x            vị trí xuất phát, toạ độ thế giới (px)
+   * @param {number} [range=60]   nửa quãng tuần tra quanh x (px)
+   * @param {number} [speed=55]   tốc độ (px/giây), OG.Difficulty còn nhân hệ số theo chế độ chơi
+   * @returns {EnemySpawn}
+   */
   function roach(x, range, speed) { return { type: ROACH, x: x, range: range || 60, speed: speed || 55 }; }
 
   OG.Journeys.register({
@@ -34,6 +60,10 @@
         intro: 'hanoi_intro', outro: 'hanoi_outro',
         boss: { bossId: 'joey' },
         levels: [
+          // Mẫu LevelDef: sàn 480 → bục thấp y = 400 → bục cao y = 340: mỗi bậc ≤ 80 px, vừa sức nhảy của nhân vật.
+          // 🧪 Thử: đổi bục [560, 340, 170, 18] thành [560, 250, 170, 18] (cao hơn bục thấp 150 px) rồi chơi: cú nhảy
+          //   thường chỉ cao ≈ v²/2g = 590²/(2 × 1500) ≈ 116 px (OG.Config.JUMP_VELOCITY, GRAVITY) nên không lên được;
+          //   chế độ "Bé chơi" giữ nút nhảy được ≈ 150 px nhưng phải căn cực sát. Quy tắc "≤ 80 px" chừa biên an toàn cho trẻ!
           {
             id: 'vietnam-hanoi-1', name: 'Dạo quanh Hồ Gươm', width: 2000, spawn: { x: 70, y: 420 }, goal: 4,
             platforms: [[0, 480, 2000, 60], [300, 400, 180, 18], [560, 340, 170, 18], [820, 400, 200, 18],
@@ -47,6 +77,7 @@
             checkpoints: [1270],
             guideSpots: [
               { x: 250, lines: ['Gâu! Chào bạn! Mình là Bob, hướng dẫn viên của bạn đây!', 'Nhặt trang sổ tay 📄 để học điều hay về Việt Nam nhé!'] },
+              // Có charId mà không có name → tên lấy từ định nghĩa nhân vật (src/data/characters.js).
               { x: 770, charId: 'turtle', lines: ['Chào cháu! Ta là Rùa Vàng ở Hồ Gươm.', 'Cổng phía trước sẽ hỏi bài. Nhớ đọc trang sổ tay nhé!'] }
             ]
           },
@@ -59,7 +90,7 @@
             enemies: [roach(960, 60), roach(1520, 70)],
             exit: { x: 2080 },
             pages: [{ card: 'hn_puppet', x: 680, y: 440 }, { card: 'hn_oldquarter', x: 1770, y: 288 }],
-            quizGate: { quiz: 'q_hn_puppet' },
+            quizGate: { quiz: 'q_hn_puppet' },   // không có x → cổng đặt ở cửa EXIT
             checkpoints: [1300],
             guideSpots: [
               { x: 220, lines: ['Đây là phố cổ Hà Nội! Nhà ở đây hẹp và dài, gọi là nhà ống.', 'Phía trước có cái hố nhỏ. Nhảy lên bục gỗ để qua cho dễ nhé!'] },
