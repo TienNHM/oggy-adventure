@@ -116,6 +116,17 @@ Các nút cảm ứng tự hiện trên thiết bị cảm ứng. Muốn bật/t
 4. Đi qua cửa EXIT để vào trận trùm. Né đòn theo dấu báo trước (chấm than, vùng đỏ, bóng đổ). Khi thấy mũi tên vàng "GIẪM!" thì nhảy lên đầu trùm.
 5. Hạ được cả bộ ba ở Hang ổ là thắng. Sau đó nhập tên để lưu điểm lên bảng xếp hạng.
 
+## 📚 Học lập trình game với Oggy
+
+Mã nguồn của game đồng thời là **giáo trình** cho sinh viên đã biết JavaScript cơ bản. Giáo trình không dạy lại cú pháp mà dạy
+**khái niệm làm game** và **design pattern** qua 14 bài, mỗi bài gắn với code thật trong `src/`: game loop và delta time, input,
+vật lý và va chạm AABB, state machine và scene, event bus (observer), vẽ procedural bằng Canvas, camera và parallax,
+AI kẻ địch và trùm, Web Audio, lưu trữ và migrate dữ liệu, thiết kế hướng dữ liệu (data-driven), kiểm thử và CI.
+
+- **Bắt đầu tại đây:** [`docs/learn/README.md`](docs/learn/README.md) (lộ trình, thời lượng, cách chạy game, mở DevTools, dùng VS Code, quy tắc làm bài tập).
+- Sơ đồ kiến trúc (module, scene, event, vòng đời một frame): [`docs/learn/ARCHITECTURE-DIAGRAMS.md`](docs/learn/ARCHITECTURE-DIAGRAMS.md).
+- Quy ước comment và code: [`docs/learn/CODE_STYLE.md`](docs/learn/CODE_STYLE.md).
+
 ## Chạy game
 
 **Cách 1: mở file trực tiếp.** Nhấp đúp vào `index.html` để mở bằng Chrome, Edge, Firefox hoặc Safari. Game không dùng ES modules nên chạy được qua `file://`.
@@ -183,6 +194,7 @@ assets/photos/          Ảnh chụp thật cho thẻ kiến thức (WebP) + cre
 tools/photos/           fetch_commons.py: tải ảnh Wikimedia Commons, thu nhỏ, sinh credits.js (không deploy)
 tests/                  Smoke test Node: smoke.js, fake-dom.js
 docs/                   credits.html (ghi công ảnh), ARCHITECTURE.md (kiến trúc, hợp đồng API, danh sách event), STORY.md (hành trình học tập v2), screenshots/, ví dụ worker bảng xếp hạng online, trang demo sprite
+  learn/                Giáo trình lập trình game: README.md (lộ trình 14 bài), CODE_STYLE.md, ARCHITECTURE-DIAGRAMS.md, các bài 00–13
 legacy/index.mvp.html   Bản MVP một file ban đầu (chỉ để tham khảo)
 .github/workflows/      CI: smoke test và deploy GitHub Pages
 ```
