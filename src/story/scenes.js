@@ -1513,13 +1513,15 @@
       var panel = OG.DOM.panel({
         title: esc(end.title || 'HOÀN THÀNH! 🎉'),
         className: 'story-panel story-end',
-        html: '<div class="story-trophy" aria-hidden="true">🏆</div>' +
+        // Bọc phần tóm tắt trong .story-end-summary để CSS xếp 2 cột (tóm tắt | khối chia sẻ của OG.Social)
+        // khi khung đủ rộng — nếu xếp dọc hết, panel cao hơn khung game và phải cuộn (xem story.css).
+        html: '<div class="story-end-summary"><div class="story-trophy" aria-hidden="true">🏆</div>' +
           '<p class="story-end-text">' + esc(end.text || ('Bạn đã đi hết hành trình “' + (j.title || '') + '”!')) + '</p>' +
           '<div class="story-end-stats"><span>⭐ <b>' + pr.stars + '</b>/' + pr.maxStars + ' sao</span>' +
           '<span>📒 <b>' + c.have + '</b>/' + c.total + ' thẻ</span><span>🏁 <b>' + pr.levelsDone + '</b>/' + pr.levels + ' màn</span></div>' +
           '<div class="story-end-guide"><span class="story-portrait" data-char="' + esc(g.charId || 'olivia') + '" data-size="56" style="width:56px;height:56px"></span>' +
           '<span><b>' + esc(g.name || '') + ':</b> Cảm ơn bạn đã đi cùng mình! Hẹn gặp lại nhé! 👋</span></div>' +
-          (c.have < c.total ? '<p class="story-end-tip">Còn ' + (c.total - c.have) + ' thẻ chưa tìm thấy. Chơi lại để sưu tầm đủ nhé! 🔎</p>' : '<p class="story-end-tip">Bạn đã sưu tầm ĐỦ thẻ! Siêu quá! 🌟</p>'),
+          (c.have < c.total ? '<p class="story-end-tip">Còn ' + (c.total - c.have) + ' thẻ chưa tìm thấy. Chơi lại để sưu tầm đủ nhé! 🔎</p>' : '<p class="story-end-tip">Bạn đã sưu tầm ĐỦ thẻ! Siêu quá! 🌟</p>') + '</div>',
         buttons: [
           { id: 'end_notebook', label: '📒 Xem Sổ tay', primary: true, onClick: function () { OG.Learn.openNotebook(jid, 'journeyEnd', { journeyId: jid }); } },
           { id: 'end_lb', label: '🏆 Bảng xếp hạng', secondary: true, onClick: function () { OG.Scenes.go('leaderboard', { back: 'journeyEnd', backParams: { journeyId: jid, result: result } }); } },

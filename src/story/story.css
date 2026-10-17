@@ -128,6 +128,50 @@
 .story-end-guide b { color: var(--jp); }
 .story-end-tip { font-size: 14px; opacity: .8; }
 
+/* 💡 Khái niệm: container query — panel nằm trong khung game (#gameShell) có thể nhỏ hơn cửa sổ trình duyệt,
+ *   nên ta hỏi "khung chứa rộng bao nhiêu?" (@container) thay vì "màn hình rộng bao nhiêu?" (@media).
+ *   Container phải là phần tử CHA (#overlay): một phần tử không thể tự đổi layout theo kích thước của chính nó.
+ * ⚠️ Bẫy: xếp dọc tóm tắt + khối chia sẻ (thẻ thành tích, ô tên, 3 nút, top 5) + 4 nút thì cao hơn khung 16:9
+ *   → panel phải cuộn; focus ô tên/nút làm trình duyệt tự cuộn xuống, che mất tiêu đề và thống kê.
+ *   Khung đủ rộng thì chia 2 cột: trái = tóm tắt, phải = chia sẻ, tiêu đề và hàng nút trải hết chiều ngang. */
+#overlay:has(> .story-end) { container-type: inline-size; }
+.story-end-summary { min-width: 0; }
+@container (min-width: 760px) {
+  .panel.story-end {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: "title title" "sum share" "nav nav";
+    column-gap: 22px;
+    align-items: center;
+  }
+  .panel.story-end > h1 { grid-area: title; }
+  .panel.story-end > .story-end-summary { grid-area: sum; }
+  .panel.story-end > .social-result { grid-area: share; margin: 0; }
+  .panel.story-end > .actions { grid-area: nav; }
+  .story-end .story-trophy { font-size: 64px; }
+  .story-end-stats span { padding: 6px 12px; font-size: 15px; }
+  .story-end-guide { justify-content: flex-start; }
+  /* Khối chia sẻ ở cột phải hẹp hơn: ô tên + nút lưu chung một hàng, 3 nút chia sẻ chung một hàng.
+   * ⚠️ Bẫy: luật .story-panel button {min-height:56px} ở trên cũng áp vào nút của OG.Social → ghi đè lại 44px. */
+  .story-end .social-result { gap: 6px; }
+  .story-end .social-card { height: 84px; }
+  .story-end .social-name-row { flex-wrap: nowrap; }
+  .story-end .social-label { flex: 1 1 0; min-width: 0; white-space: nowrap; }
+  .story-end .social-btn { min-height: 44px; padding: 8px 12px; font-size: 14px; }
+  .story-end .social-actions { flex-wrap: nowrap; }
+}
+/* Khung thấp (laptop màn nhỏ, điện thoại xoay ngang): thu gọn phần trang trí để vừa một màn hình. */
+@media (max-height: 760px) {
+  .story-end .story-trophy { font-size: 44px; }
+  .story-end-text { margin: 2px 0 6px !important; }
+  .story-end-stats { margin: 4px 0 6px; }
+  .story-end .story-portrait { width: 44px !important; height: 44px !important; }
+  .story-end .actions button { min-height: 48px; padding: 8px 14px; }
+}
+@media (max-height: 560px) {
+  .story-end .story-trophy, .story-end-tip { display: none; }
+}
+
 /* ===================== Màn hình nhỏ ===================== */
 @media (max-width: 700px) {
   .story-journeys { grid-template-columns: 1fr; gap: 10px; }
