@@ -41,8 +41,8 @@
 
     // 💡 Khái niệm: thứ tự khởi tạo có phụ thuộc — Save phải load TRƯỚC Progress (đọc tiến độ đã lưu) và
     //   applyTouchSetting (đọc settings); module tính năng init SAU core để có thể dùng mọi API core.
-    // ⚠️ Bẫy: đảo Save.load() xuống dưới Progress.init() → Progress đọc dữ liệu mặc định, người chơi
-    //   tưởng mất hết màn đã mở khoá.
+    // ⚠️ Bẫy: đảo Save.load() xuống dưới Progress.init() → Progress làm việc trên dữ liệu MẶC ĐỊNH rồi
+    //   Save.commit() ghi đè lên bản lưu thật trong localStorage → tiến độ của người chơi mất thật sự.
     OG.DOM.init();
     OG.Save.load();
     OG.Input.init(canvas);

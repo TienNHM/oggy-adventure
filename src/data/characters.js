@@ -97,7 +97,7 @@
   // Agent nhân vật vẽ chúng trong src/gfx/sprites.js (danh sách + mô tả: docs/STORY.md mục 9).
   // Khi chưa có hình riêng, Sprites vẽ dự phòng kiểu mèo theo colors.
   /**
-   * Đăng ký nhanh một NPC (hàm tạo dữ liệu — tránh lặp lại cùng cấu trúc object 17 lần).
+   * Đăng ký nhanh một NPC (hàm tạo dữ liệu — tránh lặp lại cùng cấu trúc object cho từng NPC bên dưới).
    * @param {string} id
    * @param {string} name
    * @param {number} w hitbox, px

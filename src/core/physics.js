@@ -65,7 +65,8 @@
 
       // 💡 Khái niệm: tích phân Euler bán ẩn (semi-implicit Euler) — cập nhật vận tốc TRƯỚC (v += a·dt)
       //   rồi dùng vận tốc mới để cập nhật vị trí (x += v·dt). Đơn giản, đủ ổn định cho game platformer.
-      //   Kẹp vy ở maxFall (terminal velocity) để rơi lâu không nhanh tới mức xuyên bục.
+      //   Kẹp vy ở maxFall (terminal velocity — vận tốc rơi giới hạn) để rơi lâu không nhanh vô hạn:
+      //   người chơi vẫn kịp nhìn và điều khiển khi rơi từ trên cao.
       body.vy = Math.min(maxFall, body.vy + g * dt);
       var oldY = body.y;
       var wasGround = body.ground;

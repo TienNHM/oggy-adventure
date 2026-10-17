@@ -168,10 +168,13 @@
         OG.Game.refreshHud();
         return false;
       }
-      // 🧪 Thử: trong console gõ  OG.Config.HURT_KNOCKBACK = 900  rồi chạm gián — Oggy bị hất văng xa.
+      // 🧪 Thử: trong console gõ  OG.Config.HURT_BOUNCE = 800  rồi chạm gián — Oggy bị hất bổng lên cao.
       p.inv = p.invMax = diff('hurtInvuln', C.HURT_INVULN);
       p.vy = -C.HURT_BOUNCE;
-      // Knockback ngược hướng mặt: đẩy người chơi RA KHỎI kẻ địch để không trúng đòn liên tiếp.
+      // Knockback (bật lùi) ngược hướng mặt: ý đồ là đẩy người chơi ra khỏi kẻ địch.
+      // ⚠️ Bẫy: update() frame sau gán lại p.vx = move * speed (không có quán tính) nên vx đặt ở đây bị ghi đè
+      //   ngay — knockback NGANG gần như không có tác dụng, chỉ cú bật lên (vy) là thấy rõ. Muốn bật lùi thật
+      //   phải có bộ đếm "đang bị đẩy" và tạm bỏ qua input trong lúc đó (đổi hành vi, cân nhắc kỹ).
       p.vx = -p.face * C.HURT_KNOCKBACK * diff('hurtKnockMul', 1);
       OG.Camera.shake(HURT_SHAKE_MAG, HURT_SHAKE_DUR);
       // ⚠️ Bẫy: phát player:hurt TRƯỚC loseLife để thứ tự event là hurt -> (die -> game:over).

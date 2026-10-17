@@ -21,7 +21,7 @@
   var OG = window.OG;
 
   var STARS_PER_LEVEL = 3;
-  var TIME_DECIMALS = 10; // làm tròn bestTime tới 0,1 giây (nhân 10 → round → chia 10)
+  var TIME_ROUND_FACTOR = 10; // làm tròn bestTime tới 0,1 giây (nhân 10 → round → chia 10)
 
   /** @returns {{unlocked: string[], levels: Object<string, any>}} vùng tiến độ trong save (đọc lại mỗi lần vì Save.reset() thay object) */
   function prog() { return OG.Save.data.progress; }
@@ -105,7 +105,7 @@
       rec.plays = (rec.plays | 0) + 1;
       rec.bestScore = Math.max(rec.bestScore | 0, result.levelScore | 0);
       rec.stars = Math.max(rec.stars | 0, result.stars | 0);
-      if (!rec.bestTime || result.time < rec.bestTime) rec.bestTime = Math.round(result.time * TIME_DECIMALS) / TIME_DECIMALS;
+      if (!rec.bestTime || result.time < rec.bestTime) rec.bestTime = Math.round(result.time * TIME_ROUND_FACTOR) / TIME_ROUND_FACTOR;
       var opened = Progress.refreshUnlocks();
       // Mở khoá nhân vật có unlock {type:'level', levelId: id} (vd Olivia mở khi xong 'garden').
       var chars = [];
