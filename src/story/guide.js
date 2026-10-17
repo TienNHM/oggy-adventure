@@ -180,7 +180,8 @@
         // Vùng chạm: rộng ít nhất 36 px mỗi bên, cao từ trên đầu (1,4 lần chiều cao + 30 px) xuống dưới chân 12 px.
         var tapped = tap && Math.abs(tap.x - s.x) < Math.max(36, s.w) && tap.y > s.y - s.h * 1.4 - 30 && tap.y < s.y + 12;
         if (near) s.nearT += dt; else s.nearT = 0;
-        // 💡 Khái niệm: máy trạng thái 2 trạng thái (s.near false/true) với 3 chuyển trạng thái:
+        // 💡 Khái niệm: máy trạng thái nhỏ — s.near (đang nói hay không) cộng cờ s.talked (đã gặp chưa, tắt dấu "!")
+        //   ghép thành 3 trạng thái chưa gặp → đang nói → đã nói. Các chuyển trạng thái:
         //   vào gần → nói câu hiện tại · đang nói + E/chạm → câu tiếp · đi xa hẳn → tắt bong bóng.
         if ((near && !s.near) || (tapped && !s.near)) {
           // Vừa đến gần / chạm lần đầu: nói câu hiện tại

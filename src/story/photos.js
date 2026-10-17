@@ -198,8 +198,9 @@
         // Lỗi mạng / thiếu file: đánh dấu 'error' → giao diện quay về hình vẽ cartoon, không thử lại liên tục.
         img.onerror = function () { rec.state = 'error'; };
         rec.img = img;
-        // ⚠️ Bẫy: luôn gán onload/onerror TRƯỚC src — gán sau thì có nguy cơ lỡ event (vd ảnh đã nằm sẵn
-        //   trong bộ nhớ đệm ở một số trình duyệt) và record kẹt mãi ở 'loading'.
+        // ⚠️ Bẫy: gán onload/onerror TRƯỚC src. Trình duyệt hiện đại phát 'load' bất đồng bộ nên gán ngay sau
+        //   (cùng đoạn code) thường vẫn kịp, nhưng nếu việc gán bị lùi lại (setTimeout, await...) mà ảnh đã có
+        //   trong bộ nhớ đệm thì event đã qua → record kẹt mãi ở 'loading'. Gán trước là thói quen an toàn.
         img.src = e.src; // đường dẫn tương đối → chạy được cả qua file:// lẫn GitHub Pages
       } catch (err) {
         rec.state = 'error';

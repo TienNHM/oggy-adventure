@@ -594,7 +594,8 @@
   };
   // Chuyển dataURL sang Blob ĐỒNG BỘ (giữ "user activation" cho navigator.share).
   // ⚠️ Bẫy: navigator.share chỉ chạy khi được gọi "ngay" trong xử lý cú bấm của người dùng. canvas.toBlob là
-  //   BẤT ĐỒNG BỘ (callback) → tới lúc có blob, trình duyệt đã coi như hết thao tác người dùng và chặn share.
+  //   BẤT ĐỒNG BỘ (callback) → tới lúc có blob, "user activation" (quyền tạm thời sinh ra từ cú bấm) có thể đã
+  //   hết hạn — Safari rất chặt, Chrome cho vài giây — và share bị chặn với lỗi NotAllowedError.
   //   Giải mã base64 thủ công (atob → Uint8Array → Blob) giữ mọi thứ trong cùng một lượt xử lý.
   function dataURLToBlob(url) {
     try {

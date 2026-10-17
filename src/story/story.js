@@ -543,7 +543,8 @@
         p.life += dt;
         if (p.life >= p.max) { parts.splice(i, 1); continue; }
         // ⚠️ Bẫy: drag nhân THEO FRAME (không nhân dt) → ở 120 Hz hạt chậm lại nhanh gấp đôi so với 60 Hz.
-        //   Chấp nhận được cho hiệu ứng trang trí; gameplay thì không nên làm vậy.
+        //   Chấp nhận được cho hiệu ứng trang trí; gameplay thì nên dùng dạng không phụ thuộc FPS:
+        //   v *= Math.pow(drag, dt * 60) (drag được hiểu là "hệ số mỗi 1/60 giây").
         p.vx *= p.drag; p.vy = p.vy * p.drag + p.g * dt;
         p.x += p.vx * dt; p.y += p.vy * dt; p.rot += p.vr * dt;
       }
