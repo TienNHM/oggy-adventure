@@ -1,15 +1,44 @@
 #!/usr/bin/env node
-/* Smoke test toàn bộ game Oggy Adventure trong Node (không cần trình duyệt, không thư viện ngoài).
+/* ============================================================================
+ * tests/smoke.js — SMOKE TEST (kiểm thử "khói": chạy thử toàn bộ game xem có gì "bốc khói" không)
+ * ----------------------------------------------------------------------------
+ * Vai trò:      Chạy TOÀN BỘ game Oggy Adventure trong Node, không trình duyệt, không thư viện ngoài.
+ *               CI (.github/workflows/pages.yml) chạy file này trước mỗi lần deploy; đỏ = không deploy.
+ *               Cách chạy:  node tests/smoke.js   (thêm --verbose để in từng bước và số lần phát mỗi event)
+ * Khái niệm:    smoke test / kiểm thử đầu-cuối (end-to-end) · vm sandbox (môi trường JS cô lập) · test double
+ *               (DOM giả) · đồng hồ ảo + timer giả (test tất định, chạy nhanh hơn thời gian thực) · fixed
+ *               step qua OG.Loop.step · điều khiển bằng event giả như người chơi · kiểm tra bất biến
+ *               (save/restore cân bằng, không rò listener, không chồng nhạc) · PRNG có seed (ngẫu nhiên lặp lại được)
+ * Bài học:      docs/learn/13-kiem-thu-ci.md (chính) · docs/learn/00-bat-dau.md (thứ tự <script>)
+ *               · docs/learn/02-game-loop-delta-time.md (fixed step)
+ * Phụ thuộc:    tests/fake-dom.js · index.html (đọc thân trang + danh sách script) · mọi file trong src/ và
+ *               assets/photos/<id>/credits.js (load bằng vm) · docs/credits.html (kiểm tra ảnh)
+ * Event:        nghe: '*' (wildcard — đếm MỌI event của game vào evCount / evLast) · phát: chỉ 'quest:complete'
+ *               giả trong qaChecks mục 8. Còn lại test gửi event DOM giả (keydown, pointerdown, click...).
+ * API công khai: (không) — script chạy thẳng; thoát mã 1 (process.exitCode) nếu có lỗi.
+ * Đọc tiếp:     tests/fake-dom.js (DOM giả) → src/core/loop.js (OG.Loop.step) → src/core/input.js (game đọc
+ *               event bàn phím/chạm mà test gửi vào ra sao)
+ * Kiểm tra kiểu: không bật @ts-check vì jsconfig.json loại trừ tests/ và tsc cần @types/node (thư viện ngoài)
+ *               để hiểu require/process/setImmediate; OG trong test lại là any nên lợi ích rất ít.
  *
- * Cách chạy:   node tests/smoke.js            (thêm --verbose để in từng bước)
+ * Luồng chạy (main):
+ *   1. Dựng window/document/canvas/localStorage/AudioContext giả (tests/fake-dom.js).
+ *   2. Đọc index.html, dựng phần thân trang và load MỌI script đúng thứ tự trong index.html bằng vm.
+ *   3. Điều khiển game qua sự kiện bàn phím/chạm/click giống người chơi và chạy hàng nghìn frame
+ *      (OG.Loop.step) qua các scene: menu → cài đặt/nhân vật/cửa hàng/xếp hạng → bản đồ → 4 màn + 4 trùm
+ *      → chiến thắng → nhập tên → bảng xếp hạng; cộng thêm game over, màn phụ, nhân vật khác, tạm dừng.
+ *   4. qaChecks (lỗi đã sửa) → journeyChecks (v2 hành trình) → photoChecks (ảnh) → difficultyChecks (độ khó).
+ *   Mọi console.error, ngoại lệ trong frame/listener/timer, ctx.save/restore lệch đều tính là LỖI.
  *
- * - Dựng window/document/canvas/localStorage/AudioContext giả (tests/fake-dom.js).
- * - Đọc index.html, dựng phần <body> và load MỌI <script src> đúng thứ tự bằng vm.
- * - Điều khiển game qua sự kiện bàn phím/chạm/click giống người chơi và chạy hàng nghìn frame
- *   (OG.Loop.step) qua các scene: menu → cài đặt/nhân vật/cửa hàng/xếp hạng → bản đồ → 4 màn + 4 trùm
- *   → chiến thắng → nhập tên → bảng xếp hạng; cộng thêm game over, màn phụ, nhân vật khác, tạm dừng.
- * - Mọi console.error, ngoại lệ trong frame/listener/timer, ctx.save/restore lệch đều tính là LỖI.
- * Thoát mã 1 nếu có lỗi. */
+ * 💡 Khái niệm — CÁCH VIẾT MỘT CHECK MỚI (công thức 4 bước, xem ví dụ thật ở qaChecks):
+ *   1) Đặt `stage = 'qa:ten-check';` — mọi lỗi sau đó được gắn nhãn này, đọc log biết ngay hỏng ở đâu.
+ *   2) Đưa game về trạng thái cần thử: OG.Scenes.go(...), OG.Game.startLevel(...), hoặc gán thẳng vị trí
+ *      người chơi (p.x = ...). Rồi `await stepAsync(n)` để game chạy n frame (1 frame = 1/60 giây ảo).
+ *   3) Tác động như người chơi: press('Space'), click('#overlay [data-act="play"]'), dispatchEvent(...).
+ *   4) Khẳng định: check(điều_kiện, 'thông báo tiếng Việt nói rõ ĐIỀU SAI'); expectScene('level', 'ngữ cảnh').
+ *      Hoặc đếm event: so evCount['enemy:stomp'] trước/sau, đọc payload cuối ở evLast['level:complete'].
+ *   Sau cùng trả game về trạng thái "sạch" (vd OG.Scenes.go('menu')) để check kế tiếp không bị ảnh hưởng.
+ * ========================================================================== */
 'use strict';
 
 const fs = require('fs');
@@ -19,15 +48,28 @@ const D = require('./fake-dom');
 
 const ROOT = path.resolve(__dirname, '..');
 const VERBOSE = process.argv.includes('--verbose');
-const DT = 1 / 60;
+// 💡 Khái niệm: fixed step — mỗi frame test luôn tiến đúng 1/60 giây ảo, không phụ thuộc máy nhanh hay chậm,
+//   nên test TẤT ĐỊNH (deterministic): chạy 100 lần cho cùng kết quả.
+// 🧪 Thử: đổi DT thành 1 / 30 rồi chạy test: frame to gấp đôi, xem kiểm tra nào (giẫm địch, nhảy cao) bắt
+//   đầu đỏ — đó là những chỗ game nhạy với delta time (khoảng thời gian giữa 2 frame).
+const DT = 1 / 60;            // giây ảo mỗi frame
 
 // ---------------------------------------------------------------------------
 // Ghi nhận lỗi
 // ---------------------------------------------------------------------------
+/** @type {string[]} lỗi đã gặp, dạng '[stage] thông báo' — có lỗi thì thoát mã 1 */
 const errors = [];
+/** @type {string[]} cảnh báo (không làm đỏ test), in tối đa 15 cái ở cuối */
 const warnings = [];
+// Khử trùng lặp: cùng một lỗi lặp mỗi frame trong cùng stage chỉ ghi một lần (log không bị ngập).
 const seen = new Set();
+// Nhãn giai đoạn đang chạy ('load', 'boot', 'level:kitchen', 'qa:audio'...) — gắn vào mọi lỗi.
 let stage = 'load';
+/**
+ * Ghi một LỖI (test sẽ đỏ) gắn nhãn stage hiện tại. Không ném ngoại lệ: test chạy tiếp để gom được nhiều lỗi
+ * trong một lần chạy.
+ * @param {string} msg mô tả điều sai, tiếng Việt
+ */
 function fail(msg) {
   const key = stage + '|' + msg;
   if (seen.has(key)) return;
@@ -43,7 +85,11 @@ D.setListenerErrorHandler((err, type) => fail('Lỗi trong listener "' + type + 
 // ---------------------------------------------------------------------------
 // Đồng hồ ảo + timer giả
 // ---------------------------------------------------------------------------
-const clock = { t: 0 };           // giây
+// 💡 Khái niệm: đồng hồ ảo. performance.now(), setTimeout/setInterval và AudioContext.currentTime của game
+//   đều đọc CÙNG một clock.t do test tự tăng trong step(). Hơn 10 phút chơi ảo chạy xong nhanh hơn nhiều so với thời gian thật,
+//   và toast 3 giây hay nhạc nền được lập lịch đúng như trong trình duyệt — không cần sleep.
+const clock = { t: 0 };           // giây ảo, chỉ step() được tăng
+/** @type {{id: number, fn: Function, at: number, every: number, args: any[]}[]} at = thời điểm chạy (ms ảo); every > 0 = setInterval */
 let timers = [];
 let timerSeq = 1;
 function addTimer(fn, ms, repeat, args) {
@@ -54,6 +100,8 @@ function addTimer(fn, ms, repeat, args) {
   return id;
 }
 function clearTimer(id) { timers = timers.filter((x) => x.id !== id); }
+// Chạy mọi timer đã đến hạn, theo thứ tự thời điểm (sớm trước) — timer A có thể tạo timer B cũng đến hạn ngay.
+// ⚠️ Bẫy: guard 1000 vòng chặn vòng lặp vô hạn khi game lỡ tạo setTimeout(fn, 0) tự gọi lại chính nó.
 function runTimers() {
   const now = clock.t * 1000;
   for (let guard = 0; guard < 1000; guard++) {
@@ -73,6 +121,7 @@ doc.defaultView = winTarget;
 const storage = D.makeStorage();
 const AudioCtx = D.makeAudioContextClass(clock);
 
+// console của GAME (khác console của test): console.error trong game = LỖI test, console.warn = cảnh báo.
 const fakeConsole = {
   log: (...a) => { if (VERBOSE) console.log('    [game]', ...a); },
   info: (...a) => { if (VERBOSE) console.log('    [game]', ...a); },
@@ -82,6 +131,8 @@ const fakeConsole = {
   table: () => {}, group: () => {}, groupEnd: () => {}, trace: () => {}
 };
 
+// Object toàn cục (globalThis) của game trong vm: chỉ chứa những gì trình duyệt cung cấp mà game có dùng.
+// Thiếu thứ gì thì game ném ReferenceError khi load → test báo "Lỗi khi load <file>" (rất dễ thấy).
 const sandbox = {
   console: fakeConsole,
   document: doc,
@@ -93,6 +144,7 @@ const sandbox = {
   },
   location: { href: 'file:///D:/repos/oggy-adventure/index.html', protocol: 'file:', origin: 'null', host: '', hostname: '', pathname: '/D:/repos/oggy-adventure/index.html', search: '', hash: '' },
   performance: { now: () => clock.t * 1000 },
+  // rAF giả không bao giờ gọi callback: vòng lặp thật của OG.Loop đứng yên, test tự "bơm" frame bằng step().
   requestAnimationFrame: () => 1,
   cancelAnimationFrame: () => {},
   setTimeout: (fn, ms, ...args) => addTimer(fn, ms, false, args),
@@ -108,6 +160,7 @@ const sandbox = {
   devicePixelRatio: 1,
   innerWidth: 1280, innerHeight: 720,
   isSecureContext: false,
+  // Hộp thoại chặn của trình duyệt bị hợp đồng cấm (làm đứng game, xấu trên điện thoại) → gọi là LỖI.
   alert: () => fail('Gọi alert() — hợp đồng cấm'),
   prompt: () => { fail('Gọi prompt() — hợp đồng cấm'); return null; },
   confirm: () => { fail('Gọi confirm() — hợp đồng cấm'); return false; },
@@ -117,15 +170,23 @@ const sandbox = {
   focus: () => {}, blur: () => {}, scrollTo: () => {},
   Event: D.FakeEvent, KeyboardEvent: D.FakeEvent, PointerEvent: D.FakeEvent, MouseEvent: D.FakeEvent, CustomEvent: D.FakeEvent
 };
+// 💡 Khái niệm: vm sandbox. vm.createContext biến object `sandbox` thành globalThis của một "thế giới JS"
+//   riêng: code game chạy trong đó thấy `document`, `localStorage`... là bản giả của ta, và KHÔNG đụng được
+//   biến của test (require, process, fs). Giống mở game trong một tab trình duyệt tách biệt.
 const context = vm.createContext(sandbox);
 const win = vm.runInContext('globalThis', context);
+// Trong trình duyệt window === self === globalThis; game viết window.OG nên phải nối các tên này lại.
 win.window = win;
 win.self = win;
 
-// Dựng <body> từ index.html (bỏ <script>), giữ nguyên id/class/style như thật.
+// Dựng phần thân trang từ index.html (bỏ thẻ script), giữ nguyên id/class/style như thật.
 const indexHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const bodyHtml = (/<body[^>]*>([\s\S]*)<\/body>/i.exec(indexHtml) || [])[1] || '';
 D.parseHTML(bodyHtml.replace(/<script[\s\S]*?<\/script>/gi, ''), doc.body, doc);
+// Danh sách script đúng THỨ TỰ xuất hiện trong index.html — test load theo đúng thứ tự này.
+// ⚠️ Bẫy: regex chỉ nhận dạng chính xác  <script src="..."></script>  (nháy kép, không thuộc tính khác).
+//   Thêm defer/async/type hay viết nháy đơn → script bị BỎ QUA trong test (dù trình duyệt vẫn chạy).
+//   Ngược lại, chuỗi đó nằm trong comment HTML vẫn bị tính → đừng chép thẻ script vào comment.
 const scripts = Array.from(indexHtml.matchAll(/<script\s+src="([^"]+)"\s*><\/script>/g)).map((m) => m[1]);
 
 // Kiểm tra file CSS tham chiếu tồn tại.
@@ -136,44 +197,85 @@ Array.from(indexHtml.matchAll(/<link[^>]+href="([^"]+)"/g)).forEach((m) => {
 // ---------------------------------------------------------------------------
 // Tiện ích điều khiển
 // ---------------------------------------------------------------------------
-let OG = null;
-let mainCtx = null;
-let frames = 0;
+let OG = null;                    // window.OG của game, có sau khi load xong script
+let mainCtx = null;               // ctx 2D giả của canvas #game (đọc depth/underflow để kiểm tra save/restore)
+let frames = 0;                   // tổng số frame đã chạy (in ở cuối)
 
+// Nhường cho các Promise/microtask của game chạy xong (vd navigator.clipboard.writeText().then(...)).
+// step() là đồng bộ nên Promise chỉ được xử lý khi test await flush() / stepAsync().
 async function flush() { await new Promise((r) => setImmediate(r)); }
 
+/**
+ * Chạy n frame game: tăng đồng hồ ảo, chạy timer đến hạn, gọi OG.Loop.step(DT), rồi kiểm tra bất biến
+ * ctx.save/restore cân bằng sau MỖI frame.
+ * @param {number} [n=1] số frame (mỗi frame = DT = 1/60 giây ảo)
+ * @example
+ *   step(60);   // chơi 1 giây ảo
+ */
 function step(n) {
   n = n || 1;
   for (let i = 0; i < n; i++) {
     clock.t += DT;
     runTimers();
+    // Frame lỗi: ghi lỗi rồi vẫn gọi endFrame() để trạng thái phím "vừa bấm" không kẹt sang frame sau.
     try { OG.Loop.step(DT); } catch (e) { fail('Lỗi frame (scene ' + safeScene() + '): ' + errText(e)); try { OG.Input.endFrame(); } catch (e2) { /* bỏ qua */ } }
     frames++;
+    // 💡 Khái niệm: kiểm tra bất biến (invariant) — điều PHẢI luôn đúng sau mỗi frame. Mỗi ctx.save() phải có
+    //   một ctx.restore(); lệch là transform/alpha của hình này rò sang hình khác (lỗi vẽ rất khó tìm bằng mắt).
     if (mainCtx.depth !== 0 || mainCtx.underflow) {
       fail('ctx.save/restore lệch sau frame ở scene ' + safeScene() + ' (depth=' + mainCtx.depth + ', underflow=' + mainCtx.underflow + ')');
       mainCtx.depth = 0; mainCtx.underflow = 0;
     }
   }
 }
+/** Như step(n) rồi nhường cho Promise của game chạy. @param {number} [n=1] */
 async function stepAsync(n) { step(n); await flush(); }
+// Chồng scene hiện tại dạng 'level>pause>settings' — dùng trong thông báo lỗi.
 function safeScene() { try { return OG.Scenes.stackNames().join('>'); } catch (e) { return '?'; } }
 function cur() { return OG.Scenes.current(); }
 
+// ---- Bàn phím giả: event được gửi vào phần tử đang focus (giống trình duyệt) rồi nổi bọt lên window ----
+// event.code (phím vật lý) → event.key (ký tự) cho các phím test dùng; phím khác dùng code làm key.
 const CODE_KEY = { Escape: 'Escape', Enter: 'Enter', Space: ' ', ArrowLeft: 'ArrowLeft', ArrowRight: 'ArrowRight', ArrowUp: 'ArrowUp', ArrowDown: 'ArrowDown', KeyE: 'e', KeyP: 'p', KeyM: 'm' };
 function keyDown(code) { (doc.activeElement || doc.body).dispatchEvent(new D.FakeEvent('keydown', { code, key: CODE_KEY[code] || code })); }
 function keyUp(code) { (doc.activeElement || doc.body).dispatchEvent(new D.FakeEvent('keyup', { code, key: CODE_KEY[code] || code })); }
+/**
+ * Bấm rồi nhả một phím như người chơi: giữ `hold` frame, nhả, chạy thêm 1 frame.
+ * @param {string} code event.code, vd 'Space', 'ArrowRight', 'KeyE', 'Escape', 'Digit2'
+ * @param {number} [hold=1] số frame giữ phím
+ * @example
+ *   await press('Escape');          // mở tạm dừng
+ *   await press('ArrowRight', 30);  // giữ → nửa giây
+ */
 async function press(code, hold) { keyDown(code); step(hold || 1); keyUp(code); await stepAsync(1); }
 
 function $(sel) { return doc.querySelector(sel); }
+/**
+ * Bấm (click) một phần tử DOM; không tìm thấy thì ghi LỖI kèm scene hiện tại.
+ * @param {string|Object} sel selector CSS (đủ cho DOM giả) hoặc chính phần tử
+ * @param {string} [label] tên dễ đọc cho thông báo lỗi
+ * @returns {boolean} true nếu đã bấm
+ * @example
+ *   click('#overlay [data-act="play"]', 'CHƠI');
+ */
 function click(sel, label) {
   const el = typeof sel === 'string' ? $(sel) : sel;
   if (!el) { fail('Không tìm thấy phần tử để bấm: ' + (label || sel) + ' (scene ' + safeScene() + ')'); return false; }
   el.click();
   return true;
 }
+// Tìm nút trong panel theo chữ hiển thị — dùng khi nút không có data-act riêng.
 function findButton(textRe) {
   return doc.querySelectorAll('#overlay button').find((b) => textRe.test(b.textContent)) || null;
 }
+/**
+ * Chạy từng frame tới khi scene trên cùng là `name` (chuyển cảnh có hiệu ứng nên không tức thì).
+ * Quá maxFrames thì ghi LỖI.
+ * @param {string} name tên scene, vd 'boss', 'worldmap'
+ * @param {number} [maxFrames=120] số frame tối đa chờ (120 = 2 giây ảo)
+ * @param {string} [label] ngữ cảnh cho thông báo lỗi
+ * @returns {Promise<boolean>}
+ */
 async function waitScene(name, maxFrames, label) {
   for (let i = 0; i < (maxFrames || 120); i++) {
     if (cur() === name) return true;
@@ -184,21 +286,46 @@ async function waitScene(name, maxFrames, label) {
   fail('Chờ scene "' + name + '" thất bại' + (label ? ' (' + label + ')' : '') + ' — đang ở ' + safeScene());
   return false;
 }
+/**
+ * Khẳng định scene trên cùng NGAY BÂY GIỜ là `name` (không chờ). Sai → ghi LỖI.
+ * @param {string} name
+ * @param {string} [label] ngữ cảnh, vd 'Esc từ cài đặt'
+ * @returns {boolean} dùng trong if để bỏ qua phần kiểm tra phụ thuộc vào scene này
+ * @example
+ *   if (expectScene('pause', 'Esc trong màn')) { ... }
+ */
 function expectScene(name, label) {
   if (cur() !== name) { fail('Mong đợi scene "' + name + '"' + (label ? ' (' + label + ')' : '') + ', thực tế: ' + safeScene()); return false; }
   return true;
 }
+/**
+ * Khẳng định (assert) cơ bản: cond sai → ghi LỖI msg. Trả lại cond để viết `if (check(...)) { ... }`.
+ * @param {any} cond
+ * @param {string} msg nói rõ ĐIỀU SAI và giá trị thực tế, vd 'Xu không được lưu (' + a + ' ≠ ' + b + ')'
+ * @returns {boolean}
+ */
 function check(cond, msg) { if (!cond) fail(msg); return !!cond; }
+// "Gian lận" có kiểm soát: giữ đủ mạng để kịch bản dài không bị game over giữa chừng (game over có check riêng).
 function keepAlive() { if (OG.Game.run && !OG.Game.run.over && OG.Game.run.lives < 6) { OG.Game.run.lives = 9; OG.Game.hud.lives = 9; } }
 
-// Đếm event để kiểm tra luồng.
+// Đếm event để kiểm tra luồng (điền bởi listener wildcard '*' đăng ký ngay sau khi load script).
+/** @type {Object<string, number>} tên event → số lần đã phát */
 const evCount = {};
+/** @type {Object<string, Object>} tên event → payload của lần phát gần nhất */
 const evLast = {};
 
 // ---------------------------------------------------------------------------
 // Kịch bản con
 // ---------------------------------------------------------------------------
-// Chơi một màn: chạy tự do một lúc, nhặt hết pizza (dịch chuyển), giẫm 1 kẻ địch, rồi qua cửa EXIT.
+// 💡 Khái niệm: test KHÔNG cố "chơi giỏi" như người. Phần chạy tự do dùng input thật để thử AI/vật lý/va
+//   chạm; phần cần kết quả chắc chắn (nhặt đồ, giẫm địch, tới cửa) thì DỊCH CHUYỂN người chơi tới đúng chỗ
+//   (gán p.x, p.y, p.vy) rồi để game tự xử lý va chạm — vẫn kiểm tra được logic mà không phụ thuộc may rủi.
+/**
+ * Chơi một màn: chạy tự do một lúc, giẫm 1 kẻ địch, nhặt hết pizza (dịch chuyển), rồi qua cửa EXIT.
+ * @param {string} levelId
+ * @param {{freeFrames?: number, pause?: boolean}} [opts] freeFrames = số frame chạy tự do (mặc định 240);
+ *   pause = thử luồng tạm dừng giữa màn
+ */
 async function playLevel(levelId, opts) {
   opts = opts || {};
   stage = 'level:' + levelId;
@@ -288,6 +415,9 @@ async function fightBoss(bossId, opts) {
   const p = OG.BossScene.getPlayer();
   check(!!p, 'OG.BossScene.getPlayer() trả null');
   // 1) Vờn 8 giây với input ngẫu nhiên (seed cố định).
+  // 💡 Khái niệm: PRNG (bộ sinh số giả ngẫu nhiên) có seed — công thức Park–Miller (nhân 16807, chia dư 2³¹−1).
+  //   Cùng seed → cùng dãy số → mỗi lần chạy test "người chơi" bấm phím y hệt nhau, lỗi tái hiện được.
+  //   Không dùng Math.random() ở đây: nó dùng chung với game và không đặt seed được.
   let seed = 7;
   const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
   let dir = 'ArrowRight';
@@ -306,6 +436,8 @@ async function fightBoss(bossId, opts) {
   await flush();
   if (bossId === 'joey' && !opts.noPause) await pauseFlow('boss');
   // 2) Giẫm điểm yếu cho tới khi hạ trùm (tối đa 120 giây ảo).
+  //    Mỗi lần dịch chuyển cách nhau ≥ 0.3 giây ảo: để người chơi nảy lên sau cú giẫm trước và game xử lý
+  //    xong va chạm, thay vì kéo người chơi về chỗ cũ mỗi frame.
   const hitsBefore = evCount['boss:hit'] || 0;
   let lastTry = -9;
   for (let i = 0; i < 60 * 120 && cur() === 'boss'; i++) {
@@ -340,6 +472,7 @@ async function enterFromMap(levelId) {
     for (let i = 0; i < 90 && cur() !== 'level'; i++) step(1);
   }
   if (cur() === 'level') log('vào ' + levelId + ' bằng phím Enter trên bản đồ');
+  // Dự phòng: Enter không vào được thì thử đường cảm ứng (chạm vào nút màn) — chỉ cảnh báo, không đỏ.
   if (cur() !== 'level') {
     warn('Enter trên bản đồ không vào được ' + levelId + ', thử chạm vào nút màn');
     // Thử chạm trực tiếp vào nút màn trên canvas.
@@ -360,29 +493,66 @@ async function enterFromMap(levelId) {
 // ---------------------------------------------------------------------------
 // Chạy
 // ---------------------------------------------------------------------------
+// Kịch bản chính. Các bước dùng CHUNG một game đang chạy (không khởi động lại giữa chừng), nên THỨ TỰ có ý
+// nghĩa: chiến dịch phải xong thì màn phụ mới mở khoá; mua giày lò xo ở menuTour được kiểm tra trong màn
+// kitchen của playCampaign; qaChecks mục 7 đọc kết quả chiến thắng của victoryFlow...
+// ⚠️ Bẫy: chèn check mới vào GIỮA chuỗi có thể làm hỏng giả định của bước sau (vd đổi nhân vật đang chọn,
+//   tiêu hết xu). Check mới nên tự dọn dẹp, hoặc thêm vào cuối một nhóm (qaChecks, difficultyChecks...).
 async function main() {
   const t0 = Date.now();
   console.log('Oggy Adventure — smoke test (' + scripts.length + ' script)');
 
-  // ---- Load script theo thứ tự index.html ----
+  if (!loadGameScripts()) return finish(t0);
+  await bootChecks();
+  await menuTour();
+  await playCampaign();
+  await victoryFlow();
+  await extraLevelsFlow();
+  await gameOverFlow();
+
+  await qaChecks();
+  await journeyChecks();
+  await photoChecks();
+  await difficultyChecks();
+
+  await resetFlow();
+  return finish(t0);
+}
+
+// ---- Load script theo thứ tự index.html ----
+// 💡 Khái niệm: mỗi file là một IIFE gắn module vào window.OG lúc LOAD, và file sau được phép đọc OG.X của
+//   file trước. vm.runInContext lần lượt từng file trong CÙNG context = trình duyệt chạy lần lượt các thẻ
+//   script trong cùng một trang. Đảo thứ tự trong index.html là test thấy lỗi ngay ở stage 'load'.
+// 🧪 Thử: trong index.html chuyển dòng nạp src/core/namespace.js xuống dưới src/core/events.js rồi chạy test:
+//   thông báo "Lỗi khi load src/core/events.js" chỉ đúng file đọc window.OG khi nó chưa tồn tại. Nhớ trả lại như cũ!
+/** @returns {boolean} false nếu không có window.OG (không chạy tiếp được) */
+function loadGameScripts() {
   stage = 'load';
   for (const src of scripts) {
     const file = path.join(ROOT, src);
     if (!fs.existsSync(file)) { fail('Thiếu file script: ' + src); continue; }
     const code = fs.readFileSync(file, 'utf8');
+    // Hợp đồng: không ES modules (file:// chặn import). Bắt ngay ở đây cho thông báo rõ ràng.
     if (/^\s*(import|export)\s/m.test(code)) fail('Có import/export (ES module) trong ' + src);
+    // filename giúp stack trace của lỗi ghi đúng tên file game thay vì "evalmachine".
     try { vm.runInContext(code, context, { filename: src }); } catch (e) { fail('Lỗi khi load ' + src + ': ' + errText(e)); }
   }
   OG = win.OG;
-  if (!OG) { fail('window.OG không tồn tại'); return finish(t0); }
+  if (!OG) { fail('window.OG không tồn tại'); return false; }
+  // Wildcard listener '*' (xem src/core/events.js): đếm mọi event để kiểm tra luồng mà không sửa code game.
   OG.Events.on('*', (name, payload) => { evCount[name] = (evCount[name] || 0) + 1; evLast[name] = payload; });
+  return true;
+}
 
-  // ---- Boot (DOMContentLoaded) ----
+// ---- Boot (DOMContentLoaded) ----
+async function bootChecks() {
   stage = 'boot';
+  // readyState đang 'loading' nên src/core/main.js chờ DOMContentLoaded mới boot → test phát event này thay trình duyệt.
   doc.readyState = 'interactive';
   doc.dispatchEvent(new D.FakeEvent('DOMContentLoaded', {}));
   mainCtx = doc.getElementById('game').getContext('2d');
   check(OG.Loop.ctx === mainCtx, 'OG.Loop chưa được start với ctx của #game');
+  // Kiểm tra "đăng ký đủ": module/màn/skin/trùm/scene mà file khác cần đều đã có mặt sau boot.
   ['Audio', 'Sprites', 'Bosses', 'World', 'Quests', 'Menus', 'Shop', 'Social'].forEach((ns) => check(OG[ns] && typeof OG[ns].init === 'function', 'Thiếu module OG.' + ns));
   ['basement', 'bathroom', 'attic'].forEach((id) => check(!!OG.Data.getLevel(id), 'Chưa đăng ký màn phụ ' + id + ' (extraLevels.js)'));
   ['oggy_chef', 'oggy_super'].forEach((id) => check(!!OG.Data.getSkin(id), 'Chưa đăng ký skin ' + id + ' (skins.js)'));
@@ -395,8 +565,12 @@ async function main() {
   OG.Difficulty.set('challenge');
   await stepAsync(10);
   expectScene('menu', 'sau boot');
+}
 
+// ---- Dạo menu: cử chỉ đầu tiên → cài đặt → nhân vật → cửa hàng → xếp hạng → nút cảm ứng ----
+async function menuTour() {
   // ---- Cử chỉ đầu tiên (bấm nút DOM) → Audio ----
+  // Autoplay policy: trình duyệt chỉ cho phát tiếng sau thao tác đầu tiên của người dùng (bài 10).
   stage = 'menu';
   const gestures = evCount['input:firstGesture'] || 0;
   doc.querySelector('#overlay').dispatchEvent(new D.FakeEvent('pointerdown', {}));
@@ -448,19 +622,23 @@ async function main() {
   if (expectScene('leaderboard')) { await press('Escape'); await stepAsync(5); expectScene('menu', 'Esc từ bảng xếp hạng'); }
 
   // ---- Nút cảm ứng ----
+  // Không cần step(): OG.Input cập nhật OG.Input.keys ngay trong listener pointerdown/pointerup.
   const touchRight = doc.querySelector('#mobileControls [data-key="right"]');
   touchRight.dispatchEvent(new D.FakeEvent('pointerdown', {}));
   check(OG.Input.keys.right === true, 'Nút cảm ứng ▶ không giữ phím right');
   touchRight.dispatchEvent(new D.FakeEvent('pointerup', {}));
   check(OG.Input.keys.right === false, 'Nút cảm ứng ▶ không nhả phím right');
+}
 
-  // ---- CHƠI: chiến dịch đầy đủ 4 màn + 4 trùm ----
+// ---- CHƠI: chiến dịch đầy đủ 4 màn + 4 trùm ----
+async function playCampaign() {
   stage = 'campaign';
   click('#overlay [data-act="play"]', 'CHƠI');
   await stepAsync(10);
   expectScene('worldmap', 'CHƠI → bản đồ');
   check(evLast['game:start'] && evLast['game:start'].charId === 'oggy', 'Không phát game:start');
 
+  // Bảng dữ liệu kịch bản [màn, trùm]: thêm màn vào chiến dịch = thêm một dòng ở đây (data-driven test).
   const campaign = [['kitchen', 'deedee'], ['garden', 'marky'], ['roof', 'joey'], ['lair', 'trio']];
   for (let i = 0; i < campaign.length; i++) {
     const [levelId, bossId] = campaign[i];
@@ -474,8 +652,10 @@ async function main() {
     check(evLast['level:complete'] && evLast['level:complete'].levelId === levelId, 'Không có level:complete cho ' + levelId);
     if (expectNext === 'worldmap') { step(120); }
   }
+}
 
-  // ---- Chiến thắng → nhập tên → lưu điểm → bảng xếp hạng → quay lại ----
+// ---- Chiến thắng → nhập tên → lưu điểm → bảng xếp hạng → quay lại ----
+async function victoryFlow() {
   stage = 'victory';
   if (cur() === 'victory') {
     check(evCount['game:victory'] === 1, 'game:victory phát ' + (evCount['game:victory'] | 0) + ' lần');
@@ -484,6 +664,7 @@ async function main() {
     check(!!box, 'Panel chiến thắng thiếu khối Social (mountResult)');
     const input = $('#overlay .social-result input');
     if (check(!!input, 'Thiếu ô nhập tên')) {
+      // Tên có ký tự HTML: kiểm tra game LƯU nguyên văn nhưng HIỂN THỊ đã escape (chống chèn HTML/XSS).
       input.value = 'Tester <b>&';
       click('#overlay .social-result .social-save', 'LƯU ĐIỂM');
       await stepAsync(2);
@@ -503,9 +684,12 @@ async function main() {
     click('#overlay [data-act="menu"]', 'VỀ MENU'); await stepAsync(10);
     expectScene('menu', 'victory → menu');
   }
+}
 
-  // ---- Màn phụ + nhân vật khác ----
+// ---- Màn phụ + nhân vật khác ----
+async function extraLevelsFlow() {
   stage = 'extra';
+  // Sửa thẳng OG.Save.data để mở khoá nhân vật: nhanh hơn chơi tới lúc mở khoá, và luồng mở khoá đã có check riêng.
   OG.Save.data.unlockedChars = ['oggy', 'jack', 'olivia'];
   OG.Save.commit();
   const extras = [['basement', 'jack', 'oggy_chef'], ['bathroom', 'olivia', null], ['attic', 'oggy', 'oggy_super']];
@@ -523,8 +707,10 @@ async function main() {
     await playLevel(levelId, { freeFrames: 180 });
     await waitScene('worldmap', 240, 'xong màn phụ ' + levelId);
   }
+}
 
-  // ---- Game over → panel kết quả → thử lại ----
+// ---- Game over → panel kết quả → thử lại ----
+async function gameOverFlow() {
   stage = 'gameover';
   OG.Save.data.selectedChar = 'oggy';
   OG.Scenes.go('menu');
@@ -536,6 +722,7 @@ async function main() {
   if (expectScene('level')) {
     const p = OG.Level.state.player;
     // Rơi khỏi màn hình / chạm gián tới khi hết mạng.
+    // Xoá inv (giây bất tử sau khi bị thương) và khiên trước mỗi đòn để đòn nào cũng trúng.
     for (let i = 0; i < 20 && cur() === 'level'; i++) {
       p.inv = 0; p.shield = 0;
       OG.Player.hurt(p, 'enemy');
@@ -549,13 +736,10 @@ async function main() {
     await stepAsync(10);
     expectScene('worldmap', 'thử lại sau game over');
   }
+}
 
-  await qaChecks();
-  await journeyChecks();
-  await photoChecks();
-  await difficultyChecks();
-
-  // ---- Quay lại menu, xoá dữ liệu (save:reset) và chạy lại boot ----
+// ---- Quay lại menu, xoá dữ liệu (save:reset) và chạy lại boot ----
+async function resetFlow() {
   stage = 'reset';
   OG.Scenes.go('menu'); await stepAsync(5);
   OG.Save.reset();
@@ -567,18 +751,24 @@ async function main() {
   // Chờ timer còn treo (toast...) chạy hết.
   for (let i = 0; i < 300; i++) step(1);
   await flush();
-  return finish(t0);
 }
 
 // ---------------------------------------------------------------------------
 // Kiểm tra hồi quy (QA): các lỗi đã sửa + luồng ít được đi qua
 // ---------------------------------------------------------------------------
+// 💡 Khái niệm: regression test (kiểm thử hồi quy) — mỗi lỗi đã sửa có MỘT check đánh số bên dưới, để lỗi
+//   cũ không quay lại khi ai đó sửa code sau này. Gặp lỗi mới? Viết check tái hiện nó (thấy ĐỎ) rồi mới sửa
+//   game (thấy XANH) — đó là cách chắc chắn nhất để biết mình đã sửa đúng chỗ.
+
+// Tổng số listener DOM đang gắn trên window + document (đọc thẳng _listeners của DOM giả).
 function listenerCount() {
   const count = (t) => Object.values(t._listeners || {}).reduce((n, arr) => n + arr.length, 0);
   return count(winTarget) + count(doc);
 }
+// Số setInterval còn sống — nhạc nền dùng đúng 1 interval làm sequencer; nhiều hơn = nhạc phát chồng.
 function intervalCount() { return timers.filter((x) => x.every).length; }
 
+// 13 check chạy nối tiếp (mục 1–3 dùng chung một màn kitchen). Mỗi mục: đặt stage → dựng tình huống → khẳng định.
 async function qaChecks() {
   // 1) Thời gian tạm dừng KHÔNG được tính vào thời gian màn (nhiệm vụ "về đích dưới X giây").
   stage = 'qa:pause-time';
@@ -720,6 +910,8 @@ async function qaChecks() {
   check(((reloaded.ext && reloaded.ext.social && reloaded.ext.social.leaderboard) || []).length === before.lb, 'Bảng xếp hạng không được lưu');
 
   // 13) Không rò rỉ listener khi chơi lại nhiều lượt (menu → bản đồ → màn → game over → thử lại).
+  // 💡 Khái niệm: phát hiện memory leak bằng cách ĐẾM. Chụp số listener trước, lặp vòng chơi 3 lần, đếm lại:
+  //   phải bằng nhau. Scene nào addEventListener trong enter() mà quên gỡ trong exit() sẽ làm số này tăng.
   stage = 'qa:leaks';
   const l0 = listenerCount();
   for (let k = 0; k < 3; k++) {
@@ -1061,7 +1253,7 @@ async function menuFlowChecks() {
   if (click('#overlay [data-act="notebook"]', 'Sổ tay khám phá')) {
     await stepAsync(3);
     if (expectScene('notebookHub', 'menu → sổ tay khám phá')) {
-      check(document_count('#overlay [data-act="book"]') === JOURNEYS.length, 'Sổ tay khám phá không liệt kê đủ 4 hành trình');
+      check(countMatches('#overlay [data-act="book"]') === JOURNEYS.length, 'Sổ tay khám phá không liệt kê đủ 4 hành trình');
       click('#overlay [data-act="book"][data-arg="home"]', 'Sổ tay: home'); await stepAsync(3);
       expectScene('notebook', 'sổ tay khám phá → sổ tay home');
       await press('Escape'); await stepAsync(2);
@@ -1071,9 +1263,13 @@ async function menuFlowChecks() {
     }
   }
 }
-function document_count(sel) { return doc.querySelectorAll(sel).length; }
+function countMatches(sel) { return doc.querySelectorAll(sel).length; }
 
 // Cấm Trebuchet MS ở MỌI file trong src/ và index.html (bỏ qua câu ghi chú "KHÔNG dùng Trebuchet").
+// 💡 Khái niệm: kiểm tra TĨNH (static check) — đọc mã nguồn như văn bản, không chạy. Rẻ, nhanh, chặn được
+//   cả những thứ chạy thử không lộ ra (font chỉ sai khi nhìn bằng mắt). Cùng ý tưởng với lint.
+// ⚠️ Bẫy: quét cả COMMENT. Viết tên font cấm trong comment ở src/ hay index.html cũng làm test đỏ —
+//   hãy gọi nó là "font cấm" (xem docs/learn/CODE_STYLE.md mục 0).
 function fontChecks() {
   const files = ['index.html'];
   (function walk(dir) {
@@ -1089,6 +1285,7 @@ function fontChecks() {
     const txt = fs.readFileSync(path.join(ROOT, f), 'utf8').replace(/không dùng trebuchet/gi, '');
     if (/trebuchet/i.test(txt)) fail('Dùng font Trebuchet MS trong ' + f);
   });
+  // Tự kiểm tra chính check: nếu đường dẫn/regex hỏng mà quét 0 file thì check trên "xanh giả".
   check(scanned > 60, 'Quét font quá ít file (' + scanned + ')');
 }
 
@@ -1148,6 +1345,8 @@ const IMAGE_EXT = /\.(webp|jpe?g|png|gif|avif)$/i;
 
 // Đọc khối JSON thô giữa /* BEGIN-ENTRIES */ ... /* END-ENTRIES */ của credits.js (kể cả entry mà
 // OG.Photos.register đã loại vì sai giấy phép — để test báo lỗi thay vì lặng lẽ bỏ qua).
+// ⚠️ Bẫy: hai dấu mốc này là HỢP ĐỒNG giữa 3 bên: tools/photos/fetch_commons.py (ghi), file này (đọc) và
+//   chính credits.js. Sửa tay credits.js mà xoá/đổi dấu mốc → test đỏ và công cụ không dựng lại được entry.
 function rawPhotoEntries(jid) {
   const file = path.join(ROOT, 'assets', 'photos', jid, 'credits.js');
   if (!fs.existsSync(file)) { fail('Thiếu assets/photos/' + jid + '/credits.js'); return {}; }
@@ -1209,6 +1408,8 @@ async function photoChecks() {
   log('OG.Photos: ' + total + ' ảnh đã đăng ký');
 
   // ---- Giao diện: dùng entry giả để chạy mọi nhánh vẽ (shimmer → ảnh → phóng to → ảnh lỗi) ----
+  // Image giả không bao giờ tự tải: test tự gọi img.onload() / img.onerror() để đi vào từng nhánh,
+  // nhờ vậy nhánh "ảnh lỗi" hiếm gặp ngoài đời cũng được chạy mỗi lần test.
   stage = 'photos:ui';
   const jid = 'vietnam';
   const cards = OG.Journeys.cardsOf(jid);
@@ -1448,6 +1649,8 @@ async function doubleJumpCheck() {
   void p;
 }
 
+// In tổng kết. Đặt process.exitCode (không gọi process.exit) để Node in hết log rồi mới thoát;
+// mã 1 làm bước "Smoke test" của CI đỏ → GitHub Actions không deploy.
 function finish(t0) {
   stage = 'end';
   const secs = ((Date.now() - t0) / 1000).toFixed(1);

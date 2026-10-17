@@ -1,17 +1,29 @@
+// jsconfig.json — cấu hình KIỂM TRA KIỂU bằng JSDoc + TypeScript cho code JS thuần (không build step).
+// Trình duyệt và game KHÔNG đọc file này; chỉ VS Code (gợi ý, hover JSDoc) và lệnh kiểm tra dùng:
+//   npx -y -p typescript@5.6.3 tsc -p jsconfig.json --noEmit      (không in gì + mã thoát 0 = sạch)
+// Bài học: docs/learn/13-kiem-thu-ci.md · quy ước: docs/learn/CODE_STYLE.md mục 7.
+// File này là JSONC (JSON cho phép comment) — tsc và VS Code đều hiểu; đừng đọc nó bằng JSON.parse.
+//
+// 💡 Khái niệm: bật kiểm tra TỪNG FILE (opt-in). checkJs:false nên tsc bỏ qua lỗi của mọi file .js, TRỪ file
+//   có dòng `// @ts-check` ở đầu. Nhờ vậy dự án lớn chuyển dần sang có kiểm tra kiểu mà không bị ngập lỗi.
+// 🧪 Thử: đổi "checkJs" thành true rồi chạy lệnh trên: thấy rất nhiều lỗi từ các file chưa được làm sạch.
+//   Trả lại false sau khi xem.
 {
   "compilerOptions": {
-    "allowJs": true,
-    "checkJs": false,
-    "noEmit": true,
-    "target": "ES2019",
-    "lib": ["ES2019", "DOM"],
-    "module": "none",
+    "allowJs": true,          // cho tsc đọc file .js (mặc định chỉ đọc .ts)
+    "checkJs": false,         // xem 💡 ở trên: chỉ file có // @ts-check mới bị báo lỗi
+    "noEmit": true,           // chỉ KIỂM TRA, không sinh file nào (game chạy thẳng file .js gốc)
+    "target": "ES2019",       // phiên bản JS "đích" khi biên dịch; vì noEmit nên gần như không ảnh hưởng. KHÔNG cấm cú pháp mới (vd ?.)
+    "lib": ["ES2019", "DOM"], // API tsc coi là có sẵn: JS chuẩn ES2019 + DOM (canvas, AudioContext...). API mới hơn → lỗi ở file @ts-check
+    "module": "none",         // không ES modules: mọi file là script, chia sẻ phạm vi toàn cục qua window.OG
     "moduleResolution": "node",
-    "strict": false,
+    "strict": false,          // không ép null-check/any chặt: code cũ viết lỏng, bật strict sẽ quá nhiều lỗi
     "noImplicitAny": false,
-    "skipLibCheck": true,
-    "types": []
+    "skipLibCheck": true,     // bỏ qua lỗi BÊN TRONG mọi file .d.ts (kể cả src/types.d.ts) cho nhanh; kiểu vẫn được dùng để kiểm tra .js
+    "types": []               // không tự nạp @types/* (dự án không có thư viện ngoài, kể cả @types/node)
   },
+  // src/types.d.ts chứa kiểu dùng chung (AABB, LevelDef, Scene...) và khai báo OG là any.
   "include": ["src/**/*.js", "src/types.d.ts"],
+  // tests/ và tools/ chạy bằng Node/Python, không phải code trình duyệt → loại khỏi kiểm tra.
   "exclude": ["node_modules", "legacy", "tests", "tools", "assets", "docs"]
 }

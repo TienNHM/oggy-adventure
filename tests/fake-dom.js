@@ -1,12 +1,46 @@
-/* Fake DOM tối thiểu cho smoke test chạy bằng Node (không cần thư viện ngoài).
- * Đủ cho game: parse HTML (innerHTML), querySelector với selector đơn giản, event capture/bubble,
- * focus, form submit, style/classList/dataset, canvas 2D giả (Proxy), localStorage, AudioContext giả.
- * KHÔNG phải trình duyệt thật: không layout, không vẽ — chỉ để bắt lỗi runtime. */
+/* ============================================================================
+ * tests/fake-dom.js — DOM GIẢ (test double) CHO SMOKE TEST CHẠY BẰNG NODE
+ * ----------------------------------------------------------------------------
+ * Vai trò:      Dựng lại phần trình duyệt mà game cần để tests/smoke.js chạy được trong Node:
+ *               parse HTML (innerHTML), querySelector với selector đơn giản, event capture/bubble,
+ *               focus, form submit, style/classList/dataset, canvas 2D giả, localStorage, AudioContext giả.
+ *               KHÔNG phải trình duyệt thật: không layout, không vẽ pixel — chỉ để bắt lỗi runtime.
+ * Khái niệm:    test double / fake object (vật thay thế có hành vi tối thiểu) · Proxy làm "null object"
+ *               (mọi hàm lạ là no-op) · đường đi event capture → target → bubble · parser HTML bằng ngăn xếp
+ *               (stack) · selector engine tự viết · đồng hồ ảo dùng chung với AudioContext giả
+ * Bài học:      docs/learn/13-kiem-thu-ci.md
+ * Phụ thuộc:    chỉ thư viện chuẩn của Node (không require gì). Được tests/smoke.js require.
+ * Event:        (không) — file này chỉ GIẢ LẬP cơ chế event DOM (addEventListener/dispatchEvent).
+ * API công khai: module.exports = { FakeEvent, FakeEventTarget, FakeDocument, FakeElement, parseHTML,
+ *               makeStorage, makeAudioContextClass, makeCtx2d, setListenerErrorHandler }
+ * Đọc tiếp:     tests/smoke.js (cách dùng các lớp giả này để dựng sandbox và "chơi" game)
+ * Kiểm tra kiểu: không bật @ts-check vì jsconfig.json loại trừ tests/ và tsc cần @types/node (thư viện
+ *               ngoài) mới hiểu require/module.exports; thêm vào đó Proxy + field động gây rất nhiều lỗi giả.
+ *
+ * 💡 Khái niệm — vì sao tự viết DOM giả thay vì dùng jsdom / trình duyệt headless?
+ *   Ràng buộc dự án: không thư viện ngoài, CI chỉ cần `node`. Game chỉ dùng MỘT phần nhỏ DOM, nên ta giả
+ *   đúng phần đó. Đánh đổi: game dùng API DOM mới mà file này chưa có → test báo lỗi "is not a function";
+ *   khi đó thêm API vào đây (giả đơn giản nhất có thể), đừng sửa game để né test.
+ * ========================================================================== */
 'use strict';
+
+// Kích thước logic của canvas #game (px) — khớp width/height trong index.html và OG.W/OG.H.
+const GAME_RECT_W = 960;
+const GAME_RECT_H = 540;
+// Kích thước "layout" giả của mọi phần tử hiển thị khác (px). Không có layout thật nên chỉ cần > 0.
+const FAKE_EL_W = 100;
+const FAKE_EL_H = 40;
 
 // ---------------------------------------------------------------------------
 // Event
 // ---------------------------------------------------------------------------
+/**
+ * Event giả dùng chung cho mọi loại (keydown, pointerdown, click, submit...). Mọi field trong init
+ * (code, key, clientX, pointerId...) được chép thẳng vào event, giống KeyboardEvent/PointerEvent thật.
+ * Mặc định bubbles = true để test viết gọn (trình duyệt thật tuỳ loại event).
+ * @example
+ *   el.dispatchEvent(new FakeEvent('keydown', { code: 'Space', key: ' ' }));
+ */
 class FakeEvent {
   constructor(type, init) {
     init = init || {};
@@ -29,6 +63,8 @@ class FakeEvent {
 }
 
 // Lỗi trong listener được báo qua hook này (smoke test ghi nhận).
+// 💡 Khái niệm: trình duyệt thật KHÔNG để lỗi trong listener làm hỏng dispatchEvent — nó chỉ in ra console.
+//   Ta bắt lỗi (try/catch trong _fire) rồi chuyển cho hook để smoke test đếm là LỖI thay vì sập cả test.
 let onListenerError = (err) => { throw err; };
 
 class FakeEventTarget {
@@ -61,6 +97,11 @@ class FakeEventTarget {
   }
   // Đường đi sự kiện: [window, document, ...tổ tiên, target]
   _path() { return [this]; }
+  // 💡 Khái niệm: event DOM đi 3 pha — capture (từ window đi XUỐNG tới cha của target), target, rồi
+  //   bubble (đi NGƯỢC LÊN). Game dựa vào điều này: src/ui/menus.js nghe keydown ở window pha capture
+  //   (tham số thứ 3 = true) để điều khiển panel bằng bàn phím TRƯỚC listener của nút bên dưới; src/core/input.js
+  //   nghe pointerdown/keydown pha capture để ghi nhận "cử chỉ đầu tiên" (mở khoá âm thanh) kể cả khi phần tử
+  //   con gọi stopPropagation(). Giả sai thứ tự pha → test xanh nhưng game thật lỗi (hoặc ngược lại).
   dispatchEvent(ev) {
     ev.target = this;
     const path = this._path();
@@ -77,6 +118,16 @@ class FakeEventTarget {
 // ---------------------------------------------------------------------------
 // Canvas 2D giả: mọi hàm lạ là no-op; theo dõi save/restore để kiểm tra cân bằng.
 // ---------------------------------------------------------------------------
+/**
+ * Tạo CanvasRenderingContext2D giả. Không vẽ gì, nhưng đếm độ sâu save/restore để smoke test bắt lỗi
+ * "quên restore" (bẫy kinh điển khi vẽ procedural: transform/alpha rò sang hình vẽ sau).
+ * @param {FakeElement} canvas phần tử canvas sở hữu ctx (ctx.canvas trả về nó)
+ * @returns {Object} Proxy; đọc thêm field `depth` (số save chưa restore) và `underflow` (số restore thừa)
+ * @example
+ *   const ctx = doc.getElementById('game').getContext('2d');
+ *   ctx.save(); ctx.translate(10, 0);            // translate là no-op
+ *   console.log(ctx.depth);                      // 1 → sau frame phải về 0
+ */
 function makeCtx2d(canvas) {
   const state = {
     canvas, depth: 0, underflow: 0,
@@ -100,6 +151,10 @@ function makeCtx2d(canvas) {
     getContextAttributes() { return { alpha: true }; }
   };
   const noop = function () {};
+  // 💡 Khái niệm: Proxy chặn MỌI lần đọc thuộc tính. Thứ tự tra: hàm có hành vi riêng (fns) → thuộc tính
+  //   trạng thái (fillStyle, font... ghi được và đọc lại được) → còn lại trả hàm rỗng. Nhờ vậy ta không cần
+  //   liệt kê hàng chục hàm vẽ (beginPath, arc, bezierCurveTo...) mà code vẽ của game vẫn chạy trọn vẹn.
+  // ⚠️ Bẫy: vì hàm lạ nào cũng "chạy được", gõ sai tên hàm vẽ (vd ctx.fillRectt) KHÔNG bị test bắt.
   return new Proxy(state, {
     get(t, k) {
       if (typeof k === 'symbol') return undefined;
@@ -114,6 +169,7 @@ function makeCtx2d(canvas) {
 // ---------------------------------------------------------------------------
 // Node / Element / Text
 // ---------------------------------------------------------------------------
+// Thẻ rỗng (void element) không có thẻ đóng: <img>, <input>... — parser không đẩy chúng vào stack.
 const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr']);
 
 function decodeEntities(s) {
@@ -129,6 +185,8 @@ function escText(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt
 function escAttr(s) { return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;'); }
 
 function camel(s) { return s.trim().replace(/-([a-z])/g, (m, c) => c.toUpperCase()); }
+// style giả: object thường lưu thuộc tính dạng camelCase ('touch-action' → touchAction). Các hàm và cssText
+// đặt enumerable:false để vòng lặp for...in trên style chỉ thấy thuộc tính CSS.
 function makeStyle() {
   const st = {
     setProperty(k, v) { st[camel(k)] = String(v); },
@@ -154,6 +212,7 @@ class FakeNode extends FakeEventTarget {
   get isConnected() { let n = this; while (n.parentNode) n = n.parentNode; return n === this.ownerDocument; }
   appendChild(c) { return this.insertBefore(c, null); }
   insertBefore(c, ref) {
+    // DocumentFragment (nodeType 11): chèn CÁC CON của nó, bản thân fragment không vào cây.
     if (c.nodeType === 11) { c.childNodes.slice().forEach((x) => this.insertBefore(x, ref)); return c; }
     if (c.parentNode) c.parentNode.removeChild(c);
     const i = ref ? this.childNodes.indexOf(ref) : -1;
@@ -166,6 +225,7 @@ class FakeNode extends FakeEventTarget {
     if (i < 0) throw new Error('removeChild: không phải con');
     this.childNodes.splice(i, 1);
     c.parentNode = null;
+    // Giống trình duyệt: gỡ phần tử đang focus (hoặc cha của nó) khỏi cây thì focus rơi về body.
     if (this.ownerDocument && this.ownerDocument._active && (c === this.ownerDocument._active || c.contains(this.ownerDocument._active))) this.ownerDocument._active = null;
     return c;
   }
@@ -197,8 +257,13 @@ class FakeFragment extends FakeNode {
   querySelectorAll(s) { return querySelectorAll(this, s); }
 }
 
+// Đếm số phần tử đã xin getBoundingClientRect để xếp chúng thành lưới giả (xem getBoundingClientRect).
 let rectCounter = 0;
 
+/**
+ * Phần tử HTML giả. Thuộc tính phản chiếu (id, className, hidden, disabled, width...) đọc/ghi qua
+ * `attributes` như trình duyệt, nên innerHTML ↔ thuộc tính luôn khớp nhau.
+ */
 class FakeElement extends FakeNode {
   constructor(doc, tag) {
     super(doc);
@@ -211,6 +276,8 @@ class FakeElement extends FakeNode {
     this._value = null;
     this.scrollTop = 0; this.scrollLeft = 0;
     const self = this;
+    // classList và dataset KHÔNG lưu riêng: chúng đọc/ghi thẳng attribute 'class' / 'data-*', nên
+    // el.innerHTML, el.className và el.classList luôn nhất quán (một nguồn sự thật).
     this.classList = {
       _list() { return (self.getAttribute('class') || '').split(/\s+/).filter(Boolean); },
       add(...c) { const l = this._list(); c.forEach((x) => { if (l.indexOf(x) < 0) l.push(x); }); self.setAttribute('class', l.join(' ')); },
@@ -302,6 +369,8 @@ class FakeElement extends FakeNode {
   closest(s) { let n = this; while (n && n.nodeType === 1) { if (matchesSelector(n, s)) return n; n = n.parentNode; } return null; }
 
   // ---- "layout" giả ----
+  // Không tính layout thật. "Hiển thị" = đã gắn vào document và không tổ tiên nào display:none / .hidden /
+  // [hidden]. Code game hay dùng offsetParent / offsetWidth để biết nút có đang hiện (vd chọn nút focus).
   _visible() {
     let n = this;
     while (n && n.nodeType === 1) {
@@ -311,14 +380,18 @@ class FakeElement extends FakeNode {
     return this.isConnected;
   }
   get offsetParent() { return this._visible() ? (this.parentNode || null) : null; }
-  get offsetWidth() { return this._visible() ? 100 : 0; }
-  get offsetHeight() { return this._visible() ? 40 : 0; }
+  get offsetWidth() { return this._visible() ? FAKE_EL_W : 0; }
+  get offsetHeight() { return this._visible() ? FAKE_EL_H : 0; }
   get clientWidth() { return this.offsetWidth; }
   get clientHeight() { return this.offsetHeight; }
   get scrollHeight() { return this.offsetHeight; }
   getBoundingClientRect() {
-    if (this.id === 'game' || this.id === 'gameShell') return { left: 0, top: 0, right: 960, bottom: 540, width: 960, height: 540, x: 0, y: 0 };
-    if (!this._rect) { const i = rectCounter++; this._rect = { left: (i % 6) * 110, top: Math.floor(i / 6) * 50 % 500, width: 100, height: 40 }; }
+    // 💡 Khái niệm: canvas giả có kích thước hiển thị ĐÚNG BẰNG kích thước logic 960×540 (tỉ lệ 1:1), nên
+    //   toạ độ clientX/clientY test gửi vào chính là toạ độ logic canvas — test chạm "nút 📒 ở (885, 486)"
+    //   mà không phải tự quy đổi màn hình → canvas như OG.Input làm trong trình duyệt thật.
+    if (this.id === 'game' || this.id === 'gameShell') return { left: 0, top: 0, right: GAME_RECT_W, bottom: GAME_RECT_H, width: GAME_RECT_W, height: GAME_RECT_H, x: 0, y: 0 };
+    // Phần tử khác: xếp lưới 6 cột (ô 110×50 px, quay vòng sau 500 px) để mỗi nút có hộp riêng, không trùng nhau.
+    if (!this._rect) { const i = rectCounter++; this._rect = { left: (i % 6) * 110, top: Math.floor(i / 6) * 50 % 500, width: FAKE_EL_W, height: FAKE_EL_H }; }
     const r = this._rect;
     return { left: r.left, top: r.top, right: r.left + r.width, bottom: r.top + r.height, width: r.width, height: r.height, x: r.left, y: r.top };
   }
@@ -369,6 +442,20 @@ function serialize(n) {
 // ---------------------------------------------------------------------------
 // Parser HTML đơn giản (đủ cho chuỗi HTML do game tạo).
 // ---------------------------------------------------------------------------
+/**
+ * Phân tích chuỗi HTML và gắn các node tạo ra làm con của root (SỬA root). Dùng cho innerHTML,
+ * insertAdjacentHTML và để dựng phần thân của index.html trong smoke test.
+ * @param {string} html
+ * @param {FakeNode} root nút cha nhận các node mới (element, fragment hoặc document.body)
+ * @param {FakeDocument} doc document dùng để createElement
+ * @example
+ *   D.parseHTML('<button data-act="play">CHƠI</button>', doc.body, doc);
+ */
+// 💡 Khái niệm: parser dùng NGĂN XẾP (stack) các thẻ đang mở. Gặp thẻ mở → tạo element, gắn vào đỉnh stack
+//   rồi push; gặp thẻ đóng → pop tới thẻ cùng tên (bỏ qua thẻ quên đóng). Đây là ý tưởng cốt lõi của mọi
+//   parser cấu trúc lồng nhau (HTML, JSON, biểu thức có ngoặc...).
+// ⚠️ Bẫy: parser tối giản — không hiểu thẻ tự đóng ngầm (<p> ... <p>), không hiểu <template>. Game nên sinh
+//   HTML "chuẩn chỉnh" (đóng đủ thẻ); nếu không, cây DOM giả có thể khác trình duyệt.
 function parseHTML(html, root, doc) {
   const stack = [root];
   let i = 0;
@@ -413,6 +500,7 @@ function parseHTML(html, root, doc) {
       }
       top().appendChild(el);
       i = j;
+      // Nội dung thô (raw text): bên trong <script>/<style>/<textarea> ký tự '<' không mở thẻ mới.
       if (name === 'script' || name === 'style' || name === 'textarea') {
         const e = html.toLowerCase().indexOf('</' + name, i);
         const raw = html.slice(i, e < 0 ? html.length : e);
@@ -435,7 +523,14 @@ function parseHTML(html, root, doc) {
 // ---------------------------------------------------------------------------
 // Selector: nhóm (,), kết hợp con cháu (khoảng trắng) và con trực tiếp (>),
 // phần tử ghép: tag, #id, .class, [attr], [attr=v], [attr^=v], [attr*=v], :nth-child(n), :not(x), :first-child
+//
+// 💡 Khái niệm: selector được khớp TỪ PHẢI SANG TRÁI (như trình duyệt): '#overlay [data-act="play"]' →
+//   trước tiên phần tử phải có [data-act="play"], rồi mới lần lên tổ tiên tìm #overlay. Cách này loại nhanh
+//   đa số phần tử chỉ bằng phần cuối của selector.
+// ⚠️ Bẫy: game dùng selector chưa hỗ trợ (vd ':hover', '~', '+') → ném lỗi "Selector không hỗ trợ" ngay,
+//   cố ý ồn ào để không âm thầm trả kết quả sai. Cần thì thêm nhánh vào parseCompound / matchCompound.
 // ---------------------------------------------------------------------------
+// Tách chuỗi theo sep nhưng chỉ ở "tầng ngoài cùng" (không cắt bên trong [...], (...) hay chuỗi trong nháy).
 function splitTop(s, sep) {
   const out = []; let depth = 0, q = null, cur = '';
   for (const ch of s) {
@@ -449,7 +544,9 @@ function splitTop(s, sep) {
   out.push(cur);
   return out;
 }
+// Cache kết quả phân tích selector: test gọi cùng một selector hàng nghìn lần mỗi lượt chơi.
 const selCache = new Map();
+// Trả mảng các nhóm (theo dấu ','); mỗi nhóm là [compound, combinator, compound, ...], combinator là ' ' hoặc '>'.
 function parseSelector(sel) {
   if (selCache.has(sel)) return selCache.get(sel);
   const groups = splitTop(sel, ',').map((g) => {
@@ -531,6 +628,7 @@ function matchCompound(el, c) {
   }
   return true;
 }
+// Khớp parts[idx] với el, rồi lùi về bên trái: '>' chỉ xét cha trực tiếp, ' ' thử mọi tổ tiên (đệ quy).
 function matchParts(el, parts, idx) {
   if (!matchCompound(el, parts[idx])) return false;
   if (idx === 0) return true;
@@ -559,6 +657,11 @@ function querySelectorAll(root, sel) {
 // ---------------------------------------------------------------------------
 // Document
 // ---------------------------------------------------------------------------
+/**
+ * Document giả: sẵn html/head/body, readyState 'loading' (smoke test tự chuyển sang 'interactive' rồi phát
+ * DOMContentLoaded để kích hoạt boot). defaultView được gán sau = window giả, để event nổi bọt tới window.
+ * `copied` ghi lại các lần execCommand('copy') (nút chia sẻ).
+ */
 class FakeDocument extends FakeNode {
   constructor() {
     super(null);
@@ -597,6 +700,14 @@ class FakeDocument extends FakeNode {
 // ---------------------------------------------------------------------------
 // localStorage + AudioContext giả
 // ---------------------------------------------------------------------------
+/**
+ * Tạo Storage giả (localStorage / sessionStorage) lưu trong Map. Giống trình duyệt: khoá và giá trị luôn
+ * bị ép sang chuỗi, getItem của khoá chưa có trả null.
+ * @returns {{getItem: Function, setItem: Function, removeItem: Function, clear: Function, key: Function, length: number, _map: Map<string, string>}}
+ * @example
+ *   const storage = D.makeStorage();
+ *   storage.setItem('n', 5); storage.getItem('n'); // '5' (chuỗi, không phải số)
+ */
 function makeStorage() {
   const m = new Map();
   return {
@@ -610,7 +721,23 @@ function makeStorage() {
   };
 }
 
+/**
+ * Tạo LỚP AudioContext giả gắn với đồng hồ ảo của test (currentTime = clock.t, giây). Node âm thanh
+ * không phát tiếng, nhưng KIỂM TRA các lỗi mà trình duyệt thật cũng ném: exponentialRamp tới 0,
+ * thời gian NaN/Infinity, start() một nguồn hai lần, connect(undefined), buffer độ dài 0.
+ * Đếm số AudioContext đã tạo ở FakeAudioContext.instances (test kiểm tra "mở khoá sau cử chỉ đầu tiên").
+ * @param {{t: number}} clock đồng hồ ảo dùng chung với smoke test, đơn vị giây
+ * @returns {Function} constructor, gán vào sandbox.AudioContext
+ * @example
+ *   const AudioCtx = D.makeAudioContextClass(clock);
+ *   const ac = new AudioCtx();
+ *   ac.createGain().gain.exponentialRampToValueAtTime(0, 1); // ném RangeError giống trình duyệt
+ */
+// ⚠️ Bẫy: exponentialRampToValueAtTime(0, t) là lỗi hay gặp khi viết envelope (đường bao âm lượng) —
+//   hàm mũ không bao giờ chạm 0. Trình duyệt ném RangeError, phần code phát âm phía sau không chạy nên tiếng
+//   có thể mất hẳn; dùng giá trị rất nhỏ (vd 0.0001) thay cho 0.
 function makeAudioContextClass(clock) {
+  // AudioParam giả (frequency, gain...): mọi hàm lập lịch đều kiểm tra tham số rồi trả lại chính nó.
   function param(v) {
     const p = { value: v, defaultValue: v, minValue: -3.4e38, maxValue: 3.4e38 };
     ['setValueAtTime', 'linearRampToValueAtTime', 'exponentialRampToValueAtTime', 'setTargetAtTime',
@@ -634,6 +761,7 @@ function makeAudioContextClass(clock) {
       get(t, k) {
         if (typeof k === 'symbol') return undefined;
         if (k in t) return t[k];
+        // 'then' phải là undefined: nếu không, await/Promise.resolve(node) tưởng node là Promise và treo.
         if (k === 'then') return undefined;
         t[k] = param(0); // mọi thuộc tính lạ là AudioParam (frequency, gain, detune, Q, pan...)
         return t[k];
@@ -649,6 +777,8 @@ function makeAudioContextClass(clock) {
       this.onstatechange = null;
       FakeAudioContext.instances = (FakeAudioContext.instances || 0) + 1;
       const self = this;
+      // Constructor trả về Proxy (thay cho this): mọi createXxx() chưa định nghĩa (createOscillator, createGain,
+      // createBiquadFilter, createStereoPanner...) đều trả một node giả — game dùng thêm loại node cũng không vỡ test.
       return new Proxy(this, {
         get(t, k) {
           if (k in t) return t[k];
@@ -673,5 +803,11 @@ function makeAudioContextClass(clock) {
 
 module.exports = {
   FakeEvent, FakeEventTarget, FakeDocument, FakeElement, parseHTML, makeStorage, makeAudioContextClass, makeCtx2d,
+  /**
+   * Đặt hàm nhận lỗi ném ra từ listener DOM (mặc định: ném tiếp). Smoke test truyền hàm ghi LỖI.
+   * @param {(err: Error, type: string) => void} fn type = tên event DOM (vd 'click')
+   * @example
+   *   D.setListenerErrorHandler((err, type) => fail('Lỗi trong listener "' + type + '": ' + err.message));
+   */
   setListenerErrorHandler(fn) { onListenerError = fn; }
 };

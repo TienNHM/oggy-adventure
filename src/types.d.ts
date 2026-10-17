@@ -1,17 +1,39 @@
-/* src/types.d.ts — khai báo KIỂU dùng chung cho JSDoc (chỉ phục vụ VS Code / tsc, trình duyệt KHÔNG load file này).
+/* ============================================================================
+ * src/types.d.ts — KIỂU DỮ LIỆU DÙNG CHUNG (declaration file cho JSDoc)
+ * ----------------------------------------------------------------------------
+ * Vai trò:      Khai báo một lần các cấu trúc dữ liệu nhiều file cùng dùng (AABB, LevelDef, Scene, BossInstance...)
+ *               để JSDoc trong src/ tham chiếu bằng tên. Chỉ phục vụ VS Code / tsc — trình duyệt KHÔNG load
+ *               file này, index.html không nạp nó, smoke test cũng không.
+ * Khái niệm:    declaration file (.d.ts) · interface & kế thừa (extends) · kiểu hợp (union) và kiểu literal
+ *               ('kid' | 'challenge', 1 | -1) · index signature (field mở rộng) · kiểu hàm (callback type)
+ * Bài học:      docs/learn/13-kiem-thu-ci.md (JSDoc + tsc) · từng kiểu gắn với bài của module tương ứng
+ * Phụ thuộc:    (không) — được jsconfig.json đưa vào ("include"); đặc tả gốc: docs/ARCHITECTURE.md, docs/STORY.md
+ * Event:        (không)
+ * API công khai: các kiểu toàn cục AABB, PhysicsBody, MoveResult, Platform, Vec2, Scene, OGListener, Unsubscribe,
+ *               LevelDef, EnemySpawn, QuestDef, LevelHook, Player, Enemy, EnemyTypeDef, Arena, BossInstance, BossDef,
+ *               JourneyDef, AreaDef, CardDef, QuizDef, PanelDef, IconSpec, DrawIconFn, ValidateResult, ThemeDef,
+ *               SceneryLayer, PlatformPaint, DecorFn
+ * Đọc tiếp:     jsconfig.json (vì sao chỉ file có // @ts-check mới bị kiểm tra) → src/core/physics.js (ví dụ file
+ *               dùng AABB/PhysicsBody trong JSDoc)
  *
  * 💡 Khái niệm: file .d.ts (declaration file) chỉ chứa KIỂU, không chứa code chạy. Ta viết game bằng JS thuần,
  *   nhưng nhờ file này + chú thích JSDoc (vd `@param {LevelDef} level`), VS Code gợi ý được field và tsc bắt được
  *   lỗi gõ sai tên field trong các file có dòng `// @ts-check` ở đầu.
  *
- * Quy ước (xem docs/learn/CODE_STYLE.md):
+ * Quy ước (xem docs/learn/CODE_STYLE.md mục 3.3):
  *   - Đây là file "script" (không có import/export) nên mọi interface bên dưới là TOÀN CỤC: dùng thẳng tên trong JSDoc.
- *   - Tên kiểu tránh trùng kiểu có sẵn của DOM (vd KHÔNG đặt `Body`, `Event`, `Range`, `Animation`).
+ *     ⚠️ Bẫy: thêm một dòng import/export vào file này là nó thành "module" — mọi kiểu hết toàn cục, JSDoc cả dự án
+ *     báo "Cannot find name 'LevelDef'".
+ *   - Tên kiểu tránh trùng kiểu có sẵn của DOM (vd KHÔNG đặt `Body`, `Event`, `Range`, `Animation`, `Text`).
+ *     Trùng tên thì interface của ta bị GỘP (declaration merging) vào kiểu DOM, sinh lỗi rất khó hiểu.
  *   - Nguồn sự thật về định dạng dữ liệu vẫn là docs/ARCHITECTURE.md và docs/STORY.md; sửa kiểu ở đây phải khớp tài liệu.
  *   - Field có dấu `?` là tuỳ chọn. `[key: string]: any` = cho phép field mở rộng (module tính năng hay thêm field riêng).
+ *   - Nhiều người cùng sửa: chỉ THÊM kiểu mới, không sửa kiểu người khác đã viết.
  *
  * Kiểm tra: npx -y -p typescript@5.6.3 tsc -p jsconfig.json --noEmit
- */
+ * 🧪 Thử: trong một file có // @ts-check (vd src/core/events.js), thêm biến `var r = { x: 0, y: 0, w: 10 };` có
+ *   chú thích JSDoc `@type {AABB}` ngay trên, rồi chạy lệnh trên: tsc báo thiếu field `h`. Xoá dòng thử sau khi xem.
+ * ========================================================================== */
 
 // ---------------------------------------------------------------------------
 // Namespace toàn cục. Cố ý để `any`: mỗi module tự gắn OG.X lúc load (module pattern IIFE),
@@ -27,6 +49,8 @@ declare var OG: any;
 /** Hình chữ nhật thẳng trục (AABB — Axis-Aligned Bounding Box). x,y = góc TRÊN-TRÁI, đơn vị pixel thế giới. */
 interface AABB { x: number; y: number; w: number; h: number }
 
+// 💡 Khái niệm: `extends` = kế thừa field. PhysicsBody CÓ MỌI field của AABB, nên một Player (extends PhysicsBody)
+//   truyền được thẳng vào hàm nhận AABB (vd OG.util.overlap) — không cần chuyển đổi.
 /** Vật thể chịu trọng lực của OG.Physics.moveBody. vx/vy tính bằng pixel/giây; ground = đang đứng trên nền. */
 interface PhysicsBody extends AABB { vx: number; vy: number; ground: boolean }
 
@@ -43,6 +67,8 @@ interface Vec2 { x: number; y: number }
 // Scene & event (src/core/scenes.js, src/core/events.js)
 // ---------------------------------------------------------------------------
 
+// 💡 Khái niệm: phương thức tuỳ chọn (`enter?()`) — scene chỉ cần cài phần mình cần; OG.Scenes kiểm tra có
+//   hàm hay không trước khi gọi. Đây là "giao diện" (interface) của state machine scene, bài 05.
 /** Một scene của máy trạng thái OG.Scenes. Mọi phương thức đều tuỳ chọn. */
 interface Scene {
   enter?(params: any, fromName: string | null): void;
@@ -240,6 +266,8 @@ interface BossDef {
 /** Hàm vẽ biểu tượng: (x,y) = tâm, size = cạnh ô vuông, t = thời gian (giây) để làm hoạt ảnh. */
 type DrawIconFn = (ctx: CanvasRenderingContext2D, x: number, y: number, size: number, t: number) => void;
 
+// 💡 Khái niệm: kiểu hợp (union) `A | B | C` = giá trị có thể là MỘT trong các dạng. Code dùng IconSpec phải kiểm
+//   tra dạng trước khi dùng (typeof === 'function', 'decor' in spec...) — tsc nhận ra nhánh nào là dạng nào.
 /** Biểu tượng của thẻ / đáp án: hàm vẽ | decor thư viện | chân dung nhân vật | emoji (tạm). */
 type IconSpec = DrawIconFn | { decor: string; opts?: any } | { char: string } | { emoji: string } | string;
 

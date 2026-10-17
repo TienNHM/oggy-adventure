@@ -1,6 +1,28 @@
 #!/usr/bin/env python3
 """Công cụ lấy ẢNH CHỤP THỰC TẾ (có giấy phép tự do) cho thẻ kiến thức của Oggy Adventure.
 
+============================================================================
+tools/photos/fetch_commons.py — CÔNG CỤ SOẠN NỘI DUNG: TẢI ẢNH + GHI CÔNG (content pipeline)
+----------------------------------------------------------------------------
+Vai trò:      Chạy TAY trên máy người soạn nội dung (không chạy trong game, không deploy — CI bỏ tools/).
+              Tìm ảnh trên Wikimedia Commons, tải về, thu nhỏ, lưu WebP và SINH RA file JS
+              assets/photos/<journeyId>/credits.js để game nạp bằng thẻ script (chạy được qua file://).
+Khái niệm:    content pipeline (dây chuyền chuẩn bị nội dung ngoài game) · sinh code từ dữ liệu (code
+              generation) · danh sách trắng giấy phép (whitelist) dùng chung với game và test · gọi API web
+              lịch sự: User-Agent, giới hạn tốc độ (rate limit), lùi lại khi bị từ chối (backoff) ·
+              tối ưu ảnh cho web (thu nhỏ, WebP) · dấu mốc BEGIN/END để đọc lại file đã sinh
+Bài học:      docs/learn/13-kiem-thu-ci.md (photoChecks kiểm tra đầu ra của công cụ này) ·
+              docs/learn/12-data-driven-man-cau-do-hanh-trinh.md (thẻ kiến thức là dữ liệu)
+Phụ thuộc:    Python 3 (thư viện chuẩn) + Pillow · đọc src/journeys/<id>/content.js (lấy danh sách cardId)
+Đầu ra:       assets/photos/<id>/<cardId>.webp · assets/photos/<id>/_entries.json (tạm) · assets/photos/<id>/credits.js
+Đọc tiếp:     src/story/photos.js (OG.Photos.register / licenseOk — phía game đọc credits.js) →
+              tests/smoke.js photoChecks (kiểm tra giấy phép, dung lượng, file mồ côi) → docs/credits.html
+
+💡 Khái niệm — vì sao công cụ sinh ra file .js chứ không phải .json?
+  Game chạy qua file:// nên không fetch() được file cục bộ. Một file .js gọi OG.Photos.register({...}) thì
+  nạp được bằng thẻ script như mọi file khác. Bên trong vẫn là JSON hợp lệ (giữa hai dấu mốc
+  BEGIN-ENTRIES / END-ENTRIES) để công cụ và smoke test đọc lại được bằng json.loads / JSON.parse.
+
 Chỉ dùng thư viện chuẩn của Python 3 + Pillow. Không chạy trong game — chỉ dùng lúc chuẩn bị nội dung.
 Kết quả: assets/photos/<journeyId>/<cardId>.webp  +  assets/photos/<journeyId>/credits.js (ghi công).
 
@@ -63,19 +85,26 @@ API = 'https://commons.wikimedia.org/w/api.php'
 # Chính sách User-Agent của Wikimedia: tên công cụ/phiên bản + cách liên hệ (URL dự án).
 USER_AGENT = 'OggyAdventureEdu/1.0 (https://oggy-adventure.tiennhm.io.vn; educational kids game) Python-urllib'
 THUMB_REQUEST = 1200   # xin Commons bản rộng ~1200px (đỡ tải file gốc hàng chục MB)
-MAX_SIDE = 800         # cạnh dài tối đa của file lưu
-WEBP_QUALITY = 78
+# 🧪 Thử: hạ MAX_SIDE xuống 400 rồi `get` lại một ảnh: file nhẹ đi đáng kể nhưng mờ khi phóng to trong Sổ tay.
+MAX_SIDE = 800         # cạnh dài tối đa của file lưu (px). Smoke test còn chặn file > 400 KB và cạnh > 1200 px.
+WEBP_QUALITY = 78      # 0..100 — ~78 là điểm cân bằng dung lượng/chất lượng cho ảnh chụp
 PAUSE = 1.0            # giây nghỉ giữa các request
-NOTE = 'Đã thu nhỏ, chuyển sang WebP'
+NOTE = 'Đã thu nhỏ, chuyển sang WebP'  # ghi vào entry: CC BY / BY-SA yêu cầu ghi rõ khi ảnh đã bị chỉnh sửa
 
 # ---------------------------------------------------------------------------
 # Danh sách trắng giấy phép — GIỐNG HỆT OG.Photos.licenseOk (src/story/photos.js).
 # ---------------------------------------------------------------------------
+# 💡 Khái niệm: whitelist (danh sách trắng) an toàn hơn blacklist: giấy phép LẠ chưa từng gặp bị từ chối mặc định.
+#   Ta dùng cả hai: LICENSE_BAD loại trước (NC = cấm thương mại, ND = cấm chỉnh sửa...), rồi phải khớp LICENSE_GOOD.
+# ⚠️ Bẫy: cùng một luật được viết ở HAI ngôn ngữ (regex Python ở đây, regex JS trong photos.js). Sửa một bên mà
+#   quên bên kia → công cụ nhận ảnh nhưng game từ chối hiển thị (hoặc ngược lại). Smoke test chạy thử vài giấy
+#   phép chuẩn qua bản JS; sửa ở đây thì tự kiểm lại bằng cùng danh sách đó.
 LICENSE_BAD = re.compile(r'(\bNC\b|\bND\b|non-?commercial|no-?deriv|GFDL|fair[ _-]?use|all rights reserved|copyright(ed)?\b|unknown)', re.I)
 LICENSE_GOOD = re.compile(r'^(public domain|pd([ -]|$)|cc0|cc[ -]?pd|cc[ -]by([ -]sa)?[ -]\d|unsplash license|pexels license)', re.I)
 
 
 def license_ok(name):
+    """True nếu tên giấy phép (vd 'CC BY-SA 4.0') thuộc danh sách trắng. Chuỗi rỗng → False."""
     s = (name or '').strip()
     return bool(s) and not LICENSE_BAD.search(s) and bool(LICENSE_GOOD.match(s))
 
@@ -101,11 +130,18 @@ def license_url_guess(name):
 # ---------------------------------------------------------------------------
 # Mạng
 # ---------------------------------------------------------------------------
+# Thời điểm (giây, time.time()) của request gần nhất. Bọc trong list để hàm sửa được mà không cần `global`.
 _last = [0.0]
 
 
 def http_get(url, binary=False, tries=4):
-    """GET có User-Agent, nghỉ giữa các request và lùi lại khi bị giới hạn (429/503)."""
+    """GET có User-Agent, nghỉ giữa các request và lùi lại khi bị giới hạn (429/503).
+
+    binary=True trả bytes (ảnh); False trả object JSON đã parse. Thử tối đa `tries` lần rồi mới bỏ cuộc.
+    """
+    # 💡 Khái niệm: rate limit phía khách — luôn cách request trước ít nhất PAUSE giây (chỉ ngủ phần còn thiếu).
+    #   Khi máy chủ vẫn báo 429 (quá nhiều request) / 503 (bận): đợi theo header Retry-After nếu có, không thì
+    #   5, 10, 15 giây... (backoff tăng dần) rồi thử lại. Thử lại NGAY sẽ chỉ làm máy chủ chặn lâu hơn.
     for attempt in range(tries):
         wait = PAUSE - (time.time() - _last[0])
         if wait > 0:
@@ -127,10 +163,12 @@ def http_get(url, binary=False, tries=4):
 
 
 def api(params):
+    """Gọi MediaWiki API của Commons. formatversion=2 trả `pages` dạng LIST (bản 1 là dict theo pageid)."""
     q = dict(params, format='json', formatversion='2')
     return http_get(API + '?' + urllib.parse.urlencode(q))
 
 
+# Các trường extmetadata (siêu dữ liệu giấy phép/tác giả Commons tự trích từ trang mô tả file) cần xin về.
 META_KEYS = 'LicenseShortName|LicenseUrl|Artist|Credit|ObjectName|ImageDescription|NonFree|Restrictions|UsageTerms'
 
 
@@ -142,6 +180,7 @@ def plain(value):
 
 
 def meta(ii, key):
+    """Đọc một trường extmetadata của imageinfo `ii` thành chữ thuần ('' nếu không có)."""
     v = (ii.get('extmetadata') or {}).get(key) or {}
     return plain(str(v.get('value', '')))
 
@@ -150,7 +189,12 @@ def meta(ii, key):
 # Kiểm tra journeyId / cardId
 # ---------------------------------------------------------------------------
 def card_ids(jid):
-    """Đọc cardId trong src/journeys/<jid>/content.js bằng regex (đủ dùng: khối `cards: [ ... ]`)."""
+    """Đọc cardId trong src/journeys/<jid>/content.js bằng regex (đủ dùng: khối `cards: [ ... ]`).
+
+    ⚠️ Bẫy: Python không chạy được file JS nên chỉ "đọc lướt" văn bản: lấy đoạn từ `cards: [` tới `quizzes: [`
+    rồi tìm `id: '...'`. Đổi cách viết content.js (nháy kép, đổi thứ tự cards/quizzes) có thể làm hàm trả thiếu
+    id → lệnh get/url báo "Không thấy thẻ". Khi đó dùng --force hoặc sửa regex ở đây.
+    """
     path = os.path.join(ROOT, 'src', 'journeys', jid, 'content.js')
     try:
         src = open(path, encoding='utf-8').read()
@@ -163,6 +207,7 @@ def card_ids(jid):
 
 
 def check_target(jid, cid, force):
+    """Thoát chương trình (sys.exit) nếu journeyId/cardId không hợp lệ — kiểm tra TRƯỚC khi tải gì về."""
     if jid not in JOURNEYS:
         sys.exit('journeyId không hợp lệ: %s (chọn một trong %s)' % (jid, ', '.join(JOURNEYS)))
     if not re.match(r'^[a-z0-9_]+$', cid):
@@ -190,7 +235,11 @@ def entries_path(jid):
 
 
 def load_entries(jid):
-    """Đọc _entries.json; nếu chưa có thì dựng lại từ khối BEGIN/END-ENTRIES của credits.js."""
+    """Đọc _entries.json; nếu chưa có thì dựng lại từ khối BEGIN/END-ENTRIES của credits.js.
+
+    _entries.json là "bản nháp" (không commit, không deploy); credits.js là bản chính thức đã commit.
+    Nhờ dấu mốc BEGIN/END, clone repo mới về vẫn chạy tiếp được mà không cần file nháp.
+    """
     p = entries_path(jid)
     if os.path.exists(p):
         with open(p, encoding='utf-8') as f:
@@ -212,6 +261,7 @@ def save_entries(jid, entries):
 
 
 def parse_focus(s):
+    """'X,Y' (0..1) → {'x', 'y'} đã kẹp vào 0..1: điểm game giữ lại khi cắt ảnh vừa khung thẻ. Rỗng → None."""
     if not s:
         return None
     try:
@@ -224,6 +274,8 @@ def parse_focus(s):
 def save_webp(data, jid, cid):
     """Thu nhỏ còn cạnh dài <= MAX_SIDE, xoay theo EXIF, lưu WebP. Trả (w, h, kích thước file)."""
     img = Image.open(io.BytesIO(data))
+    # Ảnh điện thoại thường lưu pixel nằm ngang + cờ EXIF "xoay 90°". Xoay hẳn pixel trước khi bỏ EXIF,
+    # nếu không ảnh hiện ra bị nằm nghiêng trong game.
     img = ImageOps.exif_transpose(img)
     if img.mode not in ('RGB', 'RGBA'):
         img = img.convert('RGBA' if 'A' in img.getbands() or img.mode == 'P' else 'RGB')
@@ -231,6 +283,7 @@ def save_webp(data, jid, cid):
         bg = Image.new('RGB', img.size, (255, 255, 255))
         bg.paste(img, mask=img.split()[-1])
         img = bg
+    # thumbnail() giữ tỉ lệ khung và chỉ THU NHỎ (ảnh đã nhỏ hơn MAX_SIDE được giữ nguyên); LANCZOS = lọc chất lượng cao.
     img.thumbnail((MAX_SIDE, MAX_SIDE), Image.LANCZOS)
     out = os.path.join(jdir(jid), cid + '.webp')
     img.save(out, 'WEBP', quality=WEBP_QUALITY, method=6)
@@ -238,6 +291,7 @@ def save_webp(data, jid, cid):
 
 
 def store(jid, cid, entry):
+    """Ghi (hoặc ghi đè) entry của thẻ cid vào _entries.json. Chưa đụng tới credits.js — phải chạy `write`."""
     entries = load_entries(jid)
     entries[cid] = entry
     save_entries(jid, entries)
@@ -249,6 +303,7 @@ def store(jid, cid, entry):
 # Lệnh
 # ---------------------------------------------------------------------------
 def cmd_search(a):
+    """Lệnh `search`: in kết quả tìm kiếm kèm đánh giá giấy phép. Chỉ đọc, không ghi file nào."""
     data = api({
         'action': 'query', 'generator': 'search', 'gsrsearch': a.query + ' filetype:bitmap', 'gsrnamespace': 6,
         'gsrlimit': a.limit, 'prop': 'imageinfo', 'iiprop': 'size|url|extmetadata|mime',
@@ -273,6 +328,8 @@ def cmd_search(a):
 
 
 def cmd_get(a):
+    """Lệnh `get`: tải một file Commons cho một thẻ. Thứ tự: kiểm tra đích → xin metadata → kiểm tra giấy phép
+    và tác giả → MỚI tải ảnh. Ảnh không dùng được thì không tốn băng thông tải về."""
     check_target(a.journey, a.card, a.force)
     title = a.file if a.file.startswith('File:') else 'File:' + a.file
     data = api({
@@ -289,6 +346,7 @@ def cmd_get(a):
         sys.exit(2)
     if not str(ii.get('mime', '')).startswith('image/'):
         sys.exit('Không phải ảnh: ' + str(ii.get('mime')))
+    # CC BY / BY-SA BẮT BUỘC ghi tên tác giả; chỉ ảnh phạm vi công cộng mới được phép "không rõ tác giả".
     author = meta(ii, 'Artist') or meta(ii, 'Credit')
     if not author:
         if re.match(r'^(public domain|pd|cc0)', lic, re.I):
@@ -318,12 +376,16 @@ def cmd_get(a):
     store(a.journey, a.card, entry)
 
 
+# Chỉ nhận ảnh từ các máy chủ ảnh đã biết giấy phép (cộng thêm *.nasa.gov, xem cmd_url).
 ALLOWED_HOSTS = ('images.unsplash.com', 'images.pexels.com', 'upload.wikimedia.org')
 
 
 def cmd_url(a):
+    """Lệnh `url`: tải ảnh từ link trực tiếp; người dùng tự khai tác giả/giấy phép (nguồn không có API metadata)."""
     check_target(a.journey, a.card, a.force)
     host = urllib.parse.urlparse(a.url).hostname or ''
+    # ⚠️ Bẫy: so khớp tên máy chủ bằng `in` chuỗi con là sai — 'nasa.gov.evil.com' cũng chứa 'nasa.gov'.
+    #   Vì vậy so BẰNG hoặc endswith('.nasa.gov') trên hostname đã parse.
     if not (host in ALLOWED_HOSTS or host == 'nasa.gov' or host.endswith('.nasa.gov')):
         sys.exit('✗ TỪ CHỐI nguồn "%s". Chỉ nhận ảnh trực tiếp từ: %s, *.nasa.gov' % (host, ', '.join(ALLOWED_HOSTS)))
     if not license_ok(a.license):
@@ -352,10 +414,16 @@ def cmd_url(a):
 
 
 def js_str(s):
+    """Chuỗi Python → literal chuỗi JS an toàn (JSON là tập con của JS, tự escape nháy và xuống dòng)."""
     return json.dumps(s, ensure_ascii=False)
 
 
 def cmd_write(a):
+    """Lệnh `write`: sinh lại TOÀN BỘ credits.js từ _entries.json (idempotent — chạy nhiều lần cho cùng kết quả).
+
+    Bố cục file sinh ra: [comment đầu file cũ, giữ nguyên] + [AUTO-SUMMARY, sinh lại mỗi lần]
+    + dòng `OG.Photos.register("<id>", /* BEGIN-ENTRIES */ {...JSON...} /* END-ENTRIES */);`
+    """
     jid = a.journey
     if jid not in JOURNEYS:
         sys.exit('journeyId không hợp lệ: ' + jid)
@@ -382,7 +450,10 @@ def cmd_write(a):
         header = '/* Ảnh chụp thực tế cho thẻ kiến thức — hành trình "%s". Tạo bằng tools/photos/fetch_commons.py write %s */\n' % (jid, jid)
     summary = ''.join(' *   %-16s %-14s %s\n' % (cid, e['license'], e['author'][:50]) for cid, e in entries.items())
     summary = (' * Danh sách (%d ảnh):\n' % len(entries) + summary) if entries else ' * (Chưa có ảnh nào — hình vẽ cartoon được dùng như cũ.)\n'
+    # Xoá AUTO-SUMMARY cũ trước khi chèn bản mới, nếu không mỗi lần `write` lại dài thêm một khối.
     header = re.sub(r'\n/\* AUTO-SUMMARY.*?\*/\n', '\n', header, flags=re.S)
+    # ⚠️ Bẫy: tests/smoke.js (rawPhotoEntries) và load_entries đọc lại JSON nằm GIỮA hai dấu mốc bên dưới.
+    #   Đổi chữ "BEGIN-ENTRIES"/"END-ENTRIES" ở đây thì phải đổi cả hai nơi đọc.
     out = header.rstrip('\n') + '\n/* AUTO-SUMMARY (tự sinh khi chạy "write")\n' + summary + ' */\n' + \
         'OG.Photos.register(%s, /* BEGIN-ENTRIES */ %s /* END-ENTRIES */);\n' % (js_str(jid), body)
     with open(credits_path(jid), 'w', encoding='utf-8', newline='\n') as f:
@@ -391,6 +462,7 @@ def cmd_write(a):
 
 
 def cmd_list(a):
+    """Lệnh `list`: in các entry hiện có (từ _entries.json, hoặc dựng lại từ credits.js)."""
     entries = load_entries(a.journey)
     if not entries:
         print('(trống)')
@@ -399,6 +471,7 @@ def cmd_list(a):
 
 
 def cmd_remove(a):
+    """Lệnh `remove`: xoá entry + file ảnh. credits.js chỉ đổi sau khi chạy `write`."""
     entries = load_entries(a.journey)
     e = entries.pop(a.card, None)
     f = os.path.join(jdir(a.journey), (e or {}).get('file', a.card + '.webp'))
@@ -409,6 +482,9 @@ def cmd_remove(a):
 
 
 def main():
+    """Dựng giao diện dòng lệnh: mỗi lệnh con (subcommand) gắn hàm xử lý qua set_defaults(fn=...)."""
+    # 💡 Khái niệm: argparse subparsers + set_defaults(fn=cmd_x) = bảng tra "tên lệnh → hàm" (dispatch table),
+    #   thay cho chuỗi if/elif dài. Thêm lệnh mới = thêm một add_parser + một hàm cmd_*.
     ap = argparse.ArgumentParser(description='Lấy ảnh có giấy phép tự do cho thẻ kiến thức (xem docstring đầu file).')
     sub = ap.add_subparsers(dest='cmd', required=True)
     s = sub.add_parser('search', help='tìm ảnh trên Wikimedia Commons')

@@ -5,13 +5,41 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <meta name="theme-color" content="#17233d">
 <title>Oggy Adventure — Browser Game</title>
-<!-- Chủ sở hữu file này: agent Tích hợp. Kiến trúc & hợp đồng: docs/ARCHITECTURE.md -->
+<!-- ============================================================================
+  index.html — TRANG DUY NHẤT CỦA GAME (khung HTML + thứ tự nạp script)
+  ----------------------------------------------------------------------------
+  Vai trò:      Dựng khung DOM (canvas, HUD, nút cảm ứng, lớp panel) và nạp ~70 file JS theo một thứ tự
+                cố định. Mở thẳng file này bằng trình duyệt (file://) là chơi được, không cần server hay build.
+  Khái niệm:    thứ tự nạp script = thứ tự phụ thuộc · module pattern IIFE gắn vào window.OG (không ES modules)
+                · canvas kích thước logic cố định 960×540, CSS co giãn theo màn hình · lớp DOM phủ lên canvas
+  Bài học:      docs/learn/00-bat-dau.md (chính) · docs/learn/01-module-pattern-iife-namespace.md
+                · docs/learn/13-kiem-thu-ci.md (smoke test đọc chính file này)
+  Phụ thuộc:    mọi file trong src/, assets/photos/(id)/credits.js, src/ui/ui.css, src/social/social.css,
+                src/story/story.css
+  Đọc tiếp:     src/core/namespace.js (file nạp đầu tiên) → src/core/main.js (file nạp cuối, khởi động game)
+                → docs/ARCHITECTURE.md mục 2 (bảng thứ tự load đầy đủ)
+
+  💡 Khái niệm — vì sao không dùng ES modules (import/export)?
+    Trình duyệt chặn import module khi trang mở qua file:// (lỗi CORS). Thay vào đó mỗi file là một IIFE
+    (hàm tự gọi) gắn module vào biến toàn cục window.OG. Đánh đổi: trình duyệt KHÔNG tự sắp thứ tự phụ thuộc
+    như import — ta phải tự xếp các thẻ script bên dưới: file nào đọc OG.X lúc nạp thì phải đứng SAU file tạo OG.X.
+
+  ⚠️ Bẫy (smoke test đọc file này bằng regex — tests/smoke.js):
+    - Mỗi script phải viết đúng dạng một dòng: thẻ script, thuộc tính src trong nháy kép, không defer/async/type.
+      Viết khác đi thì test BỎ QUA file đó (game thật vẫn chạy) → lỗi trong file đó không bị bắt.
+    - Không chép nguyên văn thẻ script vào comment: regex không phân biệt comment, sẽ cố nạp đường dẫn đó.
+    - Test cũng quét file này tìm tên font cấm (kể cả trong comment) và kiểm tra file CSS ở thẻ link tồn tại.
+    - File public MỚI (ngoài src/, docs/, assets/) phải thêm vào bước "Đóng gói site" của .github/workflows/pages.yml.
+  ============================================================================ -->
 <style>
+/* CSS lõi tối thiểu cho khung game. Style riêng của từng module nằm ở các file .css nạp ngay sau khối này. */
 :root{--ink:#17233d;--cream:#fff6df;--gold:#ffc94a;--blue:#52c5ee;--orange:#f27a43;--secondary:#52b9df}
 *{box-sizing:border-box}
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#10192b;font-family:"Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",Arial,sans-serif;color:white}
 #wrap{height:100%;display:grid;place-items:center;padding:12px}
+/* Khung luôn giữ tỉ lệ 16:9 và vừa CẢ chiều rộng lẫn chiều cao cửa sổ (min của 3 giới hạn) — không bị cắt. */
 #gameShell{width:min(1100px,100%,calc((100vh - 24px) * 16 / 9));position:relative;aspect-ratio:16/9;max-height:calc(100vh - 24px);border:5px solid #fff0c9;border-radius:20px;overflow:hidden;box-shadow:0 18px 60px #0009;background:#8adcf4}
+/* touch-action:none: chạm trên canvas không cuộn/phóng to trang, để OG.Input nhận trọn cử chỉ. */
 canvas{display:block;width:100%;height:100%;touch-action:none}
 #hud{position:absolute;inset:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:12px 16px;pointer-events:none;text-shadow:0 2px 3px #26334c}
 .pill{background:#17233ddd;border:2px solid #fff4d6;border-radius:99px;padding:7px 13px;font-weight:900;font-size:clamp(13px,1.8vw,19px)}
@@ -47,6 +75,9 @@ button:active{transform:translateY(3px);box-shadow:0 2px 0 #b74b2b}
 </head>
 <body>
 <div id="wrap"><div id="gameShell">
+  <!-- 💡 Khái niệm: width/height = kích thước LOGIC (toạ độ vẽ 960×540, OG.W × OG.H); CSS phóng to/thu nhỏ
+       khi hiển thị. Code game luôn vẽ theo 960×540 bất kể màn hình thật to hay nhỏ.
+       Các phần tử DOM bên dưới nằm ĐÈ lên canvas (position:absolute) — chữ và nút sắc nét, dễ bấm. -->
   <canvas id="game" width="960" height="540" aria-label="Oggy Adventure game"></canvas>
   <!-- HUD mặc định: OG.Menus.updateHud() cập nhật; agent UI được thay nội dung bên trong #hud -->
   <div id="hud">
@@ -55,6 +86,7 @@ button:active{transform:translateY(3px);box-shadow:0 2px 0 #b74b2b}
   </div>
   <button id="pauseBtn" type="button" aria-label="Tạm dừng" style="display:none">⏸</button>
   <div id="toast"></div>
+  <!-- Nút cảm ứng: data-key là PHÍM LOGIC (left/right/jump/action) mà OG.Input giữ khi chạm, giống bàn phím. -->
   <div id="mobileControls">
     <div class="pad"><button class="touch" data-key="left" aria-label="Trái">◀</button><button class="touch" data-key="right" aria-label="Phải">▶</button></div>
     <div class="pad"><button class="touch" data-key="action" aria-label="Tương tác">✦</button><button class="touch" data-key="jump" aria-label="Nhảy">⬆</button></div>
@@ -63,8 +95,14 @@ button:active{transform:translateY(3px);box-shadow:0 2px 0 #b74b2b}
   <div id="overlay" style="display:none"></div>
 </div></div>
 
-<!-- ===== THỨ TỰ LOAD SCRIPT (không dùng ES modules để chạy được qua file://) ===== -->
-<!-- 1. Core (agent Tích hợp) -->
+<!-- ===== THỨ TỰ LOAD SCRIPT (không dùng ES modules để chạy được qua file://) =====
+     Quy tắc: tầng dưới trước, tầng trên sau — core → dữ liệu → đồ hoạ/âm thanh → gameplay → tính năng → nội dung
+     → khởi động. Trong lúc NẠP, mỗi file chỉ đăng ký (gắn OG.X, registerType, register...); việc thật sự
+     (tạo DOM, nghe event, đọc save) chờ tới init() do main.js gọi, khi MỌI file đã có mặt.
+     Đặt script ở cuối trang: lúc chạy, các phần tử phía trên (canvas, #hud...) đã có trong DOM.
+     Sinh viên nên đọc code theo đúng thứ tự này. -->
+<!-- 1. Core (agent Tích hợp): namespace.js PHẢI đầu tiên (tạo window.OG, OG.util, OG.Config); events.js ngay
+        sau vì hầu hết file khác dùng OG.EV / OG.Events. loop.js chỉ định nghĩa vòng lặp, main.js mới bật nó. -->
 <script src="src/core/namespace.js"></script>
 <script src="src/core/events.js"></script>
 <script src="src/core/save.js"></script>
@@ -89,7 +127,9 @@ button:active{transform:translateY(3px);box-shadow:0 2px 0 #b74b2b}
 <!-- 4. Âm thanh (agent Audio) -->
 <script src="src/audio/audio.js"></script>
 <script src="src/audio/music.js"></script>
-<!-- 5. Gameplay (agent Tích hợp) — đăng ký scene mặc định -->
+<!-- 5. Gameplay (agent Tích hợp) — đăng ký scene mặc định.
+        default-scenes.js là "stub": đăng ký bản đơn giản của các scene; các module tính năng nạp SAU ghi đè
+        bằng bản đầy đủ. Nếu một module tính năng lỗi, game vẫn còn scene dự phòng để chạy tiếp. -->
 <script src="src/game/particles.js"></script>
 <script src="src/game/progress.js"></script>
 <script src="src/game/difficulty.js"></script>
@@ -129,7 +169,10 @@ button:active{transform:translateY(3px);box-shadow:0 2px 0 #b74b2b}
 <script src="assets/photos/science/credits.js"></script>
 <script src="src/story/guide.js"></script>
 <script src="src/story/scenes.js"></script>
-<!-- 11. Dữ liệu hành trình (mỗi agent journey-<id> chỉ sửa thư mục của mình): theme → content → extras → journey -->
+<!-- 11. Dữ liệu hành trình (mỗi agent journey-(id) chỉ sửa thư mục của mình): theme → content → extras → journey.
+         Data-driven: thêm hành trình mới = thêm 4 dòng như dưới + một thư mục dữ liệu, không sửa code engine.
+         content.js và journey.js cùng gọi OG.Journeys.register với cùng id; OG.Journeys GỘP theo id, còn kiểm
+         tra (validate) chỉ chạy lúc init khi mọi file đã nạp. Vẫn giữ đúng thứ tự quy ước này cho dễ đọc. -->
 <script src="src/journeys/home/theme.js"></script>
 <script src="src/journeys/home/content.js"></script>
 <script src="src/journeys/home/extras.js"></script>
@@ -146,7 +189,9 @@ button:active{transform:translateY(3px);box-shadow:0 2px 0 #b74b2b}
 <script src="src/journeys/science/content.js"></script>
 <script src="src/journeys/science/extras.js"></script>
 <script src="src/journeys/science/journey.js"></script>
-<!-- 12. Khởi động (agent Tích hợp) — LUÔN CUỐI -->
+<!-- 12. Khởi động (agent Tích hợp) — LUÔN CUỐI: main.js gọi init() của mọi module theo thứ tự rồi bật game loop.
+         ⚠️ Bẫy: thêm file mới SAU dòng này thì file đó nạp khi game đã khởi động → bỏ lỡ init và event đầu. -->
+
 <script src="src/core/main.js"></script>
 </body>
 </html>
