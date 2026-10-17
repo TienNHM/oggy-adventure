@@ -1,54 +1,206 @@
-/* OG.Sprites — nhân vật vẽ procedural bằng Canvas, phong cách hoạt hình cường điệu, có cache khung hình.
- * Chủ sở hữu: agent characters (src/gfx/sprites.js, src/gfx/skins.js, docs/sprites-demo.html).
+// @ts-check
+/* ============================================================================
+ * OG.Sprites — NHÂN VẬT VẼ PROCEDURAL (procedural drawing) + CACHE KHUNG HÌNH (frame cache)
+ * ----------------------------------------------------------------------------
+ * Vai trò:      Vẽ mọi nhân vật (mèo, gián, NPC) bằng lệnh Canvas 2D thay vì ảnh PNG. Player, Enemies,
+ *               Bosses, Menus gọi OG.Sprites.drawCharacter() mỗi frame; init() nghe event gameplay để
+ *               bắn hạt (particles) và chữ hoạt hình "BỐP!".
+ * Khái niệm:    procedural drawing (vẽ bằng code, không dùng ảnh) · animation theo thời gian t
+ *               (pose = hàm của t) · squash & stretch (co bẹp & giãn dài) · easing (hàm làm mượt) ·
+ *               transform + save/restore · hệ toạ độ thiết kế · offscreen canvas (canvas phụ không hiển thị) ·
+ *               lượng tử hoá thời gian (quantize) · cache LRU (bỏ khung lâu chưa dùng nhất) · memoization ·
+ *               globalCompositeOperation (viền sticker, nháy trắng) · particles · data-driven (bảng NPC)
+ * Bài học:      docs/learn/07-ve-canvas-procedural-cache.md (chính), docs/learn/06-event-bus-observer.md (init)
+ * Phụ thuộc:    lúc CHẠY: OG.Data (characters/getSkin/resolveColors), OG.Sprites.skinGfx (skins.js),
+ *               OG.font/OG.FONT, OG.time, OG.Particles.spawn, OG.Events, OG.Scenes.base, OG.Level.state,
+ *               OG.Camera, OG.Game.run. Lúc LOAD không đọc module nào → thứ tự <script> linh hoạt.
+ * Event:        phát: (không) · nghe (sau init): 'player:jump', 'player:land', 'item:collect',
+ *               'enemy:stomp', 'player:hurt', 'boss:hit', 'boss:defeated'
+ * API công khai: OG.Sprites.init(), drawCharacter(ctx, charId, animState, t, opts), getAnimStates(),
+ *               drawPortrait(...), drawParticle(ctx, p), drawPopups(ctx), fx.{spawn,dust,puff,sparkle,stars,pop},
+ *               listCharacters(), hasCharacter(id), ACCESSORIES, setCacheEnabled/isCacheEnabled/
+ *               setCacheLimit/clearCache/cacheStats
+ * Đọc tiếp:     src/gfx/skins.js (dữ liệu phụ kiện) → src/game/particles.js (hệ hạt gọi drawParticle)
+ *               → src/game/player.js (nơi gọi drawCharacter cho người chơi)
+ *               → src/gfx/decor.js (cùng kỹ thuật cache cho đồ trang trí) → docs/sprites-demo.html (xem thử)
+ * Dữ liệu:      CharInfo, Pose, QuantizedTime, CachedFrame, DrawCharacterOpts (typedef ngay bên dưới)
  *
- * HỢP ĐỒNG (giữ nguyên chữ ký, xem docs/ARCHITECTURE.md mục 8.1 và docs/STORY.md mục 9):
- *   OG.Sprites.init()
- *   OG.Sprites.drawCharacter(ctx, charId, animState, t, opts)
+ * Hợp đồng (giữ nguyên chữ ký, xem docs/ARCHITECTURE.md mục 8.1 và docs/STORY.md mục 9):
+ *   drawCharacter(ctx, charId, animState, t, opts)
  *     - Caller đã ctx.translate tới ĐIỂM CHÂN (giữa-đáy hitbox). Hàm tự save/restore.
  *     - charId: oggy | jack | olivia | joey | marky | deedee | roach | NPC v2 (bob, owl, robot, bee, ladybug,
  *       droplet, buffalo, turtle, lion_dance, camel, toucan, penguin, polar_bear, dino, blood_cell) | id đăng ký thêm
  *     - animState: idle | run | jump | fall | hurt | attack | victory | walk | stunned | dead
  *                  | talk | wave | think | point   (trạng thái lạ -> idle)
- *     - opts: { face, skin, colors, scale, alpha, flash, w, h, vx, vy, time,
- *               accessory: 'nonla'|'beret'|'helmet'|'scarf'|'spacesuit'|'explorer'|'none' (hoặc mảng),
- *               mark: '!'|'?' (dấu trên đầu), shadow: false (tắt bóng đổ),
- *               noCache, worldX/worldY (toạ độ chân trong thế giới, cho bụi chạy + chữ "BỐP!") }
- *   OG.Sprites.getAnimStates()
+ *     - Hình nằm gọn trong [-w/2..w/2] × [-h..0], được tràn ra tối đa ~30%.
+ *   Hàm mở rộng (drawPortrait, drawParticle, fx...) là TUỲ CHỌN: bên gọi nên kiểm tra tồn tại.
  *
- * MỞ RỘNG (tuỳ chọn, bên gọi nên kiểm tra tồn tại):
- *   drawPortrait(ctx, charId, x, y, size, opts)   — chân dung tròn (x,y = tâm, size = đường kính)
- *   drawParticle(ctx, p) -> bool                  — vẽ hạt có p.shape: star | spark | dust | circle | heart
- *   fx.dust / fx.sparkle / fx.stars / fx.puff / fx.pop(x, y, text, color) / drawPopups(ctx)
- *   setCacheEnabled(bool), clearCache(), cacheStats(), listCharacters(), ACCESSORIES
- *
- * Cách hoạt động:
- *   1. computePose(state, t) -> "tư thế" (co giãn, góc tay/chân, mắt, miệng, hiệu ứng...) nội suy liên tục.
- *   2. Bộ vẽ riêng từng nhân vật vẽ theo tư thế trong hệ toạ độ THIẾT KẾ (chân ở (0,0), nhìn sang phải).
- *   3. Khung được dựng vào offscreen canvas: vẽ hình -> tạo viền mực dày kiểu "sticker" quanh bóng hình
- *      -> bóng đổ mềm dưới chân -> hiệu ứng (sao, hơi nước, vệt tốc độ). Khung lượng tử hoá theo thời gian
- *      và được cache (LRU theo ngân sách điểm ảnh). Lật hướng, alpha, scale, squash tiếp đất áp lúc blit.
- *   4. Chữ (OÁI!, ?, !, BỐP!) vẽ NGOÀI cache và không bị lật, font OG.font (Segoe UI… đủ dấu tiếng Việt). */
+ * Đường ống vẽ 1 nhân vật (pipeline):
+ *   1. computePose(state, t) → "tư thế" Pose (co giãn, góc tay/chân, mắt, miệng, hiệu ứng...) nội suy liên tục.
+ *   2. Bộ vẽ riêng từng nhân vật vẽ theo Pose trong hệ toạ độ THIẾT KẾ (chân ở (0,0), nhìn sang phải).
+ *   3. Khung được dựng vào offscreen canvas: vẽ hình → tạo viền mực dày kiểu "sticker" quanh bóng hình
+ *      → bóng đổ mềm dưới chân → hiệu ứng (sao, hơi nước, vệt tốc độ). Khung lượng tử hoá theo thời gian
+ *      và được cache (LRU theo ngân sách điểm ảnh). Lật hướng, alpha, scale, squash tiếp đất áp lúc blit
+ *      (blit = chép nguyên khung ảnh có sẵn lên canvas chính bằng drawImage).
+ *   4. Chữ (OÁI!, ?, !, BỐP!) vẽ NGOÀI cache và không bị lật, font qua OG.font (đủ dấu tiếng Việt).
+ * ========================================================================== */
+
+/**
+ * Thông tin đã chuẩn hoá của một nhân vật (gộp OG.Data + bảng dự phòng trong file). Memo theo id.
+ * @typedef {Object} CharInfo
+ * @property {string} id
+ * @property {any} src         bản ghi gốc trong OG.Data.characters (null nếu không có)
+ * @property {string} role     'player' | 'enemy' | 'boss' | 'npc'
+ * @property {string} kind     bộ vẽ dùng: 'cat' | 'bug' | 'crawler' | 'npc'
+ * @property {any} spec        thông số gián đứng (kind 'bug'), ngược lại null
+ * @property {any} npc         dòng trong bảng NPC (kind 'npc'), ngược lại null
+ * @property {number} w        kích thước hitbox trong game (px)
+ * @property {number} h
+ * @property {number} dw       kích thước hệ toạ độ THIẾT KẾ của bộ vẽ (đơn vị thiết kế)
+ * @property {number} dh
+ * @property {boolean} known   có bản ghi trong OG.Data hay không
+ * @property {any} style       kiểu dáng mèo (kind 'cat'), ngược lại null
+ */
+
+/**
+ * Tư thế tại một thời điểm — "bộ thông số" mà mọi bộ vẽ đọc (xem computePose). Góc tính bằng radian,
+ * độ dài bằng đơn vị thiết kế; field dạng "mức" (0..1) là cường độ hiệu ứng, 0 = tắt.
+ * @typedef {Object} Pose
+ * @property {string} state
+ * @property {number} t        thời gian trong animation (giây), đã lượng tử hoá nếu dùng cache
+ * @property {number} sx       hệ số co giãn ngang (1 = bình thường) — squash & stretch
+ * @property {number} sy       hệ số co giãn dọc
+ * @property {number} by       dịch dọc cả người (âm = lên trên)
+ * @property {number} shakeX   rung ngang cả người
+ * @property {number} rot      xoay cả người quanh chân (+ = ngửa ra sau khi ngã)
+ * @property {number} lean     nghiêng thân quanh hông (+ = chúi tới)
+ * @property {number} headY    nhún đầu theo dọc
+ * @property {number} tilt     nghiêng đầu
+ * @property {number} legA     độ đưa chân trước (−1..1)
+ * @property {number} legB     độ đưa chân sau
+ * @property {number} liftA    độ nhấc chân trước
+ * @property {number} liftB    độ nhấc chân sau
+ * @property {number} armA     góc tay trước tính từ phương thẳng xuống (+ = về phía trước, ≈3 = giơ thẳng lên)
+ * @property {number} armB     góc tay sau
+ * @property {string} eyes     kiểu mắt: open | wide | squint | half | closed | happy | hurt | x | spiral
+ * @property {string} mouth    kiểu miệng: smile | open | o | grin | wobble | frown | grumpy | yawn | chew | hmm | laugh | smirk
+ * @property {number} mouthK   độ há miệng (0..1)
+ * @property {number|null} look  hướng nhìn ngang (null = mặc định nhìn tới)
+ * @property {number} lookY    hướng nhìn dọc
+ * @property {number} tail     góc vẫy đuôi
+ * @property {number} ant      độ đung đưa râu/anten
+ * @property {number} flow     độ bay của vải (áo choàng, khăn) theo gió chuyển động
+ * @property {number} wave     pha sóng cho vải/đuôi (radian)
+ * @property {number} ph       pha chu kỳ hiện tại (radian)
+ * @property {number} flap     pha đập cánh (ong)
+ * @property {number} punch    mức vươn nắm đấm (0..1)
+ * @property {number} swoosh   tiến độ vệt chém (−1 = không vẽ, 0..1.5)
+ * @property {boolean} stars   có sao quay quanh đầu
+ * @property {number} starT    góc quay của sao
+ * @property {boolean} sparkle lấp lánh chiến thắng
+ * @property {number} impact   mức tia va chạm trên đầu (0..1)
+ * @property {number} splay    mức chân dạng ra khi gục (gián bò)
+ * @property {boolean} moving  đang di chuyển
+ * @property {boolean} wheel   chân xoay tít kiểu hoạt hình (mèo chạy)
+ * @property {number} speed    vệt tốc độ (0/1)
+ * @property {number} ballet   mức tư thế ba lê (Olivia)
+ * @property {number} point    chỉ tay (0/1)
+ * @property {number} cross    khoanh tay (0/1)
+ * @property {number} steam    mức xì hơi nước từ tai
+ * @property {number} hearts   mức tim bay
+ * @property {number} sweat    giọt mồ hôi (0/1)
+ * @property {number} chew     độ nhai (0..1)
+ * @property {number} jiggle   bụng rung (−1..1)
+ * @property {number} confetti pháo giấy (0/1)
+ * @property {number} stiff    cứng đơ như cây sào (0/1)
+ * @property {number} scratch  mức gãi bụng (0..1)
+ */
+
+/**
+ * Kết quả lượng tử hoá thời gian của một animation.
+ * @typedef {Object} QuantizedTime
+ * @property {number} frame    chỉ số khung (dùng làm một phần khoá cache)
+ * @property {number} t        thời gian đã làm tròn về đầu khung (giây) — vẽ bằng t này để khớp khung cache
+ * @property {number} loop     chu kỳ (giây) nếu animation lặp, 0 nếu chạy một lần
+ * @property {number} raw      thời gian chưa làm tròn (giây) — dùng khi KHÔNG cache để chuyển động mượt hơn
+ */
+
+/**
+ * Khung hình đã vẽ sẵn vào canvas phụ.
+ * @typedef {Object} CachedFrame
+ * @property {HTMLCanvasElement} cv  canvas chứa khung (độ phân giải = kích thước thiết kế × res)
+ * @property {number} ox   vị trí điểm CHÂN trong khung theo x (đơn vị thiết kế, tính từ mép trái)
+ * @property {number} oy   vị trí điểm CHÂN trong khung theo y (đơn vị thiết kế, tính từ mép trên)
+ * @property {number} w    kích thước khung khi blit (đơn vị thiết kế)
+ * @property {number} h
+ * @property {number} px   số điểm ảnh thật của canvas (W×H) — LRU dùng để tính ngân sách bộ nhớ
+ */
+
+/**
+ * Tuỳ chọn của drawCharacter. Mọi field đều tuỳ chọn.
+ * @typedef {Object} DrawCharacterOpts
+ * @property {number} [face]    1 = nhìn phải, -1 = nhìn trái (lật ngang)
+ * @property {string} [skin]    id skin (OG.Data.skins)
+ * @property {Object<string,string>} [colors]  ghi đè màu, vd {body:'#ff0000'}
+ * @property {number} [scale]   phóng to cả hình (1 = kích thước hitbox)
+ * @property {number} [alpha]   độ trong suốt 0..1
+ * @property {boolean} [flash]  phủ trắng (nháy khi bị đánh / bất tử)
+ * @property {number} [w]       kích thước cần vẽ (px); mặc định = w/h của nhân vật
+ * @property {number} [h]
+ * @property {number} [vx]      vận tốc (px/giây). Có vx = "đây là người chơi trong màn" → bật bụi chạy, squash tiếp đất
+ * @property {number} [vy]      vận tốc dọc (px/giây, + = rơi xuống) → stretch khi rơi nhanh
+ * @property {number} [time]    đồng hồ riêng cho chớp mắt / dấu trên đầu (giây); mặc định = t
+ * @property {string|string[]} [accessory]  'nonla'|'beret'|'helmet'|'scarf'|'spacesuit'|'explorer'|'none' (hoặc mảng)
+ * @property {string} [mark]    '!' | '?' — dấu trong bong bóng trên đầu
+ * @property {boolean} [shadow] false = tắt bóng đổ dưới chân
+ * @property {boolean} [noCache] true = luôn vẽ trực tiếp (chậm hơn, mượt hơn)
+ * @property {number} [worldX]  toạ độ CHÂN trong THẾ GIỚI (px) — đặt bụi chạy + chữ "BỐP!"
+ * @property {number} [worldY]
+ */
 (function () {
   'use strict';
-  var OG = (window.OG = window.OG || {});
-  var S = (OG.Sprites = OG.Sprites || {});
+  // Ép kiểu any: `window.OG || {}` làm tsc suy ra kiểu {} rỗng và báo lỗi mọi truy cập OG.X.
+  var OG = /** @type {any} */ (window.OG = window.OG || {});
+  // Không ghi đè OG.Sprites cũ: skins.js (hoặc scenery.js) có thể đã gắn dữ liệu vào trước.
+  var S = /** @type {any} */ (OG.Sprites = OG.Sprites || {});
 
+  // "Đơn vị thiết kế": mỗi bộ vẽ tự có hệ toạ độ riêng (vd mèo 34×52, chân ở (0,0), nhìn sang phải).
+  // drawCharacter co giãn hệ này về kích thước thật w×h (px) lúc vẽ → bộ vẽ không cần biết cỡ hitbox.
   var TAU = Math.PI * 2;
-  var INK = '#17233d';
+  var INK = '#17233d';   // màu "mực" của mọi nét viền (xanh đen, mềm hơn đen tuyền)
   var LW = 1.3;          // nét mực bên trong (đơn vị thiết kế)
-  var OUTLINE = 1.7;     // viền mực ngoài (sticker)
+  var OUTLINE = 1.7;     // viền mực ngoài (sticker), đơn vị thiết kế
   var NOSE = '#ff6f9f';
   var EAR_IN = '#ff9fc1';
   var MOUTH_IN = '#7a1f3d';
   var TONGUE = '#ff7d96';
   var BLUSH = 'rgba(255,110,150,0.42)';
+  // Font dự phòng khi OG.font chưa có (vd trang demo chỉ nạp sprites.js).
   var FONT_STACK = '"Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif';
 
+  // Squash & stretch toàn thân của NGƯỜI CHƠI (áp lúc blit, không vào cache)
+  var LAND_SQUASH_DUR = 0.2;   // giây: thời gian bẹp người sau khi tiếp đất
+  var LAND_SQUASH_Y = 0.3;     // bẹp dọc tối đa: sy = 1 - 0.3 ngay lúc chạm đất
+  var LAND_SQUASH_X = 0.24;    // phình ngang tối đa: sx = 1 + 0.24
+  var FALL_STRETCH_VY = 900;   // px/giây: vận tốc rơi đạt mức giãn dài tối đa
+  var FALL_STRETCH_MAX = 0.14; // giãn dọc tối đa khi rơi: sy = 1 + 0.14
+  // Chớp mắt
+  var BLINK_PERIOD = 3.3;      // giây giữa 2 lần chớp mắt
+  var BLINK_DUR = 0.12;        // giây mắt nhắm trong một lần chớp
+  var BLINK_SEED_K = 0.137;    // hệ số băm id → độ lệch pha (để các nhân vật không chớp cùng lúc)
+  // Bụi chạy + chữ bật lên
+  var RUN_DUST_STEP = 0.18;    // giây mỗi bước chạy (nửa chu kỳ run 0.36 s) → 1 cụm bụi
+  var POPUP_LIFE = 0.8;        // giây chữ "BỐP!" tồn tại
+  var POPUP_MAX = 8;           // số chữ bật lên tối đa cùng lúc
+  var FLASH_FILL = 'rgba(255,255,255,0.78)'; // lớp phủ trắng khi nháy (bị đánh / bất tử)
+
   // ---------------------------------------------------------------------------
-  // Tiện ích
+  // Tiện ích toán + hàm vẽ hình cơ bản
   // ---------------------------------------------------------------------------
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
   function lerp(a, b, k) { return a + (b - a) * k; }
+  // 💡 Khái niệm: easing (hàm làm mượt) — biến tiến độ tuyến tính k∈[0,1] thành đường cong.
+  //   easeOut: nhanh lúc đầu, chậm dần (bật nhảy, tung đòn); easeIn: chậm rồi nhanh dần (đổ ngã do trọng lực).
   function easeOut(k) { return 1 - (1 - k) * (1 - k); }
   function easeIn(k) { return k * k; }
   function font(px, weight) {
@@ -56,7 +208,11 @@
     return (weight ? weight + ' ' : '') + (px | 0) + 'px ' + (OG.FONT || FONT_STACK);
   }
 
-  // Làm tối (amt < 0) hoặc sáng (amt > 0) một màu #rrggbb. Có memo vì gọi rất nhiều.
+  // Làm tối (amt < 0) hoặc sáng (amt > 0) một màu #rrggbb.
+  // 💡 Khái niệm: memoization (nhớ kết quả đã tính) — shade() bị gọi hàng trăm lần mỗi khung với cùng vài cặp
+  //   (màu, amt), nên lưu kết quả vào object theo khoá "màu|amt" để lần sau chỉ tra bảng thay vì parse lại chuỗi.
+  //   Bảng không có giới hạn kích thước nhưng thực tế vẫn nhỏ, vì game chỉ dùng một số màu có hạn.
+  /** @type {Object<string, string>} */
   var shadeMemo = {};
   function shade(hex, amt) {
     var key = hex + '|' + amt;
@@ -97,7 +253,8 @@
     ctx.strokeStyle = color; ctx.lineWidth = w; ctx.lineCap = 'round';
     ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
   }
-  // Chi (tay/chân) có viền mực: nét mực to phía dưới + nét màu.
+  // Chi (tay/chân) có viền mực: vẽ nét mực DÀY HƠN trước, rồi nét màu mảnh hơn đè lên → lộ ra viền 2 bên.
+  //   Đây là mẹo viền rẻ nhất trong Canvas: không cần tính đường bao, chỉ cần 2 lần stroke cùng một đoạn.
   function limb(ctx, x1, y1, x2, y2, w, color) {
     seg(ctx, x1, y1, x2, y2, w + LW * 2, INK);
     seg(ctx, x1, y1, x2, y2, w, color);
@@ -117,8 +274,11 @@
     rrectPath(ctx, x, y, w, h, r); ctx.fillStyle = color; ctx.fill();
     ctx.strokeStyle = INK; ctx.lineWidth = lw || LW; ctx.stroke();
   }
-  // Khối tròn có đổ sáng (gradient) + viền mực: dùng cho thân, đầu.
+  // Khối tròn có đổ sáng (gradient) + viền mực: dùng cho thân, đầu. lw === 0 → không viền.
+  // 💡 Khái niệm: radial gradient lệch tâm về góc trên-trái tạo cảm giác khối 3D có nguồn sáng phía trên-trái;
+  //   chỉ cần MỘT màu gốc, sáng/tối được suy ra bằng shade() → đổi skin chỉ cần đổi 1 mã màu.
   function blob(ctx, x, y, rx, ry, color, rot, lw) {
+    // ⚠️ Bẫy: ellipse() ném lỗi khi bán kính âm; squash mạnh có thể làm rx/ry ≈ 0 → kẹp tối thiểu 0.1.
     rx = Math.max(0.1, rx); ry = Math.max(0.1, ry);
     var fill = color;
     if (/^#[0-9a-f]{6}$/i.test(color || '') && ctx.createRadialGradient) {
@@ -160,6 +320,8 @@
     ctx.closePath();
   }
 
+  // In lỗi MỘT lần cho mỗi nhãn: drawCharacter chạy 60 lần/giây, log mỗi frame sẽ làm treo DevTools.
+  /** @type {Object<string, boolean>} */
   var errReported = {};
   function report(label, err) {
     if (errReported[label]) return;
@@ -170,6 +332,8 @@
   // ---------------------------------------------------------------------------
   // Thông tin nhân vật (phòng thủ nếu OG.Data còn là stub)
   // ---------------------------------------------------------------------------
+  // Bảng dự phòng: game vẫn vẽ được nhân vật gốc ngay cả khi src/data/characters.js lỗi hoặc chưa load.
+  // w/h = kích thước hitbox (px), kind = chọn bộ vẽ nào.
   var BUILTIN = {
     oggy:   { w: 34, h: 52, role: 'player', kind: 'cat' },
     jack:   { w: 36, h: 54, role: 'player', kind: 'cat' },
@@ -197,6 +361,9 @@
 
   // Kiểu dáng từng chú mèo (đơn vị thiết kế 34x52, chân ở y=0).
   //  HX/HY/HRX/HRY: tâm + bán kính đầu · BY/BRX/BRY: thân · arm/armW: tay · eyeRx/eyeRy: mắt
+  // 💡 Khái niệm: data-driven — ba chú mèo dùng CHUNG một hàm drawCat(); khác biệt chỉ nằm ở bảng số
+  //   (CAT_BASE + phần ghi đè CAT_STYLE) và vài cờ bật/tắt chi tiết (brows, lashes, bow...).
+  // 🧪 Thử: trong CAT_STYLE.oggy thêm `HRX: 24, eyeRx: 7` — Oggy đầu to mắt lồi hẳn ra, mọi animation vẫn đúng.
   var CAT_BASE = {
     HX: 1, HY: -35, HRX: 18, HRY: 15.5, BY: -14, BRX: 12, BRY: 11, arm: 10, armW: 6,
     eyeRx: 5.4, eyeRy: 7.6, noseRx: 4.6, noseRy: 3.4, muzRx: 10.5, muzRy: 7, footRx: 7.5, footRy: 4.2, legW: 6
@@ -249,11 +416,18 @@
     return null;
   }
 
-  // Trả về {id, w, h, role, kind, dw, dh, spec, npc, known, style}
+  /** @type {Object<string, CharInfo>} */
   var infoMemo = {};
+  /**
+   * Gộp dữ liệu nhân vật từ OG.Data + bảng dự phòng thành CharInfo, chọn bộ vẽ (kind) phù hợp.
+   * Id lạ vẫn trả về thông tin hợp lệ (đoán theo role) để drawCharacter không bao giờ "trắng tay".
+   * @param {string} id
+   * @returns {CharInfo}
+   */
   function charInfo(id) {
     var ch = dataChar(id), b = BUILTIN[id];
     var memo = infoMemo[id];
+    // Memo kiểm tra cả `src`: nếu OG.Data đăng ký lại nhân vật (bản ghi mới) thì tính lại, không dùng bản cũ.
     if (memo && memo.src === ch) return memo;
     var role = (ch && ch.role) || (b && b.role) || (/roach|gian/i.test(String(id)) ? 'enemy' : 'player');
     var npc = NPC[id] || (ch && ch.spriteBase && NPC[ch.spriteBase]) || null;
@@ -279,6 +453,8 @@
     return info;
   }
 
+  // Gộp màu theo 4 lớp, lớp sau đè lớp trước: mặc định trong file → OG.Data (màu nhân vật + skin)
+  //   → sửa màu Dee Dee cũ → opts.colors của bên gọi.
   function resolveColors(info, skinId, override) {
     var out = {}, k, base = DEFAULT_COLORS[info.id] || (info.npc && info.npc.colors) ||
       (info.kind === 'cat' ? DEFAULT_COLORS.oggy : DEFAULT_COLORS.roach);
@@ -306,6 +482,8 @@
   }
 
   // Phụ kiện theo hành trình -> các lớp vẽ {head, neck, back, body}.
+  // Mỗi "khe" (slot) chỉ chứa 1 món → phụ kiện sau thay phụ kiện trước cùng khe; 'none' xoá hết.
+  // out.key ghép tên các khe để đưa vào khoá cache (đổi phụ kiện = khung khác).
   var ACCESSORIES = ['nonla', 'beret', 'helmet', 'scarf', 'spacesuit', 'explorer'];
   function applyAcc(out, a) {
     switch (a) {
@@ -334,8 +512,12 @@
   // ---------------------------------------------------------------------------
   var ANIMS = ['idle', 'run', 'jump', 'fall', 'hurt', 'attack', 'victory', 'walk', 'stunned', 'dead',
     'talk', 'wave', 'think', 'point'];
-  // loop: chu kỳ (giây) + số khung cache; dur: animation một lần + fps cache.
-  // loopAfter/cycle: nếu t là "đồng hồ chạy" (vd trùm truyền OG.time) thì lặp lại thay vì đứng hình.
+  // loop: chu kỳ (giây) + số khung cache; dur: animation một lần (giây) + fps cache (khung/giây).
+  // loopAfter/cycle (giây): nếu t là "đồng hồ chạy" (vd trùm truyền OG.time) thì lặp lại thay vì đứng hình.
+  // 💡 Khái niệm: animation theo thời gian — không có "danh sách ảnh"; mỗi trạng thái chỉ là một hàm Pose(t).
+  //   Bảng này chỉ quyết định cắt hàm liên tục đó thành BAO NHIÊU khung để cache.
+  //   Đánh đổi: nhiều khung = mượt hơn nhưng tốn bộ nhớ cache; idle chậm nên 20 khung/2.4 s là đủ.
+  // 🧪 Thử: đổi run.frames 12 → 4 rồi chạy: chân Oggy giật cục như phim hoạt hình rẻ tiền.
   var ANIM_INFO = {
     idle: { loop: 2.4, frames: 20 },
     walk: { loop: 0.62, frames: 12 },
@@ -357,6 +539,8 @@
   var IDLE_LONG = 5;     // giây đứng yên trước khi mèo bắt đầu ngáp
   var YAWN_CYCLE = 9;    // chu kỳ ngáp/gãi bụng/đứng yên
 
+  // Chuẩn hoá tên trạng thái: chấp nhận vài bí danh ('dizzy', 'hit', 'win'...) và đưa tên lạ về 'idle'
+  // (hợp đồng STORY mục 9). 'yawn' là trạng thái nội bộ nên bên ngoài không được gọi thẳng.
   function normState(s) {
     if (ANIM_INFO[s] && s !== 'yawn') return s;
     if (s === 'stun' || s === 'dizzy') return 'stunned';
@@ -368,17 +552,28 @@
     return 'idle';
   }
 
-  // Lượng tử hoá t -> {frame, t}. Trả về t đã làm tròn để tư thế khớp đúng khung cache.
+  /**
+   * Lượng tử hoá t (làm tròn thời gian về một số hữu hạn khung) để nhiều frame game dùng chung 1 khung cache.
+   * @param {string} state  trạng thái đã chuẩn hoá (có thể là 'yawn')
+   * @param {number} t      thời gian trong trạng thái (giây)
+   * @param {string} kind   loại bộ vẽ (gián bò có chu kỳ chạy riêng)
+   * @returns {QuantizedTime}
+   */
   function quantize(state, t, kind) {
+    // 💡 Khái niệm: lượng tử hoá thời gian — t liên tục có vô số giá trị nên không cache được.
+    //   Làm tròn t về đầu khung gần nhất → chỉ còn `frames` giá trị → mỗi giá trị vẽ một lần rồi tái dùng.
     var a = ANIM_INFO[state];
     if (a.loop) {
       var loop = (kind === 'crawler' && CRAWLER_LOOP[state]) || a.loop;
+      // ⚠️ Bẫy: `%` của JS giữ dấu số bị chia (-0.1 % 1 = -0.1) → cộng thêm loop rồi % lần nữa để pha luôn ≥ 0.
       var ph = ((t % loop) + loop) % loop;
       var f = Math.floor((ph / loop) * a.frames) % a.frames;
       return { frame: f, t: (f / a.frames) * loop, loop: loop, raw: ph };
     }
     if (a.loopAfter && t > a.loopAfter) t = t % a.cycle;
+    // Animation một lần: dừng ở khung cuối (vd 'dead' nằm im), không quay lại đầu.
     var tt = clamp(t, 0, a.dur);
+    // + 1e-6 chống sai số dấu phẩy động: vd 0.29 * 100 = 28.999999999999996 → floor nhầm sang khung trước.
     var fi = Math.floor(tt * a.fps + 1e-6);
     return { frame: fi, t: fi / a.fps, loop: 0, raw: tt };
   }
@@ -390,8 +585,23 @@
   //  armA/armB: góc tay trước/sau tính từ phương thẳng xuống (+ về phía trước),
   //  eyes/mouth/mouthK/look/lookY: biểu cảm; wheel: chân xoay tít; ballet: nhảy ba lê; point: chỉ tay;
   //  cross: khoanh tay; steam: xì hơi; hearts: tim bay; sweat: mồ hôi; chew: nhai; jiggle: bụng rung.
+  //
+  // 💡 Khái niệm: tách "chuyển động" khỏi "hình vẽ". computePose chỉ tính SỐ (không gọi ctx);
+  //   mọi bộ vẽ (mèo, gián, 15 NPC) đọc cùng một Pose → thêm nhân vật mới là có ngay đủ 14 animation.
+  //   Hàm là một switch lớn theo trạng thái (mỗi case giống một "keyframe bằng công thức"),
+  //   cố ý để chung một chỗ cho dễ so sánh các trạng thái với nhau.
   // ---------------------------------------------------------------------------
+  /**
+   * Tính tư thế của nhân vật tại thời điểm t trong một trạng thái animation.
+   * @param {string} state  trạng thái đã chuẩn hoá
+   * @param {number} t      thời gian trong trạng thái (giây)
+   * @param {string} kind   'cat' | 'bug' | 'crawler' | 'npc'
+   * @param {number} loop   chu kỳ thật (giây) từ quantize, 0 nếu animation một lần
+   * @param {string} id     charId — vài nhân vật có "tính cách" riêng (Joey khoanh tay, Dee Dee nhai...)
+   * @returns {Pose}
+   */
   function computePose(state, t, kind, loop, id) {
+    // Giá trị mặc định = đứng thẳng, sx = sy = 1. Mỗi case chỉ ghi đè field nó cần.
     var P = {
       state: state, t: t, by: 0, shakeX: 0, lean: 0, rot: 0, sx: 1, sy: 1, headY: 0, tilt: 0,
       legA: 0, legB: 0, liftA: 0, liftB: 0, armA: 0.25, armB: -0.2,
@@ -404,7 +614,9 @@
     var cat = kind === 'cat';
     switch (state) {
       case 'idle':
+        // Thở: một sóng sin chu kỳ 2.4 s. ph (pha) = góc 0..2π trong một chu kỳ.
         ph = (t * TAU) / 2.4; s = Math.sin(ph);
+        // sy tăng thì sx giảm (và ngược lại) → "giữ thể tích", nhìn như hít vào/thở ra chứ không như phóng to.
         P.sy = 1 + s * 0.03; P.sx = 1 - s * 0.022; P.headY = s * 0.7;
         P.armA = 0.2 + s * 0.06; P.armB = -0.15 - s * 0.06;
         P.tail = s * 0.35; P.ant = Math.sin(ph * 2) * 0.5; P.wave = ph * 2; P.flow = 0.1; P.ph = ph;
@@ -435,6 +647,8 @@
       case 'run':
         var per = loop || (state === 'run' ? 0.36 : 0.62), amp = state === 'run' ? 1 : 0.6;
         ph = (t * TAU) / per; s = Math.sin(ph); co = Math.cos(ph);
+        // Chu kỳ bước: hai chân lệch pha nhau nửa vòng (s và -s); nhấc chân dùng cos → chân nhấc lên lúc đang
+        //   đưa ra trước. Thân nhún 2 lần mỗi chu kỳ (cos(2·ph)) vì mỗi chu kỳ có 2 bước.
         P.ph = ph; P.moving = true; P.legA = s * amp; P.legB = -s * amp;
         P.liftA = Math.max(0, co) * 5 * amp; P.liftB = Math.max(0, -co) * 5 * amp;
         P.by = -Math.abs(co) * 3 * amp;
@@ -455,6 +669,10 @@
         else if (id === 'penguin') { P.rot = s * 0.15; P.lean = 0; }
         break;
       case 'jump':
+        // 💡 Khái niệm: squash & stretch — nguyên lý hoạt hình số 1 của Disney. Lúc bật lên nhân vật GIÃN dài
+        //   (sy 1.24, sx 0.82) rồi easeOut về gần bình thường trong 0.2 s; mắt người đọc thấy "lực bật" dù
+        //   vật lý không đổi. Cú BẸP lúc tiếp đất nằm ở drawCharacter (LAND_SQUASH_*).
+        // 🧪 Thử: đổi 1.24 → 1.6 và 0.82 → 0.6: Oggy bật lên như sợi mì dây thun.
         k = clamp(t / 0.2, 0, 1); e = easeOut(k);
         P.sy = 1.24 - 0.2 * e; P.sx = 0.82 + 0.16 * e;     // giãn dọc mạnh khi bật lên
         P.legA = 0.35; P.legB = -0.3; P.liftA = 6; P.liftB = 3;
@@ -475,7 +693,9 @@
         if (id === 'olivia') { P.ballet = 0.6; P.eyes = 'open'; P.sweat = 0; }
         break;
       case 'hurt':
-        // Bẹp như bánh kếp rồi bật lại, sao quay quanh đầu.
+        // Bẹp như bánh kếp rồi bật lại, sao quay quanh đầu. Ba pha theo t (giây):
+        //   0–0.07 bẹp dần · 0.07–0.3 giữ bẹp · 0.3–0.46 bung lại, kèm `over` vượt quá rồi về (overshoot)
+        //   → cảm giác đàn hồi như cao su thay vì dừng cứng.
         var flat = t < 0.07 ? t / 0.07 : t < 0.3 ? 1 : 1 - easeOut(clamp((t - 0.3) / 0.16, 0, 1));
         var over = t >= 0.3 ? Math.sin(clamp((t - 0.3) / 0.2, 0, 1) * Math.PI) * 0.14 : 0;
         P.sy = 1 - 0.5 * flat + over; P.sx = 1 + 0.5 * flat - over * 0.6;
@@ -485,6 +705,8 @@
         P.stars = true; P.starT = t * 12; P.steam = 1; P.sweat = 1;
         break;
       case 'attack':
+        // Ba pha kinh điển của một đòn: anticipation (lấy đà, ngả ngược) → action (tung đòn) → recovery (thu về).
+        //   Pha lấy đà ngắn (0.08 s) nhưng thiếu nó đòn đánh trông "yếu" hẳn.
         if (t < 0.08) {                         // lấy đà
           var w = t / 0.08;
           P.lean = -0.16 * w; P.sx = 1 + 0.12 * w; P.sy = 1 - 0.12 * w;
@@ -503,6 +725,8 @@
         P.eyes = 'squint'; P.mouth = 'grin'; P.ant = -0.4; P.flow = 0.5; P.tail = -0.3; P.steam = 1;
         break;
       case 'victory':
+        // |sin| tạo các cú nhảy liên tiếp (hop 0 = chạm đất, 1 = đỉnh). g*g lớn nhất lúc chạm đất →
+        //   squash chỉ xuất hiện ngay sát mặt đất, ở trên cao thì stretch nhẹ.
         ph = (t * TAU) / 0.7; var hop = Math.abs(Math.sin(ph)), g = 1 - hop;
         P.by = -hop * 14; P.sy = 1 - g * g * 0.16 + hop * 0.07; P.sx = 1 + g * g * 0.13 - hop * 0.04;
         P.armA = 2.7 + Math.sin(ph * 2) * 0.3; P.armB = 2.45 - Math.sin(ph * 2) * 0.3;
@@ -568,6 +792,9 @@
   }
 
   // Dịch/xoay/co giãn chung của tư thế (gốc là chân).
+  // 💡 Khái niệm: transform tích luỹ — translate/rotate/scale nhân dồn vào ma trận hiện tại của ctx, nên
+  //   scale(sx, sy) đặt SAU translate tới chân sẽ co giãn quanh CHÂN: bẹp người mà chân vẫn dính đất.
+  //   Đổi thứ tự (scale trước) thì cả người trượt lên xuống khi co giãn.
   function applyBase(ctx, P, thickness) {
     ctx.translate(P.shakeX, P.by);
     if (P.rot) {
@@ -577,10 +804,16 @@
     }
     ctx.scale(P.sx, P.sy);
   }
+  // Xoay quanh một điểm bất kỳ = dời gốc tới điểm đó → xoay → dời ngược lại. leanAt xoay thân quanh HÔNG,
+  // headAt xoay đầu quanh TÂM ĐẦU. Bên gọi bọc trong ctx.save()/restore() để phép xoay không lan sang bộ phận khác.
   function leanAt(ctx, P, hipY) { ctx.translate(0, hipY); ctx.rotate(P.lean); ctx.translate(0, -hipY); }
   function headAt(ctx, P, hx, hy) { ctx.translate(hx, hy + P.headY); ctx.rotate(P.tilt || 0); ctx.translate(-hx, -hy); }
 
   // Hàng đợi hiệu ứng vẽ SAU khi tạo viền (không bị viền, không bị co giãn theo tư thế).
+  // Bộ vẽ không vẽ sao/hơi nước ngay mà đẩy một hàm vào POST; buildFrame chạy chúng sau bước viền sticker.
+  // POST là biến module (không phải tham số) để mọi hàm vẽ con gọi post() được mà không phải truyền qua 5 tầng.
+  // ⚠️ Bẫy: POST chỉ khác null trong lúc renderPose chạy; post() gọi ngoài lúc đó sẽ bị bỏ qua lặng lẽ.
+  /** @type {Function[] | null} */
   var POST = null;
   function post(fn) { if (POST) POST.push(fn); }
 
@@ -639,6 +872,8 @@
     var lid = mode === 'squint' ? Math.max(o.lid || 0, 0.45) : mode === 'half' ? Math.max(o.lid || 0, 0.52) : (o.lid || 0);
     if (lid > 0) {
       // Mí mắt: tô màu da phần trên của mắt.
+      // 💡 Khái niệm: ctx.clip() — sau khi clip theo hình elip của mắt, fillRect bên dưới chỉ tô được BÊN TRONG
+      //   elip. Nhờ vậy mí mắt là một hình chữ nhật đơn giản mà vẫn khớp viền cong. save/restore để huỷ vùng clip.
       ctx.save();
       ctx.beginPath(); ctx.ellipse(x, y, rx * wr + 0.4, ry * wr + 0.4, 0, 0, TAU); ctx.clip();
       ctx.fillStyle = o.lidColor || '#888';
@@ -774,6 +1009,8 @@
   }
 
   // Hiệu ứng vẽ SAU viền (toạ độ gốc = chân, không co giãn theo tư thế).
+  // Các hàm post* đều dùng cùng mẹo: pha ph = (t·tốc độ + lệch) % 1 chạy 0→1 lặp lại; vị trí/độ mờ là hàm của ph
+  // → hạt "bay lên rồi tan" vô tận mà không cần lưu trạng thái hạt nào (khác với OG.Particles).
   function postStars(P) {
     post(function (ctx, info) {
       var top = -info.dh * Math.min(1.05, P.sy) - 3 + P.by, r = Math.max(9, info.dw * 0.42);
@@ -1103,8 +1340,19 @@
     ctx.restore();
   }
 
+  /**
+   * Vẽ một chú mèo theo tư thế P, trong hệ thiết kế 34×52 (chân ở (0,0), nhìn sang phải).
+   * Thứ tự vẽ = thứ tự chồng lớp (painter's algorithm — vẽ sau đè lên vẽ trước):
+   * chân → áo choàng/ba lô → đuôi → tay sau → thân + đồ mặc → đầu (tai, mặt, mắt, mũi, mũ) → tay trước.
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {any} c    bảng màu đã gộp (resolveColors), vd {body, head, feet}
+   * @param {Pose} P
+   * @param {any} st    kiểu dáng mèo (catStyle)
+   * @param {any} gfx   phụ kiện skin (SkinGfx trong skins.js)
+   * @param {any} acc   phụ kiện hành trình theo khe (resolveAcc)
+   */
   function drawCat(ctx, c, P, st, gfx, acc) {
-    gfx = gfx || {};
+    gfx = /** @type {any} */ (gfx || {});
     var body = c.body, head = c.head || body, earC = c.ear || head, feet = c.feet || shade(body, -0.35);
     var belly = gfx.belly || c.belly || st.belly || c.muzzle || '#ffffff';
     var muzzle = c.muzzle || '#ffffff', hand = c.hand || shade(head, 0.1), accent = c.accent || '#f29bb8';
@@ -1128,6 +1376,7 @@
     }
 
     // --- thân trên nghiêng quanh hông ---
+    // Chân vẽ TRƯỚC leanAt nên không nghiêng theo: người chúi tới khi chạy mà bàn chân vẫn bám đất.
     ctx.save();
     leanAt(ctx, P, hipY);
     if (gfx.cape) drawCape(ctx, gfx.cape, P, shY);
@@ -1269,12 +1518,13 @@
     if (P.sweat) drawSweat(ctx, HX - HRX + 1, HY - HRY + 6, 1, P.t * 2);
     ctx.restore(); // đầu
 
-    // tay trước (vẽ đè lên thân)
+    // tay trước (vẽ đè lên thân) — tay sau đã vẽ trước thân: hai lớp trước/sau tạo chiều sâu mà không cần 3D.
     var fist = arm(ctx, BRX * 0.4, shY, P.armA, st.arm + P.punch * 3, st.armW, body, hand,
       { muscle: st.muscles, point: P.point, punch: P.punch });
     if (P.swoosh >= 0) drawSwoosh(ctx, fist.x - 4, fist.y, 13, P);
     ctx.restore(); // nghiêng
 
+    // Hiệu ứng ngoài thân: đưa vào hàng đợi POST để vẽ sau viền sticker (không bị viền mực bao quanh).
     if (P.sparkle) drawVictorySparkles(ctx, 1, -40, P);
     if (P.stars) postStars(P);
     if (P.speed) postSpeed(P);
@@ -2207,6 +2457,10 @@
 
   // Bảng NPC: w/h thiết kế, hàm vẽ, tâm đầu (tỉ lệ chiều cao từ chân) và vùng hiển thị cho chân dung,
   // màu mặc định (khi OG.Data chưa có), phụ kiện mặc định.
+  // 💡 Khái niệm: registry dạng bảng — mỗi NPC là một dòng dữ liệu trỏ tới hàm vẽ của nó (function là giá trị).
+  //   renderPose chỉ cần `info.npc.draw(...)`, không có chuỗi if/else theo tên. Thêm NPC = viết 1 hàm + 1 dòng.
+  // ⚠️ Bẫy: NPC khai báo bằng `var` ở GIỮA file nhưng charInfo (phía trên) đã dùng. Chạy được vì charInfo chỉ
+  //   được GỌI sau khi cả file load xong; nếu gọi charInfo ngay lúc load ở phía trên dòng này, NPC còn undefined.
   var NPC = {
     bob:        { w: 44, h: 46, draw: drawBob, focus: 0.72, span: 0.85, acc: { head: 'nonla', neck: 'scarf' },
       colors: { body: '#c98b52', head: '#d99a5f', ear: '#8a5a32', feet: '#7a4e2b', muzzle: '#f3dcc0', accent: '#e9c46a' } },
@@ -2232,11 +2486,26 @@
   // ---------------------------------------------------------------------------
   // Render theo tư thế (trong hệ toạ độ thiết kế). Trả về {P, post}.
   // ---------------------------------------------------------------------------
+  /**
+   * Tính Pose rồi gọi đúng bộ vẽ theo info.kind. Hiệu ứng "post" được gom lại, CHƯA vẽ.
+   * @param {CanvasRenderingContext2D} ctx  đã đặt gốc tại chân, đơn vị = đơn vị thiết kế
+   * @param {CharInfo} info
+   * @param {any} colors   bảng màu đã gộp (resolveColors), vd {body, head, feet}
+   * @param {any} gfx
+   * @param {any} acc
+   * @param {string} state
+   * @param {number} t      giây
+   * @param {boolean} blink đang chớp mắt → ép mắt mở thành nhắm
+   * @param {number} loop   chu kỳ thật (giây) từ quantize
+   * @returns {{P: Pose, post: Function[]}}
+   */
   function renderPose(ctx, info, colors, gfx, acc, state, t, blink, loop) {
     var P = computePose(state, t, info.kind, loop, info.id);
+    // Chớp mắt chỉ đè lên các kiểu mắt "mở"; mắt X, xoắn ốc, nhắm vui... giữ nguyên để không mất biểu cảm.
     if (blink && (P.eyes === 'open' || P.eyes === 'wide' || P.eyes === 'squint' || P.eyes === 'half')) P.eyes = 'closed';
     POST = [];
     ctx.save();
+    // try/finally: bộ vẽ ném lỗi giữa chừng vẫn restore() đủ → transform của canvas không bị lệch cho frame sau.
     try {
       if (info.kind === 'bug') drawBug(ctx, colors, P, info.spec, info.id, acc);
       else if (info.kind === 'crawler') drawCrawler(ctx, colors, P, acc);
@@ -2256,6 +2525,8 @@
     }
   }
   // Bóng đổ mềm dưới chân (không vẽ khi đang bay lên/rơi).
+  // Hai elip chồng nhau (rộng-nhạt + hẹp-đậm) giả bóng mờ mép mà không cần ctx.filter blur (chậm, không phải
+  // trình duyệt nào cũng hỗ trợ). Nhân vật càng nhảy cao (by âm) bóng càng nhỏ và nhạt.
   function drawShadow(ctx, info, P) {
     if (P.state === 'jump' || P.state === 'fall') return;
     var lift = clamp(-(P.by || 0) / 30, 0, 0.6) + (info.id === 'bee' ? 0.35 : 0);
@@ -2265,26 +2536,39 @@
     ell(ctx, 0, -0.5, rx, 2.4, 'rgba(23,35,61,' + (0.16 * (1 - lift)).toFixed(3) + ')');
   }
 
-  // Chớp mắt ~mỗi 3,3 giây, lệch pha theo nhân vật.
+  // Chớp mắt mỗi BLINK_PERIOD giây, lệch pha theo nhân vật.
+  // Pha suy ra từ id (băm đơn giản bằng mã ký tự) thay vì Math.random → cùng nhân vật luôn chớp đúng nhịp,
+  //   kết quả lặp lại được (dễ kiểm thử, dễ dò lỗi), mà hai nhân vật khác nhau thường không chớp cùng lúc.
   function isBlink(clock, id) {
     var seed = 0;
-    for (var i = 0; i < id.length; i++) seed += id.charCodeAt(i) * 0.137;
-    var p = (clock + seed) % 3.3;
-    return p >= 0 && p < 0.12;
+    for (var i = 0; i < id.length; i++) seed += id.charCodeAt(i) * BLINK_SEED_K;
+    var p = (clock + seed) % BLINK_PERIOD;
+    return p >= 0 && p < BLINK_DUR;
   }
 
   // ---------------------------------------------------------------------------
   // Cache khung hình (offscreen canvas) — LRU theo ngân sách điểm ảnh
   // ---------------------------------------------------------------------------
+  // 💡 Khái niệm: frame cache — vẽ một nhân vật procedural tốn hàng trăm lệnh ctx (cộng 8–12 lần drawImage cho
+  //   viền). Thay vì làm lại mỗi frame, ta vẽ MỘT LẦN vào offscreen canvas (canvas phụ tạo bằng
+  //   document.createElement('canvas'), không gắn vào trang), rồi các frame sau chỉ cần 1 lệnh drawImage.
+  //   Đánh đổi: tốn bộ nhớ → giới hạn bằng LRU (Least Recently Used: khi đầy, bỏ khung lâu nhất chưa dùng).
+  // Hai giới hạn vì khung to nhỏ khác nhau: 320 khung nhỏ thì rẻ, nhưng vài khung trùm phóng to đã tốn hàng chục MB.
+  // CACHE_MAX / CACHE_MAX_PX là `var` (không phải hằng) vì S.setCacheLimit() đổi được lúc chạy.
   var CACHE_MAX = 320;              // số khung tối đa
-  var CACHE_MAX_PX = 16 * 1000 * 1000; // ~64MB RGBA
+  var CACHE_MAX_PX = 16 * 1000 * 1000; // tổng điểm ảnh tối đa, ~64MB RGBA (4 byte/điểm ảnh)
   var cache = {
+    // Môi trường không có document (vd Node thuần) → tắt cache, drawCharacter vẽ thẳng lên ctx.
     enabled: typeof document !== 'undefined' && !!document.createElement,
     map: typeof Map === 'function' ? new Map() : null,
     hits: 0, misses: 0, px: 0
   };
 
+  // Canvas tạm được DÙNG LẠI giữa các lần vẽ: tạo canvas mới mỗi frame sẽ sinh rác cho garbage collector
+  //   (bộ dọn bộ nhớ) và gây giật hình định kỳ.
+  /** @type {HTMLCanvasElement | null} */
   var scratch = null;          // canvas khung dùng lại khi không cache
+  /** @type {Array<HTMLCanvasElement | null>} */
   var layers = [null, null];   // 2 canvas tạm: hình + bóng hình (để tạo viền)
   function newCanvas() {
     try { return document.createElement('canvas'); } catch (e) { return null; }
@@ -2305,34 +2589,62 @@
     return sizeCanvas(layers[i], w, h);
   }
 
-  // Vẽ 1 khung vào canvas riêng. Trả về {cv, ox, oy, w, h, px} theo đơn vị thiết kế.
+  /**
+   * Vẽ 1 khung hoàn chỉnh (bóng đổ + viền sticker + hình + hiệu ứng) vào canvas riêng.
+   * @param {CharInfo} info
+   * @param {any} colors   bảng màu đã gộp (resolveColors), vd {body, head, feet}
+   * @param {any} gfx
+   * @param {any} acc
+   * @param {string} state
+   * @param {{t:number, loop:number}} q  thời gian dùng để vẽ (đã lượng tử hoá hoặc thô)
+   * @param {boolean} blink
+   * @param {boolean} flash   phủ trắng
+   * @param {number} res      số điểm ảnh thật cho 1 đơn vị thiết kế (2, 4 hoặc 6) — độ nét của khung
+   * @param {boolean} reuse   true = vẽ vào canvas `scratch` dùng chung (khung sẽ bị ghi đè lần sau, KHÔNG được cache)
+   * @param {boolean} shadow  vẽ bóng đổ dưới chân
+   * @returns {CachedFrame | null} null nếu không tạo được canvas
+   */
   function buildFrame(info, colors, gfx, acc, state, q, blink, flash, res, reuse, shadow) {
     var dw = info.dw, dh = info.dh;
+    // Lề quanh hình thiết kế: tay giơ cao, áo choàng bay, sao trên đầu... tràn ra ngoài dw×dh.
+    // Tư thế 'dead' nằm ngang nên cần lề ngang bằng cả chiều cao nhân vật.
     var padX = Math.ceil(state === 'dead' ? dh + 12 : Math.max(dw * 0.65, dh * 0.45) + 14);
     var padTop = Math.ceil(dh * 0.55 + 20), padBot = 8;
     var fw = dw + padX * 2, fh = dh + padTop + padBot;
     var W = Math.ceil(fw * res), H = Math.ceil(fh * res);
     var cv = makeCanvas(W, H, reuse);
     if (!cv) return null;
+    // (ox, oy) = vị trí điểm CHÂN bên trong khung, tính từ góc trên-trái (đơn vị thiết kế).
     var ox = padX + dw / 2, oy = padTop + dh;
     var fc = cv.getContext('2d');
     var a = layerCanvas(0, W, H), b = a ? layerCanvas(1, W, H) : null;
     if (a && b) {
       // 1) vẽ hình lên lớp a
       var ac = a.getContext('2d');
+      // setTransform(res, 0, 0, res, dx, dy) = "scale(res) rồi dời gốc tới chân" trong 1 lệnh, và XOÁ mọi
+      //   transform cũ còn sót trên canvas dùng lại → bộ vẽ cứ vẽ theo đơn vị thiết kế với chân ở (0,0).
       ac.setTransform(res, 0, 0, res, ox * res, oy * res);
       var r = renderPose(ac, info, colors, gfx, acc, state, q.t, blink, q.loop);
       // 2) bóng hình màu mực trên lớp b
+      // 💡 Khái niệm: globalCompositeOperation 'source-in' — lệnh vẽ tiếp theo chỉ giữ lại phần TRÙNG với
+      //   điểm ảnh đã có. Chép hình a sang b rồi fillRect màu mực với 'source-in' → được "bóng hình" đặc
+      //   màu mực đúng bằng hình dáng nhân vật (silhouette).
       var bc = b.getContext('2d');
       bc.setTransform(1, 0, 0, 1, 0, 0);
       bc.globalCompositeOperation = 'source-over';
       bc.drawImage(a, 0, 0);
       bc.globalCompositeOperation = 'source-in';
       bc.fillStyle = INK; bc.fillRect(0, 0, W, H);
+      // ⚠️ Bẫy: phải trả về 'source-over' — canvas b được dùng lại, quên dòng này thì lần sau drawImage(a)
+      //   chỉ vẽ được vào phần trùng với nội dung cũ.
       bc.globalCompositeOperation = 'source-over';
       // 3) khung cuối: bóng đổ -> viền (bóng hình lệch nhiều hướng) -> hình -> hiệu ứng
       if (shadow) { fc.setTransform(res, 0, 0, res, ox * res, oy * res); drawShadow(fc, info, r.P); }
       fc.setTransform(1, 0, 0, 1, 0, 0);
+      // 💡 Khái niệm: viền sticker — đóng dấu bóng hình lệch đi o điểm ảnh theo n hướng quanh vòng tròn, rồi vẽ
+      //   hình thật đè lên giữa → còn lại một vành mực dày đều bao NGOÀI mọi bộ phận (kể cả tay chồng lên thân).
+      //   Độ phân giải cao (res ≥ 4) thì vành rộng hơn tính theo điểm ảnh nên cần 12 hướng để không lộ răng cưa.
+      // 🧪 Thử: đổi OUTLINE 1.7 → 4 ở đầu file: nhân vật như hình dán sticker viền dày.
       var o = OUTLINE * res, n = res >= 4 ? 12 : 8;
       for (var i = 0; i < n; i++) {
         var ang = (i / n) * TAU;
@@ -2342,15 +2654,17 @@
       fc.setTransform(res, 0, 0, res, ox * res, oy * res);
       runPost(fc, r, info);
     } else {
+      // Không tạo được canvas lớp → bỏ viền sticker, vẫn vẽ được nhân vật (xuống cấp nhẹ nhàng).
       fc.setTransform(res, 0, 0, res, ox * res, oy * res);
       var r2 = renderPose(fc, info, colors, gfx, acc, state, q.t, blink, q.loop);
       runPost(fc, r2, info);
     }
     if (flash) {
       // nháy trắng: phủ trắng chỉ lên phần đã vẽ
+      // 'source-atop' giữ nguyên độ trong suốt của khung → nền trong suốt xung quanh không bị phủ trắng.
       fc.setTransform(1, 0, 0, 1, 0, 0);
       fc.globalCompositeOperation = 'source-atop';
-      fc.fillStyle = 'rgba(255,255,255,0.78)';
+      fc.fillStyle = FLASH_FILL;
       fc.fillRect(0, 0, W, H);
       fc.globalCompositeOperation = 'source-over';
     }
@@ -2358,21 +2672,34 @@
     return { cv: cv, ox: ox, oy: oy, w: fw, h: fh, px: W * H };
   }
 
+  /**
+   * Lấy khung đã cache theo khoá; nếu có thì đánh dấu "vừa dùng".
+   * @param {string} key
+   * @returns {CachedFrame | null}
+   */
   function cacheGet(key) {
     if (!cache.map) return null;
     var fr = cache.map.get(key);
     if (fr) {
-      // LRU: đưa lên cuối
+      // 💡 Khái niệm: Map làm LRU — Map của JS luôn duyệt khoá theo THỨ TỰ CHÈN. Xoá rồi set lại = dời khoá
+      //   xuống cuối ("mới dùng nhất"); khoá đầu tiên của map.keys() luôn là khoá lâu chưa dùng nhất.
+      //   Không cần danh sách liên kết hay timestamp như LRU kinh điển.
       cache.map.delete(key); cache.map.set(key, fr);
       cache.hits++;
     }
     return fr || null;
   }
+  /**
+   * Thêm khung vào cache rồi loại bớt khung cũ nhất cho tới khi về dưới cả hai giới hạn.
+   * @param {string} key
+   * @param {CachedFrame} fr
+   */
   function cachePut(key, fr) {
     if (!cache.map) return;
     cache.map.set(key, fr);
     cache.px += fr.px || 0;
     cache.misses++;
+    // `size > 1`: luôn giữ lại khung vừa thêm, kể cả khi riêng nó đã vượt ngân sách điểm ảnh.
     while (cache.map.size > 1 && (cache.map.size > CACHE_MAX || cache.px > CACHE_MAX_PX)) {
       var k = cache.map.keys().next().value, old = cache.map.get(k);
       cache.px -= (old && old.px) || 0;
@@ -2380,11 +2707,15 @@
     }
   }
 
+  // Chép khung lên ctx sao cho điểm chân của khung trùng gốc (0,0) hiện tại. Truyền w/h (đơn vị thiết kế) để
+  // drawImage tự thu nhỏ khung độ phân giải cao về đúng cỡ → transform hiện tại của ctx lo phần phóng/lật.
   function blit(ctx, fr) { ctx.drawImage(fr.cv, -fr.ox, -fr.oy, fr.w, fr.h); }
 
   // ---------------------------------------------------------------------------
   // Chữ hoạt hình ngoài cache: OÁI!, ?, !, BỐP! (không bị lật theo hướng nhìn)
   // ---------------------------------------------------------------------------
+  // Chữ vẽ ngoài cache vì: (1) nằm trong khung lật ngang thì chữ bị ngược; (2) chữ phải luôn nét theo font
+  // thật của trình duyệt, không bị phóng từ ảnh độ phân giải thấp.
   function comicText(ctx, x, y, text, size, fill, rot, k) {
     k = k == null ? 1 : k;
     ctx.save();
@@ -2422,6 +2753,7 @@
       markBubble(ctx, w * 0.5 + 6, -h - 8 + bob, String(mark).slice(0, 2), 11);
     }
     if (state === 'hurt' && info.kind === 'cat' && t < 0.75) {
+      // "Pop-in": phóng tới 1.15 rồi co về 1 trong 0.2 s — overshoot nhỏ làm chữ như bật nảy ra.
       var k = t < 0.1 ? easeOut(t / 0.1) * 1.15 : t < 0.2 ? lerp(1.15, 1, (t - 0.1) / 0.1) : 1;
       ctx.save(); ctx.globalAlpha *= clamp((0.75 - t) / 0.2, 0, 1);
       comicText(ctx, -w * 0.15, -h * 0.75 - 14 - t * 10, 'OÁI!', 11, '#ff5a3c', -0.18, k);
@@ -2438,16 +2770,25 @@
   }
 
   // Chữ "BỐP!" bật ra tại toạ độ thế giới (giẫm gián, trúng trùm).
+  /** @type {Array<{x:number, y:number, text:string, color:string, at:number, rot:number}>} */
   var popups = [];
+  // Đồng hồ game (giây). Dùng OG.time thay vì Date.now(): khi pause, OG.time đứng yên → chữ cũng "đóng băng".
   function now() { return typeof OG.time === 'number' ? OG.time : 0; }
+  /**
+   * Vẽ (và dọn) các chữ hoạt hình "BỐP!" đang sống. Toạ độ chữ là toạ độ THẾ GIỚI, nên ctx phải đang ở
+   * hệ thế giới (camera đã áp dụng). drawCharacter của người chơi tự gọi hàm này khi có opts.worldX.
+   * @param {CanvasRenderingContext2D} ctx
+   */
   S.drawPopups = function (ctx) {
     var tn = now();
+    // Duyệt NGƯỢC vì splice() xoá phần tử giữa vòng lặp; duyệt xuôi sẽ bỏ sót phần tử ngay sau phần tử bị xoá.
     for (var i = popups.length - 1; i >= 0; i--) {
       var p = popups[i], age = tn - p.at;
-      if (age > 0.8 || age < -1) { popups.splice(i, 1); continue; }
+      // age < -1: đồng hồ bị lùi (vd trang demo tự đặt OG.time) → chữ cũ "đến từ tương lai", bỏ luôn.
+      if (age > POPUP_LIFE || age < -1) { popups.splice(i, 1); continue; }
       var k = age < 0.1 ? easeOut(age / 0.1) * 1.25 : age < 0.2 ? lerp(1.25, 1, (age - 0.1) / 0.1) : 1;
       ctx.save();
-      ctx.globalAlpha *= clamp((0.8 - age) / 0.25, 0, 1);
+      ctx.globalAlpha *= clamp((POPUP_LIFE - age) / 0.25, 0, 1);
       comicText(ctx, p.x, p.y - age * 22, p.text, 13, p.color, p.rot, k);
       ctx.restore();
     }
@@ -2456,39 +2797,75 @@
   // ---------------------------------------------------------------------------
   // Hiệu ứng hạt qua OG.Particles
   // ---------------------------------------------------------------------------
-  var fx = (S.fx = S.fx || {});
+  // 💡 Khái niệm: particles (hệ hạt) — hiệu ứng bụi/sao/lấp lánh là hàng chục chấm nhỏ, mỗi chấm có vị trí,
+  //   vận tốc, tuổi thọ riêng, được OG.Particles cập nhật theo dt rồi tự xoá khi hết tuổi. Sprites chỉ "đặt hàng"
+  //   (spawn) với công thức tham số; còn hình dáng từng hạt do S.drawParticle bên dưới vẽ.
+  //   Tham số spawn: count (số hạt), speed (px/giây), lift (px/giây hướng lên thêm), gravity (px/giây², âm = bay lên),
+  //   life (giây), size (px), shape (hình dạng).
+  var fx = /** @type {any} */ (S.fx = S.fx || {});
   // sink(x, y, opts): mặc định là OG.Particles.spawn. Trang demo có thể thay bằng hệ hạt riêng.
   fx.sink = fx.sink || null;
+  /**
+   * Phát hạt tại (x, y) toạ độ THẾ GIỚI (px), qua fx.sink nếu có, không thì OG.Particles.spawn.
+   * Bỏ qua lặng lẽ nếu chưa có hệ hạt hoặc toạ độ không hợp lệ (NaN/Infinity).
+   * @param {number} x
+   * @param {number} y
+   * @param {Object} opts  {color, count, speed, lift, gravity, life, size, shape}
+   * @example
+   *   OG.Sprites.fx.spawn(400, 300, { color: '#ff6f9f', count: 6, speed: 90, life: 0.6, size: 6, shape: 'heart' });
+   */
   fx.spawn = function (x, y, opts) {
     var P = OG.Particles, f = fx.sink || (P && P.spawn);
     if (typeof f !== 'function' || !isFinite(x) || !isFinite(y)) return;
+    // f.call(P, ...): spawn là method của OG.Particles, gọi tách rời phải trả lại đúng `this`.
     try { f.call(fx.sink ? null : P, x, y, opts); } catch (e) { report('fx.spawn', e); }
   };
+  // Các "công thức" hạt dựng sẵn — (x, y) là toạ độ thế giới (px), n = số hạt.
+  // 🧪 Thử: trong fx.stars đổi gravity 520 → -100: sao khi giẫm gián bay vút lên trời thay vì rơi xuống.
+  /** Bụi nhỏ dưới chân (bước chạy). @param {number} x @param {number} y @param {number} [n=2] */
   fx.dust = function (x, y, n) {
     fx.spawn(x, y - 2, { color: 'rgba(240,226,196,0.9)', count: n || 2, speed: 45, lift: 22, gravity: -25, life: 0.38, size: 5, shape: 'dust' });
   };
+  /** Hai cụm bụi toả sang hai bên chân (nhảy / tiếp đất). @param {number} x @param {number} y @param {number} [n=6] */
   fx.puff = function (x, y, n) {
     fx.spawn(x - 8, y - 2, { color: 'rgba(240,226,196,0.95)', count: Math.ceil((n || 6) / 2), speed: 70, lift: 10, gravity: -10, life: 0.4, size: 6, shape: 'dust' });
     fx.spawn(x + 8, y - 2, { color: 'rgba(240,226,196,0.95)', count: Math.floor((n || 6) / 2), speed: 70, lift: 10, gravity: -10, life: 0.4, size: 6, shape: 'dust' });
   };
+  /** Tia lấp lánh (nhặt đồ). @param {number} x @param {number} y @param {string} [color] */
   fx.sparkle = function (x, y, color) {
     fx.spawn(x, y, { color: color || '#fff6c2', count: 7, speed: 130, lift: 40, gravity: 60, life: 0.55, size: 6, shape: 'spark' });
     fx.spawn(x, y, { color: '#ffffff', count: 3, speed: 50, lift: 20, gravity: 0, life: 0.35, size: 5, shape: 'spark' });
   };
+  /** Sao văng lên rồi rơi (giẫm, trúng đòn). @param {number} x @param {number} y @param {number} [n=5] @param {string} [color] */
   fx.stars = function (x, y, n, color) {
     fx.spawn(x, y, { color: color || '#ffd84a', count: n || 5, speed: 170, lift: 130, gravity: 520, life: 0.7, size: 8, shape: 'star' });
   };
-  // Chữ hoạt hình bật lên (toạ độ thế giới). Vẽ cùng nhân vật người chơi hoặc qua S.drawPopups(ctx).
+  /**
+   * Thêm chữ hoạt hình bật lên tại toạ độ THẾ GIỚI (px). Chữ được vẽ cùng nhân vật người chơi hoặc qua S.drawPopups(ctx).
+   * @param {number} x
+   * @param {number} y
+   * @param {string} [text='BỐP!']
+   * @param {string} [color='#ff5a3c']
+   * @example
+   *   OG.Sprites.fx.pop(enemy.x + 17, enemy.y - 10, 'BỐP!');
+   */
   fx.pop = function (x, y, text, color) {
     if (!isFinite(x) || !isFinite(y)) return;
     popups.push({ x: x, y: y, text: text || 'BỐP!', color: color || '#ff5a3c', at: now(), rot: (Math.random() - 0.5) * 0.4 });
-    if (popups.length > 8) popups.shift();
+    // Giới hạn số chữ: giẫm liên hoàn cả đàn gián không được phủ kín màn hình. Bỏ chữ CŨ nhất trước.
+    if (popups.length > POPUP_MAX) popups.shift();
   };
 
-  // Vẽ một hạt có hình dạng (OG.Particles gọi nếu p.shape có giá trị).
-  // p: {x, y, size, color, shape, life, max}. globalAlpha do bên gọi đặt. Trả về true nếu đã vẽ.
+  /**
+   * Vẽ một hạt có hình dạng (OG.Particles gọi nếu p.shape có giá trị). globalAlpha do bên gọi đặt.
+   * @param {CanvasRenderingContext2D} ctx  đang ở hệ toạ độ thế giới
+   * @param {{x:number, y:number, size?:number, color?:string, shape?:string, life?:number, max?:number, seed?:number}} p
+   *        hạt: life = thời gian còn lại (giây), max = tuổi thọ ban đầu (giây), shape: star | spark | dust | circle | heart
+   * @returns {boolean} true nếu đã vẽ; false → OG.Particles tự vẽ ô vuông dự phòng
+   */
   S.drawParticle = function (ctx, p) {
     if (!p || !p.shape) return false;
+    // age đi từ 0 (vừa sinh) → 1 (sắp chết): hạt bụi to dần, sao xoay dần, tia lấp lánh nhấp nháy theo age.
     var a = p.max ? clamp(p.life / p.max, 0, 1) : 1, sz = p.size || 4, age = 1 - a;
     ctx.fillStyle = p.color || '#ffffff';
     switch (p.shape) {
@@ -2525,6 +2902,10 @@
   }
 
   var stepMem = { step: -1 };
+  /**
+   * Ghi nhận vị trí chân người chơi (toạ độ thế giới) và phát bụi theo từng bước chạy.
+   * Thứ tự ưu tiên nguồn vị trí: opts.worldX/worldY → OG.Level.state.player → suy ngược từ ma trận ctx.
+   */
   function trackPlayer(ctx, info, state, t, opts, h) {
     var base = sceneBase();
     if (base !== 'level' && base !== 'boss' && opts.worldX == null) return;
@@ -2533,6 +2914,8 @@
     else if (lp) pos = { x: lp.x + lp.w / 2, y: lp.y + lp.h };
     else if (ctx.getTransform && OG.Camera) {
       // Khung boss: suy ra từ ma trận hiện tại (caller đã translate tới chân, camera đã áp dụng).
+      // getTransform().e/.f = vị trí gốc hiện tại tính bằng điểm ảnh MÀN HÌNH; chia tỉ lệ canvas (r) để về
+      //   px logic 960×540, rồi cộng lại vị trí camera → toạ độ thế giới. (screen → world)
       var m = ctx.getTransform(), r = ctx.canvas && ctx.canvas.width ? ctx.canvas.width / (OG.W || 960) : 1;
       pos = { x: m.e / r + Math.round(OG.Camera.x || 0) - (OG.Camera.ox || 0), y: m.f / r + Math.round(OG.Camera.y || 0) - (OG.Camera.oy || 0) };
     }
@@ -2540,7 +2923,9 @@
     lastFeet.x = pos.x; lastFeet.y = pos.y; lastFeet.at = now(); lastFeet.h = h;
     // Bụi theo bước chạy (mỗi nửa chu kỳ chạy = 1 bước). Khi pause, t đứng yên -> không phát thêm.
     if (state === 'run') {
-      var step = Math.floor(t / 0.18);
+      // Phát hiện "cạnh" (edge detection): chỉ phát bụi khi chỉ số bước THAY ĐỔI, không phải mỗi frame
+      //   → số cụm bụi không phụ thuộc FPS (60 Hz hay 144 Hz đều 1 cụm / bước).
+      var step = Math.floor(t / RUN_DUST_STEP);
       if (step !== stepMem.step) {
         stepMem.step = step;
         if (step > 0) fx.dust(pos.x - (opts.face < 0 ? -1 : 1) * 7, pos.y, 2);
@@ -2555,31 +2940,116 @@
     return null;
   }
 
-  // Thời điểm tiếp đất gần nhất (cho squash khi chạm đất).
+  // Thời điểm tiếp đất gần nhất (giây, theo OG.time) — cho squash khi chạm đất. Event 'player:land' cập nhật
+  // (xem init); drawCharacter chỉ ĐỌC. Đây là cầu nối event → animation mà Player không cần biết Sprites.
   var landAt = -99;
 
   // ---------------------------------------------------------------------------
   // API công khai
   // ---------------------------------------------------------------------------
+  // Trả về BẢN SAO (slice) để bên gọi có sửa mảng cũng không làm hỏng bảng nội bộ.
+  /**
+   * Liệt kê các trạng thái animation hợp lệ (tên khác sẽ được đưa về 'idle').
+   * @returns {string[]}
+   */
   S.getAnimStates = function () { return ANIMS.slice(); };
+  /** Id các phụ kiện hành trình dùng được trong opts.accessory. @type {string[]} */
   S.ACCESSORIES = ACCESSORIES.slice();
-  // Danh sách charId có hình vẽ riêng.
+  /**
+   * Liệt kê charId có hình vẽ riêng (nhân vật gốc + NPC v2).
+   * @returns {string[]}
+   */
   S.listCharacters = function () {
     var out = Object.keys(BUILTIN);
     for (var k in NPC) out.push(k);
     return out;
   };
+  /**
+   * Kiểm tra charId có bộ vẽ riêng hay sẽ dùng hình dự phòng.
+   * @param {string} id
+   * @returns {boolean}
+   */
   S.hasCharacter = function (id) { return !!(BUILTIN[id] || NPC[id]); };
 
+  /**
+   * Bật/tắt cache khung hình (tắt thì xoá luôn cache). Không có Map thì không bật được.
+   * 🧪 Thử: gõ OG.Sprites.setCacheEnabled(false) trong Console khi đang chơi rồi xem OG.Loop.fps tụt
+   *   (rõ nhất ở màn đông gián); bật lại bằng setCacheEnabled(true).
+   * @param {boolean} on
+   */
   S.setCacheEnabled = function (on) { cache.enabled = !!on && !!cache.map; if (!on) S.clearCache(); };
+  /** @returns {boolean} cache có đang bật không */
   S.isCacheEnabled = function () { return cache.enabled; };
+  /**
+   * Đổi giới hạn LRU lúc chạy (có sàn tối thiểu 16 khung / 1 triệu điểm ảnh).
+   * @param {number} n     số khung tối đa
+   * @param {number} [px]  tổng điểm ảnh tối đa (bỏ qua = giữ nguyên)
+   */
   S.setCacheLimit = function (n, px) { CACHE_MAX = Math.max(16, n | 0); if (px) CACHE_MAX_PX = Math.max(1e6, +px); };
+  /** Xoá toàn bộ khung đã cache và đặt lại bộ đếm hit/miss. */
   S.clearCache = function () { if (cache.map) cache.map.clear(); cache.hits = 0; cache.misses = 0; cache.px = 0; };
+  /**
+   * Đọc thống kê cache. hits/misses cho biết tỉ lệ trúng: hits lớn hơn misses nhiều lần là cache đang có ích.
+   * @returns {{size:number, max:number, hits:number, misses:number, enabled:boolean, pixels:number, maxPixels:number}}
+   * @example
+   *   var st = OG.Sprites.cacheStats();
+   *   console.log('tỉ lệ trúng', (st.hits / Math.max(1, st.hits + st.misses) * 100).toFixed(1) + '%');
+   */
   S.cacheStats = function () {
     return { size: cache.map ? cache.map.size : 0, max: CACHE_MAX, hits: cache.hits, misses: cache.misses,
       enabled: cache.enabled, pixels: cache.px, maxPixels: CACHE_MAX_PX };
   };
 
+  // ---- Hàm con của drawCharacter ----
+
+  /**
+   * Tính co giãn toàn thân của người chơi: BẸP khi vừa tiếp đất, GIÃN khi đang rơi nhanh.
+   * Áp lúc blit nên không làm tăng số khung cache.
+   * @param {string} state
+   * @param {DrawCharacterOpts} opts
+   * @returns {number[]} [gsx, gsy]
+   */
+  function computeLandSquash(state, opts) {
+    var gsx = 1, gsy = 1;
+    var dl = now() - landAt;
+    if ((state === 'idle' || state === 'run' || state === 'walk') && dl >= 0 && dl < LAND_SQUASH_DUR) {
+      // amt giảm tuyến tính 1 → 0 trong LAND_SQUASH_DUR giây: bẹp mạnh nhất ngay lúc chạm đất rồi bung dần.
+      var amt = 1 - dl / LAND_SQUASH_DUR;
+      gsy = 1 - LAND_SQUASH_Y * amt; gsx = 1 + LAND_SQUASH_X * amt;
+    } else if (state === 'fall' && opts.vy > 0) {
+      // gsx = 1/gsy: giữ "diện tích" không đổi → giãn dài thì phải gầy đi, nhìn như có khối lượng thật.
+      gsy = 1 + clamp(opts.vy / FALL_STRETCH_VY, 0, 1) * FALL_STRETCH_MAX; gsx = 1 / gsy;
+    }
+    return [gsx, gsy];
+  }
+
+  // Chọn độ phân giải khung (điểm ảnh thật / đơn vị thiết kế) theo mức phóng thực tế s.
+  // Chỉ 3 mức (2, 4, 6) thay vì đúng bằng s: một nhân vật phóng 1.0 hay 1.2 vẫn dùng chung khung cache,
+  // đổi lại khung hơi dư nét. Hình nhỏ vẫn dùng ×2 để sắc nét trên màn hình mật độ điểm ảnh cao.
+  function pickResolution(s) { return s <= 1.25 ? 2 : s <= 2.6 ? 4 : 6; }
+
+  // Khoá cache = ghép MỌI thứ làm khung trông khác đi. ⚠️ Bẫy: thêm một tuỳ chọn ảnh hưởng hình vẽ mà quên
+  //   đưa vào khoá → hai cách vẽ khác nhau dùng chung một khung, nhân vật "nhảy" giữa hai bộ đồ.
+  function frameKey(info, opts, acc, drawState, q, blink, flash, shadow, res) {
+    return [info.id, info.kind, opts.skin || '', opts.colors ? JSON.stringify(opts.colors) : '', acc.key,
+      drawState, q.frame, blink ? 1 : 0, flash ? 1 : 0, shadow ? 1 : 0, res].join('|');
+  }
+
+  /**
+   * Vẽ một nhân vật tại gốc toạ độ hiện tại của ctx (bên gọi đã translate tới ĐIỂM CHÂN, giữa-đáy hitbox).
+   * Tự save/restore; không bao giờ ném lỗi — lỗi vẽ thì in 1 lần và vẽ khối màu dự phòng.
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {string} charId     'oggy', 'jack', 'roach', 'bob'... (id lạ vẫn vẽ được hình dự phòng)
+   * @param {string} animState  idle | run | jump | fall | hurt | attack | victory | walk | stunned | dead | talk | wave | think | point
+   * @param {number} t          thời gian đã ở trong trạng thái này (giây), bên gọi tự đếm và đặt lại khi đổi trạng thái
+   * @param {DrawCharacterOpts} [opts]
+   * @example
+   *   ctx.save();
+   *   ctx.translate(p.x + p.w / 2, p.y + p.h);              // tới điểm chân (toạ độ thế giới)
+   *   OG.Sprites.drawCharacter(ctx, 'oggy', 'run', p.animT, { face: p.face, vx: p.vx, vy: p.vy,
+   *     worldX: p.x + p.w / 2, worldY: p.y + p.h });
+   *   ctx.restore();
+   */
   S.drawCharacter = function (ctx, charId, animState, t, opts) {
     opts = opts || {};
     t = +t || 0;
@@ -2608,15 +3078,13 @@
     }
 
     // Co giãn toàn cục (không vào cache): squash mạnh khi tiếp đất, stretch khi rơi nhanh.
+    // 💡 Khái niệm: squash & stretch ở HAI tầng — tầng Pose (trong khung cache, theo t của animation) và tầng
+    //   này (áp khi blit, theo sự kiện vật lý thật: lúc chạm đất, vận tốc rơi). Tầng blit "miễn phí" vì chỉ là
+    //   một phép ctx.scale, không sinh khung cache mới.
     var gsx = 1, gsy = 1;
     if (info.role === 'player' && opts.vx != null) {
-      var dl = now() - landAt;
-      if ((state === 'idle' || state === 'run' || state === 'walk') && dl >= 0 && dl < 0.2) {
-        var amt = 1 - dl / 0.2;
-        gsy = 1 - 0.3 * amt; gsx = 1 + 0.24 * amt;
-      } else if (state === 'fall' && opts.vy > 0) {
-        gsy = 1 + clamp(opts.vy / 900, 0, 1) * 0.14; gsx = 1 / gsy;
-      }
+      var squash = computeLandSquash(state, opts);
+      gsx = squash[0]; gsy = squash[1];
     }
 
     var q = quantize(drawState, dt, info.kind);
@@ -2635,19 +3103,22 @@
         ctx.save(); ctx.translate(-opts.worldX, -opts.worldY); S.drawPopups(ctx); ctx.restore();
       }
       ctx.save();
+      // Ba phép scale nhân dồn (gốc vẫn là chân): lật hướng + phóng theo opts → squash tiếp đất →
+      //   đổi đơn vị thiết kế sang px. Lật ngang = scale x âm, nên MỌI bộ vẽ chỉ cần vẽ hướng nhìn sang phải.
       ctx.scale(face * scale, scale);
       ctx.scale(gsx, gsy);
       ctx.scale(kx, ky);
 
       var drawn = false;
       var useCache = cache.enabled && !opts.noCache;
-      var s = Math.max(kx, ky) * Math.abs(scale);
-      var res = s <= 1.25 ? 2 : s <= 2.6 ? 4 : 6;
-      var key = useCache ? [info.id, info.kind, opts.skin || '', opts.colors ? JSON.stringify(opts.colors) : '', acc.key,
-        drawState, q.frame, blink ? 1 : 0, flash ? 1 : 0, shadow ? 1 : 0, res].join('|') : null;
+      var res = pickResolution(Math.max(kx, ky) * Math.abs(scale));
+      var key = useCache ? frameKey(info, opts, acc, drawState, q, blink, flash, shadow, res) : null;
       var fr = key ? cacheGet(key) : null;
       if (!fr) {
+        // Cache miss → dựng khung bằng t ĐÃ lượng tử hoá (q) rồi cất vào cache.
         // Không cache: dựng khung tạm trên canvas dùng lại, với t chính xác (mượt hơn).
+        // ⚠️ Bẫy: khung cache phải vẽ bằng q.t (đầu khung), không phải q.raw — nếu không, khung lưu lại sẽ là
+        //   tư thế của một thời điểm ngẫu nhiên trong khung, lần phát sau trông giật lùi/giật tới.
         fr = key ? buildFrame(info, colors, gfx, acc, drawState, q, blink, flash, res, false, shadow)
           : buildFrame(info, colors, gfx, acc, drawState, { t: q.raw, loop: q.loop }, blink, flash, res, true, shadow);
         if (fr && key) cachePut(key, fr);
@@ -2674,7 +3145,19 @@
     ctx.restore();
   };
 
-  // Chân dung tròn: x,y = tâm, size = đường kính. opts: {skin, colors, bg, ring, state, t, face, accessory}
+  /**
+   * Vẽ chân dung tròn của nhân vật (menu chọn nhân vật, hộp thoại). Tái dùng drawCharacter: phóng to rồi
+   * dời sao cho phần ĐẦU nằm giữa vòng tròn, cắt (clip) phần thừa.
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {string} charId
+   * @param {number} x     tâm vòng tròn (px, toạ độ màn hình)
+   * @param {number} y
+   * @param {number} [size=64]  đường kính (px)
+   * @param {{skin?:string, colors?:Object, bg?:string|false, ring?:string|false, state?:string, t?:number,
+   *          time?:number, face?:number, accessory?:string|string[]}} [opts]  bg/ring = false để tắt nền/viền
+   * @example
+   *   OG.Sprites.drawPortrait(ctx, 'bob', 120, 400, 80, { state: 'talk', t: OG.time });
+   */
   S.drawPortrait = function (ctx, charId, x, y, size, opts) {
     opts = opts || {};
     var info = charInfo(charId || 'oggy');
@@ -2687,6 +3170,8 @@
       focus = (-sp.headY + sp.headR * 0.2) / sp.H; span = Math.min(1.1, (sp.headR * 4.4) / sp.H);
     } else if (info.kind === 'npc') { focus = info.npc.focus; span = info.npc.span; }
     else { focus = 0.5; span = 1.25; }
+    // sc: phóng sao cho `span` (tỉ lệ chiều cao nhân vật) vừa đúng đường kính. Rồi dời gốc (điểm chân) xuống
+    //   dưới tâm một đoạn focus·h·sc → điểm ở độ cao `focus` (thường là đầu) rơi đúng tâm vòng tròn.
     var sc = (r * 2) / (info.h * span);
     ctx.save();
     ctx.beginPath(); ctx.arc(x, y, r, 0, TAU);
@@ -2706,8 +3191,12 @@
     ctx.restore();
   };
 
-  // init: nghe event gameplay để phát hiệu ứng hạt + chữ hoạt hình. Gọi nhiều lần cũng an toàn.
   var inited = false;
+  /**
+   * Đăng ký nghe event gameplay để phát hiệu ứng hạt + chữ hoạt hình. Gọi nhiều lần cũng an toàn
+   * (cờ `inited` chặn đăng ký trùng — nếu không, mỗi lần gọi lại sẽ nhân đôi số hạt bụi).
+   * main.js gọi một lần lúc boot (qua danh sách OG.FEATURE_INIT_ORDER).
+   */
   S.init = function () {
     if (inited) return;
     inited = true;
@@ -2722,6 +3211,11 @@
       return { w: ci.w, h: ci.h };
     }
 
+    // 💡 Khái niệm: observer — Player/Level chỉ PHÁT event ('player:land', 'enemy:stomp'...), không biết Sprites
+    //   tồn tại. Sprites tự nghe và quyết định hiệu ứng → không gọi init() thì gameplay vẫn chạy bình thường,
+    //   chỉ mất bụi, sao và chữ "BỐP!". Bên phát và bên nghe không phụ thuộc nhau.
+    // Payload {x, y} của 'player:jump' / 'player:land' là góc trên-trái hitbox → cộng w/2, h để ra điểm CHÂN
+    //   (toạ độ thế giới).
     E.on('player:jump', function (e) {
       if (!e) return;
       var d = dims();
