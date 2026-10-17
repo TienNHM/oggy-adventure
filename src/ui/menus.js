@@ -68,6 +68,15 @@
     if (!n) return '';
     return '<p class="ui-credits-link small"><a href="docs/credits.html" target="_blank" rel="noopener">📷 Ghi công ảnh chụp (' + n + ' ảnh)</a></p>';
   };
+  // Link nhỏ tới trang giáo trình "Học lập trình game với Oggy" (thư mục learn/ được dựng sẵn lúc deploy
+  // bởi tools/learn-site/build.mjs). Đặt ở Cài đặt, dành cho người lớn/sinh viên; mở tab mới để không mất
+  // tiến độ đang chơi.
+  // ⚠️ Bẫy: mở game qua file:// thì không có thư mục learn/ (chỉ CI mới build nó) → dùng địa chỉ site thật.
+  /** @returns {string} HTML đoạn link tới trang học */
+  UI.learnLink = function () {
+    var href = (typeof location !== 'undefined' && location.protocol === 'file:') ? 'https://oggy-adventure.tiennhm.io.vn/learn/' : 'learn/';
+    return '<p class="ui-credits-link small"><a href="' + href + '" target="_blank" rel="noopener">📚 Học lập trình game</a></p>';
+  };
   // Các getter nhỏ dưới đây đều "phòng thủ": module nguồn thiếu thì trả giá trị mặc định thay vì ném lỗi,
   // để menu vẫn mở được khi một module tính năng bị lỗi lúc load.
   /** @returns {Object|null} OG.Save.data hoặc null */
@@ -924,7 +933,7 @@
           '<button type="button" class="ui-danger' + (S.confirmReset ? ' is-confirm' : '') + '" data-act="reset" data-fk="reset" data-id="reset">' +
           (S.confirmReset ? 'Chắc chắn? Bấm lần nữa' : 'Xoá toàn bộ tiến độ') + '</button></div>') +
         '<div class="actions"><button type="button" data-act="back" data-id="settings_back" data-primary>✔ XONG</button></div>' +
-        UI.photoCreditsLink();
+        UI.photoCreditsLink() + UI.learnLink();
       return html;
     }
 

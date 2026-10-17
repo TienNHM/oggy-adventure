@@ -1,5 +1,7 @@
 # Deploy Oggy Adventure lên GitHub Pages mỗi khi push vào master.
 # Chạy smoke test trước; chỉ đóng gói các file game (bỏ tests/, legacy/, tools/).
+# Sau đó dựng sẵn (pre-render) trang giáo trình /learn/ từ docs/learn + docs/design bằng tools/learn-site
+# (thư viện npm chỉ dùng ở bước build này; game vẫn không có build step).
 name: Deploy GitHub Pages
 
 on:
@@ -21,6 +23,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          # Lấy đủ lịch sử git để sitemap ghi đúng ngày sửa (lastmod) của từng bài học.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v5
         with:
@@ -35,6 +40,29 @@ jobs:
           mkdir _site
           cp -r index.html src docs assets CNAME .nojekyll robots.txt sitemap.xml llms.txt site.webmanifest _site/
           rm -f _site/assets/photos/*/_entries.json
+
+      - name: Kiểm tra link trong giáo trình
+        # Link tương đối gãy trong docs/learn/ thì dừng deploy.
+        run: node tests/check-doc-links.js
+
+      - name: Cache npm cho trình dựng trang học
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tools/learn-site/package-lock.json
+
+      - name: Cài thư viện build trang học
+        working-directory: tools/learn-site
+        run: npm ci --no-audit --no-fund
+
+      - name: Dựng trang học /learn/
+        # Tạo _site/learn/... và ghi đè _site/sitemap.xml bằng bản đầy đủ (trang chủ + mọi trang learn).
+        # Link tương đối trỏ tới file không tồn tại → build thoát mã 1 → không deploy.
+        working-directory: tools/learn-site
+        run: |
+          node build.mjs --out ../../_site
+          node check-site.mjs ../../_site
 
       - uses: actions/configure-pages@v5
 

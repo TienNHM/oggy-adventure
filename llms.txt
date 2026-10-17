@@ -28,3 +28,29 @@
 - Phù hợp độ tuổi nào? Thiết kế cho trẻ 5–10 tuổi, người lớn có thể chơi chế độ Thử thách.
 - Trẻ học được gì? Dinh dưỡng, cây cối và côn trùng, thời tiết, tái chế, địa lý – văn hoá – món ăn Việt Nam, kỳ quan thế giới, khủng long, cơ thể người và hệ Mặt Trời.
 - Tiến độ có được lưu không? Có, lưu tự động trên trình duyệt của thiết bị.
+
+## Khoá học lập trình game
+
+Mã nguồn của game đồng thời là giáo trình miễn phí bằng tiếng Việt "Học lập trình game với Oggy" cho sinh viên đã biết JavaScript cơ bản: 14 bài (khoảng 36 giờ), mỗi bài có mục tiêu, khái niệm, phần dẫn đọc code thật trong src/, thí nghiệm trong DevTools, 3 bài tập (⭐ đến ⭐⭐⭐) và trang lời giải riêng. Không build step, không thư viện ngoài.
+
+- Trang khoá học: https://oggy-adventure.tiennhm.io.vn/learn/
+- Hướng dẫn học và cài đặt: https://oggy-adventure.tiennhm.io.vn/learn/huong-dan/
+- Bài 00 — Bắt đầu: chạy game, cấu trúc dự án, smoke test: https://oggy-adventure.tiennhm.io.vn/learn/00-bat-dau/
+- Bài 01 — Module pattern: IIFE, namespace OG, cô lập lỗi: https://oggy-adventure.tiennhm.io.vn/learn/01-module-pattern-iife-namespace/
+- Bài 02 — Game loop và delta time: https://oggy-adventure.tiennhm.io.vn/learn/02-game-loop-delta-time/
+- Bài 03 — Input: giữ phím, cạnh lên, coyote time, jump buffer: https://oggy-adventure.tiennhm.io.vn/learn/03-input/
+- Bài 04 — Vật lý và va chạm AABB: https://oggy-adventure.tiennhm.io.vn/learn/04-vat-ly-va-cham-aabb/
+- Bài 05 — State machine và scene: https://oggy-adventure.tiennhm.io.vn/learn/05-state-machine-scene/
+- Bài 06 — Event bus (observer): https://oggy-adventure.tiennhm.io.vn/learn/06-event-bus-observer/
+- Bài 07 — Vẽ procedural bằng Canvas và cache khung hình: https://oggy-adventure.tiennhm.io.vn/learn/07-ve-canvas-procedural-cache/
+- Bài 08 — Camera và parallax: https://oggy-adventure.tiennhm.io.vn/learn/08-camera-parallax/
+- Bài 09 — AI kẻ địch và trùm: https://oggy-adventure.tiennhm.io.vn/learn/09-ai-ke-dich-boss/
+- Bài 10 — Âm thanh tổng hợp bằng Web Audio API: https://oggy-adventure.tiennhm.io.vn/learn/10-web-audio/
+- Bài 11 — Lưu trữ bền vững và migrate dữ liệu: https://oggy-adventure.tiennhm.io.vn/learn/11-luu-tru-migrate/
+- Bài 12 — Data-driven: thêm màn, câu đố, hành trình mới: https://oggy-adventure.tiennhm.io.vn/learn/12-data-driven-man-cau-do-hanh-trinh/
+- Bài 13 — Kiểm thử tự động và CI với GitHub Actions: https://oggy-adventure.tiennhm.io.vn/learn/13-kiem-thu-ci/
+- Lời giải bài tập: https://oggy-adventure.tiennhm.io.vn/learn/solutions/
+- Sơ đồ kiến trúc: https://oggy-adventure.tiennhm.io.vn/learn/architecture/
+- Thiết kế chi tiết (dữ liệu, lớp, luồng, máy trạng thái, triển khai, quyết định thiết kế): https://oggy-adventure.tiennhm.io.vn/learn/design/
+- Quy ước code và comment: https://oggy-adventure.tiennhm.io.vn/learn/code-style/
+- Mã nguồn: https://github.com/TienNHM/oggy-adventure

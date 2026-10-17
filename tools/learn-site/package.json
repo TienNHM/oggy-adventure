@@ -1,0 +1,20 @@
+{
+  "name": "oggy-learn-site",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Trình dựng sẵn (pre-render) trang web giáo trình /learn/ từ docs/learn và docs/design. Chỉ dùng lúc build/deploy, game không phụ thuộc.",
+  "type": "module",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node build.mjs --out ../../_site",
+    "check": "node check-site.mjs ../../_site"
+  },
+  "dependencies": {
+    "highlight.js": "11.10.0",
+    "marked": "14.1.4",
+    "marked-gfm-heading-id": "4.1.1"
+  }
+}

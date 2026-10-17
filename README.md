@@ -123,6 +123,7 @@ Mã nguồn của game đồng thời là **giáo trình** cho sinh viên đã b
 vật lý và va chạm AABB, state machine và scene, event bus (observer), vẽ procedural bằng Canvas, camera và parallax,
 AI kẻ địch và trùm, Web Audio, lưu trữ và migrate dữ liệu, thiết kế hướng dữ liệu (data-driven), kiểm thử và CI.
 
+- **📚 Học lập trình game trên web:** <https://oggy-adventure.tiennhm.io.vn/learn/> (trang khoá học: lộ trình 14 bài, đánh dấu tiến độ, lời giải, sơ đồ kiến trúc và thiết kế; được dựng từ chính các file Markdown dưới đây bằng [`tools/learn-site/`](tools/learn-site/build.mjs)).
 - **Bắt đầu tại đây:** [`docs/learn/README.md`](docs/learn/README.md) (lộ trình, thời lượng, cách chạy game, mở DevTools, dùng VS Code, quy tắc làm bài tập).
 - Sơ đồ kiến trúc (module, scene, event, vòng đời một frame): [`docs/learn/ARCHITECTURE-DIAGRAMS.md`](docs/learn/ARCHITECTURE-DIAGRAMS.md).
 - Quy ước comment và code: [`docs/learn/CODE_STYLE.md`](docs/learn/CODE_STYLE.md).
@@ -164,12 +165,24 @@ Test chỉ kiểm tra lỗi runtime và lỗi luồng chơi. Hình ảnh, độ 
 
 ## Deploy
 
-Đây là site tĩnh: chỉ cần tải lên `index.html`, `src/`, `assets/` và (nếu muốn) `docs/`. Không có bước build.
+Game là site tĩnh: chỉ cần tải lên `index.html`, `src/`, `assets/` và (nếu muốn) `docs/`. Game không có bước build (chỉ trang giáo trình `/learn/` được dựng sẵn lúc deploy, xem bước 3).
 
 - **GitHub Pages (đã cấu hình):** `.github/workflows/pages.yml` chạy mỗi khi push lên nhánh `master`.
   1. Chạy `node tests/smoke.js`. Test đỏ thì dừng, không deploy.
   2. Đóng gói `index.html`, `src/`, `docs/`, `assets/` (bỏ các file `_entries.json`), `CNAME`, `.nojekyll` và các file SEO.
-  3. Deploy lên Pages với tên miền trong file `CNAME`.
+  3. Chạy `node tests/check-doc-links.js`, rồi dựng sẵn trang giáo trình `/learn/` từ `docs/learn/` và `docs/design/`
+     (`tools/learn-site/build.mjs`, ghi đè `sitemap.xml` bằng bản đầy đủ) và crawl kiểm tra link (`check-site.mjs`).
+     Link gãy thì dừng, không deploy. Thư viện npm (marked, highlight.js) chỉ dùng ở bước này; **game vẫn không có build step**.
+  4. Deploy lên Pages với tên miền trong file `CNAME`.
+
+  Xem trước trang `/learn/` trên máy (cần Node 20+ và Python 3):
+
+  ```bash
+  cd tools/learn-site && npm ci
+  node build.mjs --out ../../_site          # thêm --allow-broken khi đang viết dở tài liệu
+  node check-site.mjs ../../_site           # crawl tìm link/anchor hỏng
+  python -m http.server -d ../../_site 8000 # mở http://localhost:8000/learn/
+  ```
 
   Lần đầu dùng, vào **Settings → Pages → Source** và chọn **GitHub Actions**.
 - **Cloudflare Pages / Netlify / Vercel:** tạo project kiểu static, để trống build command, output directory là thư mục gốc (nơi có `index.html`). Có thể dùng Direct Upload với cả thư mục.
@@ -193,6 +206,7 @@ src/
   social/               Thẻ thành tích, chia sẻ (social.js), bảng xếp hạng (leaderboard.js), social.css
 assets/photos/          Ảnh chụp thật cho thẻ kiến thức (WebP) + credits.js ghi công, mỗi hành trình một thư mục
 tools/photos/           fetch_commons.py: tải ảnh Wikimedia Commons, thu nhỏ, sinh credits.js (không deploy)
+tools/learn-site/       build.mjs: dựng trang web giáo trình /learn/ từ Markdown lúc deploy; check-site.mjs: crawl kiểm tra link
 tests/                  Smoke test Node: smoke.js, fake-dom.js
 docs/                   credits.html (ghi công ảnh), ARCHITECTURE.md (kiến trúc, hợp đồng API, danh sách event), STORY.md (hành trình học tập v2), screenshots/, ví dụ worker bảng xếp hạng online, trang demo sprite
   learn/                Giáo trình lập trình game: README.md (lộ trình 14 bài), CODE_STYLE.md, ARCHITECTURE-DIAGRAMS.md, các bài 00–13
