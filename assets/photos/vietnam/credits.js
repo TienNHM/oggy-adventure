@@ -16,7 +16,7 @@
  *             focus }                  // (tuỳ chọn) {x, y} 0..1: điểm giữ lại khi cắt ảnh cho vừa khung
  * Giấy phép hợp lệ: Public Domain, CC0, CC BY, CC BY-SA, Unsplash License, Pexels License (xem OG.Photos.licenseOk). */
 /* AUTO-SUMMARY (tự sinh khi chạy "write")
- * Danh sách (23 ảnh):
+ * Danh sách (24 ảnh):
  *   hn_hoguom        CC BY 2.0      Richard Mortel from Riyadh, Saudi Arabia
  *   hn_pho           CC BY-SA 3.0   Codename5281
  *   hn_oldquarter    CC BY-SA 4.0   Christophe95
@@ -28,6 +28,7 @@
  *   hue_citadel      CC BY 4.0      Supanut Arunoprayote
  *   hue_nonla        CC BY 2.0      terence from Singapore
  *   hue_river        CC BY 4.0      P. Hughes
+ *   hue_saola        CC BY-SA 3.0   Silviculture (Wikipedia tiếng Việt)
  *   ha_lantern       Public domain  Khương Việt Hà
  *   ha_oldtown       CC BY-SA 4.0   Steffen Schmitz
  *   ha_bridge        CC BY-SA 4.0   Steffen Schmitz
@@ -177,6 +178,22 @@ OG.Photos.register("vietnam", /* BEGIN-ENTRIES */ {
     "sourceUrl": "https://commons.wikimedia.org/wiki/File:Hu%E1%BA%BF_-_Vietnamese_dragon_boat_operating_as_a_tourist_vessel_on_the_Perfume_River.jpg",
     "title": "Huế - Vietnamese dragon boat operating as a tourist vessel on the Perfume River",
     "note": "Đã thu nhỏ, chuyển sang WebP"
+  },
+  "hue_saola": {
+    "file": "hue_saola.webp",
+    "w": 692,
+    "h": 486,
+    "author": "Silviculture (Wikipedia tiếng Việt)",
+    "license": "CC BY-SA 3.0",
+    "licenseUrl": "http://creativecommons.org/licenses/by-sa/3.0/",
+    "source": "Wikimedia Commons",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Pseudoryx_nghetinhensis.PNG",
+    "title": "Sao la (Pseudoryx nghetinhensis) trong rừng",
+    "note": "Đã thu nhỏ, chuyển sang WebP. Commons ghi người tải lên năm 2007 là tác giả, không ghi nguồn gốc ảnh — nếu chủ sở hữu thật liên hệ, gỡ ảnh này.",
+    "focus": {
+      "x": 0.38,
+      "y": 0.55
+    }
   },
   "ha_lantern": {
     "file": "ha_lantern.webp",
