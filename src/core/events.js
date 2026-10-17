@@ -1,12 +1,33 @@
-/* OG.Events — event bus đơn giản (on/off/once/emit).
- * Listener bị lỗi sẽ được bắt lại, không ảnh hưởng listener khác hay gameplay.
- * Danh sách event chuẩn: OG.EV (xem docs/ARCHITECTURE.md mục "Events"). */
+// @ts-check
+/* ============================================================================
+ * OG.Events + OG.EV — EVENT BUS (kênh sự kiện dùng chung)
+ * ----------------------------------------------------------------------------
+ * Vai trò:      Cho các module "nói chuyện" với nhau mà KHÔNG cần biết nhau. Vd Player chỉ cần
+ *               emit('player:jump'); Audio, Quests, Social... ai quan tâm thì tự on('player:jump').
+ * Khái niệm:    observer pattern / publish–subscribe · loose coupling (giảm phụ thuộc giữa module) ·
+ *               hằng tên event (tránh gõ sai chuỗi) · cô lập lỗi listener · wildcard listener
+ * Bài học:      docs/learn/06-event-bus-observer.md
+ * Phụ thuộc:    OG.util.safe (namespace.js), OG.Config.DEBUG
+ * Event:        định nghĩa TOÀN BỘ tên event chuẩn trong OG.EV (payload ghi ở comment cuối mỗi dòng).
+ *               Bảng đầy đủ: docs/ARCHITECTURE.md mục 6 và docs/STORY.md mục 7.
+ * API công khai: OG.Events.on/off/once/emit/clear, OG.EV.*
+ * Đọc tiếp:     src/audio/audio.js (ví dụ module chỉ NGHE event) → src/world/quests.js (nghe để đếm nhiệm vụ)
+ *               → src/game/player.js (ví dụ module PHÁT event)
+ *
+ * 💡 Khái niệm — vì sao dùng event bus thay vì gọi hàm trực tiếp?
+ *   Gọi trực tiếp: Player phải biết Audio, Quests, Hud, Social... → thêm 1 module là phải sửa Player.
+ *   Event bus: Player chỉ phát "tôi vừa nhảy". Module mới chỉ cần đăng ký nghe → mở rộng KHÔNG sửa code cũ.
+ *   Đánh đổi: khó lần theo "ai xử lý event này" hơn → bù lại bằng bảng OG.EV + tìm kiếm tên event trong dự án.
+ * ========================================================================== */
 (function () {
   'use strict';
   var OG = window.OG;
-  var listeners = {}; // name -> [fn]
+  /** @type {Object<string, OGListener[]>} tên event -> danh sách listener (theo thứ tự đăng ký) */
+  var listeners = {};
 
-  // Hằng tên event chuẩn. Dùng OG.EV.X hoặc chuỗi trực tiếp đều được.
+  // Hằng tên event chuẩn. Dùng OG.EV.X hoặc chuỗi trực tiếp đều được (giá trị chuỗi là API công khai — KHÔNG đổi).
+  // Quy ước tên: '<chủ thể>:<việc vừa xảy ra>' ở thì quá khứ/hoàn thành, vd 'item:collect', 'boss:defeated'.
+  // Comment cuối dòng = các field của payload.
   OG.EV = {
     SCENE_CHANGE: 'scene:change',       // {from, to, params}
     GAME_START: 'game:start',           // {charId, run}
@@ -81,38 +102,77 @@
   };
 
   OG.Events = {
-    // Đăng ký listener. Trả về hàm huỷ đăng ký.
+    /**
+     * Đăng ký listener cho một event.
+     * @param {string} name tên event, nên dùng hằng OG.EV.X; '*' = nghe MỌI event (listener nhận (name, payload))
+     * @param {OGListener} fn hàm nhận đúng 1 tham số payload (object)
+     * @returns {Unsubscribe} gọi hàm này để huỷ đăng ký
+     * @example
+     *   var off = OG.Events.on(OG.EV.PLAYER_JUMP, function (p) { console.log('nhảy tại', p.x); });
+     *   off(); // thôi nghe
+     */
     on: function (name, fn) {
       (listeners[name] = listeners[name] || []).push(fn);
+      // ⚠️ Bẫy: scene/module đăng ký trong enter() mà không off() trong exit() → mỗi lần vào scene
+      //   lại thêm 1 listener, event bị xử lý 2, 3, 4 lần (memory leak). Giữ hàm off trả về để huỷ.
       return function () { OG.Events.off(name, fn); };
     },
+
+    /**
+     * Huỷ đăng ký. Phải truyền ĐÚNG tham chiếu hàm đã on() (hàm ẩn danh viết lại sẽ không khớp).
+     * @param {string} name
+     * @param {OGListener} fn
+     */
     off: function (name, fn) {
       var arr = listeners[name];
       if (!arr) return;
       var i = arr.indexOf(fn);
       if (i >= 0) arr.splice(i, 1);
     },
+
+    /**
+     * Nghe event đúng MỘT lần rồi tự huỷ.
+     * @param {string} name
+     * @param {OGListener} fn
+     * @returns {Unsubscribe} huỷ sớm nếu event chưa xảy ra
+     */
     once: function (name, fn) {
       var off = OG.Events.on(name, function (p) { off(); fn(p); });
       return off;
     },
-    // Phát event. Listener nhận đúng 1 tham số payload (object).
+
+    /**
+     * Phát event tới mọi listener đã đăng ký (đồng bộ: chạy xong hết listener mới return).
+     * @param {string} name
+     * @param {Object} [payload] dữ liệu kèm theo; thiếu thì listener nhận {} (không bao giờ undefined)
+     * @example
+     *   OG.Events.emit(OG.EV.COINS_CHANGE, { coins: 12, delta: 2, reason: 'pickup' });
+     */
     emit: function (name, payload) {
       if (OG.Config && OG.Config.DEBUG) console.log('[OG.Events]', name, payload);
       var arr = listeners[name];
       if (arr) {
+        // ⚠️ Bẫy: listener có thể off() chính nó (vd once) trong lúc đang duyệt mảng → splice làm
+        //   bỏ sót listener kế tiếp. Duyệt trên BẢN SAO (slice) để tránh.
         arr = arr.slice();
         for (var i = 0; i < arr.length; i++) {
+          // 💡 Khái niệm: cô lập lỗi — một listener ném lỗi không chặn listener khác và không làm sập frame.
           OG.util.safe('listener ' + name, arr[i], null, [payload || {}]);
         }
       }
       // Listener wildcard '*' nhận (name, payload) — tiện cho debug/analytics.
+      // 🧪 Thử: gõ trong console trình duyệt  OG.Events.on('*', function (n, p) { console.log(n, p); })  rồi chơi.
       var all = listeners['*'];
       if (all) {
         all = all.slice();
         for (var j = 0; j < all.length; j++) OG.util.safe('listener *', all[j], null, [name, payload || {}]);
       }
     },
+
+    /**
+     * Xoá listener của một event, hoặc TẤT CẢ nếu không truyền name (dùng khi reset/test).
+     * @param {string} [name]
+     */
     clear: function (name) { if (name) delete listeners[name]; else listeners = {}; }
   };
 })();

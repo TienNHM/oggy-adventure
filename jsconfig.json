@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false,
+    "noEmit": true,
+    "target": "ES2019",
+    "lib": ["ES2019", "DOM"],
+    "module": "none",
+    "moduleResolution": "node",
+    "strict": false,
+    "noImplicitAny": false,
+    "skipLibCheck": true,
+    "types": []
+  },
+  "include": ["src/**/*.js", "src/types.d.ts"],
+  "exclude": ["node_modules", "legacy", "tests", "tools", "assets", "docs"]
+}
