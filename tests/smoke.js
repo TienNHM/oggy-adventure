@@ -1116,8 +1116,27 @@ async function detailedLevelChecks(jid, levelId) {
     p.x = spot.x - 40; p.y = OG.FLOOR_Y - p.h - 1; p.vy = 0;
     step(3);
     check((evCount['guide:talk'] || 0) > talks, 'Đến gần người dẫn đường không phát guide:talk');
+    check(spot.near && spot.idx === 0, 'Người dẫn đường không bắt đầu từ câu 1');
+    const multi = spot.lines.length > 1;
+    // E lần 1: chữ đang hiện dần → hiện hết câu; E lần 2: sang câu tiếp (hoặc tắt nếu chỉ có 1 câu).
     await press('KeyE');
-    check((evCount['guide:talk'] || 0) > talks + 1, 'Nhấn E gần người dẫn đường không sang câu tiếp');
+    check(spot.near && spot.idx === 0, 'Nhấn E khi chữ đang hiện lại nhảy câu (phải hiện hết câu trước)');
+    await press('KeyE');
+    check(multi ? spot.idx === 1 && (evCount['guide:talk'] || 0) > talks + 1 : spot.closed, 'Nhấn E gần người dẫn đường không sang câu tiếp');
+    // Đi xa → về câu 1; quay lại → nói lại từ câu 1.
+    p.x = spot.x + 400; step(3);
+    check(!spot.near && spot.idx === 0 && !spot.closed, 'Đi xa người dẫn đường không đặt lại về câu 1');
+    p.x = spot.x - 40; p.y = OG.FLOOR_Y - p.h - 1; p.vy = 0; step(3);
+    check(spot.near && spot.idx === 0, 'Quay lại người dẫn đường không nói lại từ câu 1');
+    // Space cũng qua câu được (2 lần: hiện hết chữ → sang câu tiếp).
+    await press('Space'); await press('Space');
+    check(multi ? spot.idx === 1 : spot.closed, 'Nhấn Space gần người dẫn đường không sang câu tiếp');
+    // Tự chuyển câu rồi tự tắt khi hết thời gian đọc (đứng yên, không bấm gì).
+    p.x = spot.x - 40; p.y = OG.FLOOR_Y - p.h - 1; p.vy = 0;
+    step(60 * 30);
+    check(spot.closed && !spot.near, 'Bong bóng người dẫn đường không tự tắt sau câu cuối');
+    step(30);
+    check(!spot.near, 'Bong bóng tự bật lại khi người chơi vẫn đứng yên tại chỗ');
   }
   // Rơi vực (kid): không mất mạng, hồi về chỗ cũ.
   const lives0 = OG.Game.run.lives;

@@ -22,7 +22,10 @@
  * Hợp đồng: docs/STORY.md mục 6.4.
  * - NPC đứng ở guideSpots[].x; chưa nói chuyện thì có dấu "!" nhún nhảy và thỉnh thoảng vẫy tay.
  * - Đến gần (≤ 90 px) hoặc chạm vào NPC → bong bóng thoại hiện chữ dần + 'guide:talk'.
- * - Nhấn E/✦ (hoặc chạm lại) → câu tiếp theo (hết câu thì quay lại câu đầu).
+ * - Chữ hiện xong → chờ đủ thời gian đọc (READ_BASE + READ_PER_CHAR × số ký tự) rồi TỰ sang câu tiếp;
+ *   hết câu cuối thì chờ thêm rồi tự tắt bong bóng (đứng yên tại chỗ cũng không bật lại).
+ * - Nhấn E / Space (hoặc chạm vào NPC) → qua câu nhanh: đang hiện chữ thì hiện hết câu, hiện xong rồi thì sang câu tiếp.
+ * - Đi xa rồi quay lại → nói lại từ câu 1.
  * - spot.card → nói chuyện xong mở khoá thẻ đó (thông báo "Thẻ mới" góc màn hình).
  * ========================================================================== */
 
@@ -36,9 +39,10 @@
  * @property {number} w        kích thước nhân vật, px (để vẽ và hit-test chạm)
  * @property {number} h
  * @property {string[]} lines  các câu thoại (xoay vòng)
- * @property {number} idx      câu đang nói (tăng mãi, dùng idx % lines.length)
+ * @property {number} idx      câu đang nói, 0..lines.length-1 (về 0 khi người chơi đi xa)
  * @property {boolean} near    đang trong trạng thái "đang nói chuyện" (bong bóng hiện)
  * @property {boolean} talked  đã nói ít nhất 1 lần (tắt dấu "!")
+ * @property {boolean} closed  đã nói hết các câu và tự tắt; chỉ mở lại khi người chơi đi xa rồi quay lại (hoặc chạm NPC)
  * @property {string|null} card cardId mở khoá khi nói chuyện
  * @property {number} revealT  giây kể từ khi bắt đầu câu hiện tại (hiệu ứng gõ chữ)
  * @property {number} nearT    giây đã đứng gần liên tục (chọn hoạt ảnh vẫy tay lúc mới gặp)
@@ -53,6 +57,14 @@
   var TALK_RANGE_Y = 140;  // chênh lệch độ cao tối đa (chân người chơi ↔ chân NPC), px — đứng trên bục cao thì không tính
   var LEAVE_MARGIN = 40;   // phải đi xa thêm chừng này (px) ngoài TALK_RANGE thì bong bóng mới tắt
   var CPS = 42;            // ký tự mỗi giây của hiệu ứng hiện chữ
+  // Thời gian giữ một câu SAU KHI đã hiện hết chữ, trước khi tự sang câu tiếp / tự tắt (giây).
+  // 💡 Khái niệm: thời gian đọc tỉ lệ với độ dài câu — câu dài cần lâu hơn; trẻ 5–10 tuổi đọc chậm nên để rộng rãi.
+  // 🧪 Thử: đổi READ_PER_CHAR 0.06 → 0.02 rồi lại gần một NPC: câu chuyển nhanh hơn hẳn.
+  var READ_BASE = 1.8;
+  var READ_PER_CHAR = 0.06;
+  function readTime(line) { return READ_BASE + line.length * READ_PER_CHAR; }
+  /** Giây tính từ đầu câu tới lúc câu được giữ xong (hiện chữ + thời gian đọc). */
+  function lineDuration(line) { return line.length / CPS + readTime(line); }
 
   /** @type {{text:string, t:number, dur:number, charId:string, name:string}|null} câu say() đang hiện (t, dur: giây) */
   var sayMsg = null;
@@ -145,6 +157,16 @@
   // ===========================================================================
   // Level hook
   // ===========================================================================
+  /**
+   * Sang câu tiếp; nếu đã là câu cuối thì tắt bong bóng (trạng thái ĐÃ TẮT, chờ người chơi đi xa rồi quay lại).
+   * @param {any} st
+   * @param {GuideSpot} s
+   */
+  function nextLine(st, s) {
+    if (s.idx + 1 < s.lines.length) { s.idx++; Guide.talk(st, s); }
+    else { s.near = false; s.closed = true; }
+  }
+
   /** @type {LevelHook} */
   var guideHook = {
     id: 'guide', order: 30,
@@ -158,7 +180,7 @@
         var lines = (s.lines && s.lines.length ? s.lines : [s.text || '...']).map(String);
         return {
           index: i, x: s.x, y: s.y != null ? s.y : OG.FLOOR_Y, charId: id, name: s.name || (s.charId ? c.name : g.name),
-          w: c.w || 34, h: c.h || 50, lines: lines, idx: 0, near: false, talked: false, card: s.card || null,
+          w: c.w || 34, h: c.h || 50, lines: lines, idx: 0, near: false, talked: false, closed: false, card: s.card || null,
           revealT: 0, nearT: 0, seed: Math.random() * 6
         };
       });
@@ -180,22 +202,33 @@
         // Vùng chạm: rộng ít nhất 36 px mỗi bên, cao từ trên đầu (1,4 lần chiều cao + 30 px) xuống dưới chân 12 px.
         var tapped = tap && Math.abs(tap.x - s.x) < Math.max(36, s.w) && tap.y > s.y - s.h * 1.4 - 30 && tap.y < s.y + 12;
         if (near) s.nearT += dt; else s.nearT = 0;
-        // 💡 Khái niệm: máy trạng thái nhỏ — s.near (đang nói hay không) cộng cờ s.talked (đã gặp chưa, tắt dấu "!")
-        //   ghép thành 3 trạng thái chưa gặp → đang nói → đã nói. Các chuyển trạng thái:
-        //   vào gần → nói câu hiện tại · đang nói + E/chạm → câu tiếp · đi xa hẳn → tắt bong bóng.
-        if ((near && !s.near) || (tapped && !s.near)) {
-          // Vừa đến gần / chạm lần đầu: nói câu hiện tại
-          s.near = true; s.talked = true;
-          Guide.talk(st, s);
-        } else if (s.near && (tapped || (near && OG.Input.pressed('action')))) {
-          // Đang nói: sang câu tiếp theo
-          s.idx++; Guide.talk(st, s);
-          // ⚠️ Bẫy: không "tiêu thụ" cú chạm thì module khác (vd nút nhảy cảm ứng) xử lý thêm lần nữa.
-          if (tapped) ptr.justPressed = false; // chạm NPC không tính là chạm khác
-        } else if (!near && !tapped && s.near && Math.abs(cx - s.x) > TALK_RANGE + LEAVE_MARGIN) {
-          // 💡 Khái niệm: hysteresis (ngưỡng vào ≠ ngưỡng ra) — vào ở 90 px nhưng 130 px mới tắt,
+        // 💡 Khái niệm: máy trạng thái nhỏ — 3 trạng thái của một NPC:
+        //   IM LẶNG (!near, !closed) ──vào gần / chạm──▶ ĐANG NÓI (near) ──hết câu cuối──▶ ĐÃ TẮT (closed)
+        //   ĐANG NÓI: hết thời gian đọc → câu tiếp (tự động) · E / Space / chạm → qua câu nhanh.
+        //   Đi xa hẳn (ĐANG NÓI hoặc ĐÃ TẮT) → IM LẶNG và quay về câu 1. Cờ s.talked chỉ để tắt dấu "!".
+        var farAway = !near && Math.abs(cx - s.x) > TALK_RANGE + LEAVE_MARGIN;
+        if (farAway && !tapped) {
+          // 💡 Khái niệm: hysteresis (ngưỡng vào ≠ ngưỡng ra) — vào ở 90 px nhưng 130 px mới tính là đi xa,
           //   nên đứng lấp ló ở rìa vùng nói chuyện thì bong bóng không bật/tắt liên tục.
-          s.near = false;
+          s.near = false; s.closed = false; s.idx = 0;
+        } else if (!s.near && ((near && !s.closed) || tapped)) {
+          // Vừa đến gần (hoặc chạm vào NPC, kể cả khi đã tắt): nói từ câu 1
+          s.near = true; s.talked = true; s.closed = false; s.idx = 0;
+          Guide.talk(st, s);
+          if (tapped) ptr.justPressed = false;
+        } else if (s.near) {
+          var line = s.lines[s.idx];
+          var shown = s.revealT * CPS >= line.length;
+          // ⚠️ Bẫy: ↑ và W cũng gửi 'jump' (kèm 'up'); chỉ Space gửi 'jump' mà KHÔNG có 'up' → nhận ra Space.
+          //   Space vẫn làm Oggy nhảy như thường (không "tiêu thụ" phím) — người chơi không bị kẹt khi đứng cạnh NPC.
+          var skip = tapped || (near && (OG.Input.pressed('action') || (OG.Input.pressed('jump') && !OG.Input.pressed('up'))));
+          if (skip && !shown) {
+            s.revealT = line.length / CPS;          // lần bấm đầu: hiện hết câu ngay
+          } else if (skip || s.revealT >= lineDuration(line)) {
+            nextLine(st, s);                        // bấm khi đã hiện xong, hoặc hết thời gian đọc
+          }
+          // ⚠️ Bẫy: không "tiêu thụ" cú chạm thì module khác (vd nút nhảy cảm ứng) xử lý thêm lần nữa.
+          if (tapped) ptr.justPressed = false;
         }
       }
     },
@@ -208,7 +241,7 @@
       if (!spots) return;
       for (var i = 0; i < spots.length; i++) {
         var s = spots[i];
-        var line = s.lines[s.idx % s.lines.length];
+        var line = s.lines[s.idx];
         var talking = s.near && s.revealT * CPS < line.length;
         // Chọn động tác: nói (miệng mấp máy), vẫy tay khi vừa gặp / mời gọi, chỉ tay khi đã nói xong
         var anim = talking ? 'talk' : (s.near && s.nearT < 0.9) ? 'wave'
@@ -245,13 +278,24 @@
       for (var i = 0; i < spots.length; i++) {
         var s = spots[i];
         if (!s.near) continue;
-        var line = s.lines[s.idx % s.lines.length];
+        var line = s.lines[s.idx];
         var box = ui().drawBubble(ctx, s.x, s.y - s.h - 10, line, {
           maxW: 320, size: 18, name: s.name, reveal: Math.floor(s.revealT * CPS), bounds: bounds, minW: 150 });
-        // Gợi ý câu tiếp: "1/3  E ▶" (hoặc "✦ ▶" trên màn hình cảm ứng) — chỉ hiện khi chữ đã gõ xong.
+        // Gợi ý câu tiếp: "1/3  E ▶" (hoặc "✦ ▶" trên màn hình cảm ứng) — chỉ hiện khi chữ đã gõ xong,
+        // kèm vạch đếm ngược thời gian còn lại trước khi tự sang câu tiếp / tự tắt.
         // 🧪 Thử: đổi CPS 42 → 10 rồi lại gần một NPC: chữ hiện chậm như đánh máy, gợi ý "E ▶" xuất hiện muộn hơn.
-        if (s.lines.length > 1 && s.revealT * CPS >= line.length) {
-          var hint = ((s.idx % s.lines.length) + 1) + '/' + s.lines.length + (isTouch() ? '  ✦ ▶' : '  E ▶');
+        var revealDone = s.revealT * CPS >= line.length;
+        if (revealDone) {
+          var left = U.clamp(1 - (s.revealT - line.length / CPS) / readTime(line), 0, 1);
+          ctx.save();
+          ctx.fillStyle = 'rgba(23,35,61,0.25)';
+          U.roundRectPath(ctx, box.x + 14, box.y + box.h - 5, box.w - 28, 3, 2); ctx.fill();
+          ctx.fillStyle = '#ffc94a';
+          U.roundRectPath(ctx, box.x + 14, box.y + box.h - 5, (box.w - 28) * left, 3, 2); ctx.fill();
+          ctx.restore();
+        }
+        if (s.lines.length > 1 && revealDone) {
+          var hint = (s.idx + 1) + '/' + s.lines.length + (isTouch() ? '  ✦ ▶' : '  E ▶');
           ctx.save();
           ctx.font = OG.font(13, 'bold');
           var hw = ctx.measureText(hint).width + 16, hx = box.x + box.w - hw - 8, hy = box.y + box.h - 11;
