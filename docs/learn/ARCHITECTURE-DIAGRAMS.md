@@ -277,7 +277,7 @@ Scene `level` có FSM nhỏ của riêng nó trong `Level.state.phase` (`src/gam
 stateDiagram-v2
   direction LR
   [*] --> play : enter()
-  play --> clear : đủ pizza + qua mọi cổng + chạm EXIT ('level:clear', 'door:enter')
+  play --> clear : đủ pizza + qua mọi cổng + chạm EXIT ('level#58;clear', 'door#58;enter')
   clear --> done : sau CLEAR_DELAY giây ăn mừng
   done --> [*] : Game.finishStage(levelId)
 ```

@@ -138,7 +138,7 @@ stateDiagram-v2
   wait --> Chon : stateDone
   Rieng --> Chon : đòn xong
   Rieng --> recoil : onHit, cùng pha (nếu không có onHurt riêng)
-  Rieng --> roar : onHit làm đổi pha (emit 'boss:phase')
+  Rieng --> roar : onHit làm đổi pha (emit 'boss#58;phase')
   recoil --> Chon : stateDone và chạm đất
   roar --> Chon : stateDone (bất tử)
   Rieng --> dead : hp = 0 (die)
@@ -171,8 +171,8 @@ stateDiagram-v2
   potsHop --> idle : chạm đất, rơi xoong nồi
   walk --> eatWalk : choose, đòn eat (bánh rơi)
   eatWalk --> eating : tới bánh đã chạm sàn
-  eating --> idle : finishEating, hồi 1 máu ('boss:heal')
-  eatWalk --> angry : bé giật bánh ('boss:foodStolen')
+  eating --> idle : finishEating, hồi 1 máu ('boss#58;heal')
+  eatWalk --> angry : bé giật bánh ('boss#58;foodStolen')
   eating --> angry : bé giật bánh
   angry --> walk : choose
   idle --> walk : choose
@@ -261,7 +261,7 @@ stateDiagram-v2
     DanhDon --> XinLuot : đánh xong, ctrl.release(b)
     DanhDon --> dead : hết máu
   }
-  M --> roar : một tên khác gục, phase++ (emit 'boss:phase')
+  M --> roar : một tên khác gục, phase++ (emit 'boss#58;phase')
   roar --> M
 ```
 [(xem SVG)](svg/04-boss-trio.svg)
@@ -279,7 +279,7 @@ stateDiagram-v2
   [*] --> fight : enter, Bosses.create thành công
   [*] --> skip : không tạo được trùm (boss = null)
   skip --> [*] : frame update đầu tiên → finish()
-  fight --> end : boss.isDefeated() ('boss:defeated', +500)
+  fight --> end : boss.isDefeated() ('boss#58;defeated', +500)
   end --> [*] : endT > END_DELAY (1,6 giây) → finish() → completeLevel
 ```
 [(xem SVG)](svg/04-boss-battle.svg)
@@ -329,7 +329,7 @@ stateDiagram-v2
   HetChu --> Xong : advance() ở khung cuối → finish(false)
   HienChu --> Xong : Esc / "Bỏ qua ⏭" → finish(true)
   HetChu --> Xong : Esc / "Bỏ qua ⏭" → finish(true)
-  Xong --> [*] : overlay: pop() rồi onDone · không overlay: onDone hoặc go('journeyMap')
+  Xong --> [*] : overlay#58; pop() rồi onDone · không overlay#58; onDone hoặc go('journeyMap')
 ```
 [(xem SVG)](svg/04-comic.svg)
 
@@ -370,11 +370,11 @@ stateDiagram-v2
   state "suspended (bị chặn / tạm ngưng)" as Susp
   state "running + unlocked" as Run {
     [*] --> BinhThuong
-    BinhThuong --> GiamNhac : scene:change tới 'pause' (setDuck 0,3)
+    BinhThuong --> GiamNhac : scene#58;change tới 'pause' (setDuck 0,3)
     GiamNhac --> BinhThuong : rời pause (setDuck 1)
   }
   state "Không hỗ trợ (supported = false)" as KhongHT
-  ChuaTao --> Susp : input:firstGesture → unlock() → createContext()
+  ChuaTao --> Susp : input#58;firstGesture → unlock() → createContext()
   ChuaTao --> KhongHT : trình duyệt không có AudioContext / tạo lỗi
   Susp --> Run : ctx.resume() resolve → onUnlocked() (phát bản nhạc đang chờ)
   ChuaTao --> Run : tạo xong đã 'running' → onUnlocked()
@@ -406,7 +406,7 @@ stateDiagram-v2
     state "Biến mất (openT > GATE_VANISH_T)" as Mat
     Dong --> Hoi : chạm cổng, cooldown <= 0
     Hoi --> Dong : Để sau / Esc (cooldown 1,2 giây)
-    Hoi --> Mo : onPass ('gate:open')
+    Hoi --> Mo : onPass ('gate#58;open')
     Mo --> Mat : 1,2 giây
   }
   state "Cổng ở cửa EXIT (x = 'exit')" as Exit {
@@ -422,7 +422,7 @@ stateDiagram-v2
     [*] --> Chua : checkpointHook.enter (chỉ khi params.checkpoints)
     state "Chưa tới (cờ vàng)" as Chua
     state "Đã tới (cờ xanh, dựng trong 0,5 giây)" as Toi
-    Chua --> Toi : tâm người chơi vượt c.x ('checkpoint:reach')
+    Chua --> Toi : tâm người chơi vượt c.x ('checkpoint#58;reach')
   }
 ```
 [(xem SVG)](svg/04-gate-checkpoint.svg)
@@ -444,7 +444,7 @@ stateDiagram-v2
   [*] --> KhongCo : get(jid, cardId) = null
   state "Không có ảnh → vẽ cartoon" as KhongCo
   [*] --> loading : image() lần đầu, new Image()
-  loading --> ready : img.onload ('photo:load')
+  loading --> ready : img.onload ('photo#58;load')
   loading --> error : img.onerror / ném lỗi
   ready --> [*] : vẽ drawCover, hết đời khi đăng ký lại
   error --> [*] : vẽ cartoon, KHÔNG thử lại

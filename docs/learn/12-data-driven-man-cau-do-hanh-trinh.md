@@ -75,7 +75,7 @@ sequenceDiagram
   F->>R: register({id:'home', areas}) → mergeById, compiled = null
   M->>R: init() → validateAll() (lỗi → ẩn hành trình) → compileAll()
   G->>R: getLevel('home-kitchen-2') → LevelDef ĐẦY ĐỦ (từ cache)
-  G->>G: scene 'level' dựng trạng thái từ LevelDef; hook 'learn' đọc pages/quizGates
+  G->>G: scene 'level' dựng trạng thái từ LevelDef#59; hook 'learn' đọc pages/quizGates
 ```
 
 ---
