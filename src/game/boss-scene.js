@@ -241,6 +241,9 @@
       OG.Particles.clear();
       OG.Camera.reset();
       // Vào thẳng scene boss (vd test) mà chưa qua màn → vẫn có stage để cộng điểm/thống kê.
+      // ⚠️ Bẫy: beginStage ghi vào OG.Game.run, nên phải có lượt chơi (run) trước. Gõ OG.Scenes.go('boss', ...) ngay từ menu
+      //   lúc vừa tải trang (run còn null) sẽ lỗi "Cannot set properties of null (setting 'levelId')". Bấm "Chơi" trước,
+      //   hoặc gọi OG.Game.ensureRun() trước khi go('boss') (bài 09, "Thử ngay").
       if (!OG.Game.stage) OG.Game.beginStage(level);
       var arena = makeArena(level, bossId);
       var boss = OG.util.call('Bosses', 'create', bossId, arena) || null;

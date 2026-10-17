@@ -1,4 +1,4 @@
-# Social: ghi chú cho agent Tích hợp
+# Social: ghi chú cho nhóm Tích hợp
 
 ## Không cần sửa index.html
 Code nằm trong 2 file stub đã có: `src/social/social.js` và `src/social/leaderboard.js` (đúng thứ tự load hiện tại),
@@ -9,7 +9,7 @@ cùng `src/social/social.css`. Không thêm file script mới.
 - Scene `gameover` / `victory` gọi `OG.Social.mountResult(panelEl, result)`. Khối Social được chèn **trước** hàng
   `.actions` (hoặc `.ui-actions`) của panel và không xoá nút nào.
 - Menu chính nên có nút vào bảng xếp hạng: `OG.Scenes.go('leaderboard', {back: 'menu'})`
-  (agent Menus kiểm tra `OG.Scenes.has('leaderboard')`).
+  (nhóm Menus kiểm tra `OG.Scenes.has('leaderboard')`).
 - Params của scene leaderboard: `{back, backParams, highlightId, tab: 'local'|'online'}`. Thoát bằng Esc hoặc nút QUAY LẠI,
   khi đó gọi `OG.Scenes.go(back, backParams)`. Nếu mở từ panel kết quả thì `backParams = {result}`, nên scene
   gameover/victory sẽ được dựng lại với cùng RunResult. Điểm không bị lưu trùng vì có khoá theo result.

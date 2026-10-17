@@ -33,6 +33,7 @@ Cấu trúc thư mục (rút gọn):
 | `src/world/`, `src/ui/`, `src/social/`, `src/story/` | Bản đồ, nhiệm vụ, menu, HUD, cửa hàng, bảng xếp hạng, truyện tranh, thẻ học | 05, 06, 12 |
 | `src/journeys/` | **Dữ liệu** 4 hành trình học tập | 12 |
 | `tests/` | Smoke test chạy bằng Node | 13 |
+| `src/*/INTEGRATION.md` | Ghi chú tích hợp của từng thư mục: việc nhóm phụ trách thư mục đó cần **nhóm Tích hợp** làm hộ ở ngoài thư mục (thêm thẻ `<script>`, gắn hook, payload event mới...) | 00, 06 |
 | `docs/` | Tài liệu kiến trúc, hợp đồng API, giáo trình này | — |
 
 Hai tài liệu "hợp đồng" bạn sẽ quay lại nhiều lần: [docs/ARCHITECTURE.md](../ARCHITECTURE.md) (kiến trúc, quy ước toạ độ, danh sách
@@ -74,10 +75,11 @@ sửa gì xong cũng chạy lại.
 
 ## 🔍 Đọc code
 
-### 4.1. `index.html` — thứ tự nạp script
+### 1. `index.html` — thứ tự nạp script
 
 Mở [index.html](../../index.html), đọc khối comment đầu file rồi kéo xuống phần `THỨ TỰ LOAD SCRIPT`. Quy tắc được ghi ngay
-phía trên các thẻ script:
+phía trên các thẻ script (tiêu đề mỗi nhóm script ghi "nhóm phụ trách": dự án được viết song song bởi nhiều
+nhóm, mỗi nhóm giữ một thư mục; nhóm **Tích hợp** ghép chúng lại và đọc các file `src/*/INTEGRATION.md` để biết cần làm gì):
 
 ```html
 <!-- ===== THỨ TỰ LOAD SCRIPT (không dùng ES modules để chạy được qua file://) =====
@@ -105,7 +107,7 @@ Ba dòng đầu tiên và dòng cuối cùng là quan trọng nhất:
 > ⚠️ Smoke test đọc danh sách script bằng regex, nên mỗi script phải viết đúng dạng một dòng
 > `<script src="..."></script>` (nháy kép, không `defer`/`async`). Xem khối `⚠️ Bẫy` trong comment đầu `index.html`.
 
-### 4.2. `src/core/main.js` — hàm `boot()`
+### 2. `src/core/main.js` — hàm `boot()`
 
 Mở [src/core/main.js](../../src/core/main.js), tìm hàm **`boot`**. Thứ tự khởi tạo được giải thích ngay trong comment:
 
@@ -139,7 +141,7 @@ Cuối file, `boot` không chạy ngay mà chờ DOM sẵn sàng:
   else boot();
 ```
 
-### 4.3. Thứ tự nên đọc code
+### 3. Thứ tự nên đọc code
 
 Mỗi file trong `src/` có một **khối đầu file** theo cùng mẫu (xem [CODE_STYLE.md](CODE_STYLE.md) mục 2). Dòng `Đọc tiếp:` chỉ file
 nên đọc kế tiếp. Lộ trình gợi ý cho người mới:
@@ -179,8 +181,11 @@ Hai file mẫu đã áp dụng đầy đủ chuẩn comment: `loop.js` và `even
    node tests/smoke.js
    ```
 
-   Chờ khoảng 20–40 giây. Dòng cuối phải là `XANH — không có lỗi runtime.` Thêm `--verbose` để xem từng bước và số lần mỗi
+   Chờ khoảng 20–60 giây tuỳ máy. Dòng cuối phải là `XANH — không có lỗi runtime.` Thêm `--verbose` để xem từng bước và số lần mỗi
    event được phát.
+
+   Khi sửa tài liệu (`docs/learn/`), chạy thêm `node tests/check-doc-links.js`: nó báo link tương đối nào trỏ tới file không tồn
+   tại (in `SẠCH` nếu ổn).
 
 ## ✍️ Bài tập
 
@@ -216,8 +221,10 @@ Dòng đầu IIFE của `events.js` là `var OG = window.OG;`. Lúc đó `namesp
 Tạo file `src/dev/scene-logger.js` in ra console mỗi lần đổi scene, dạng `[scene] menu → modeSelect`. Yêu cầu:
 
 - Viết theo đúng mẫu IIFE + `'use strict'` như các file khác, có khối đầu file rút gọn (Vai trò, Bài học, Phụ thuộc).
-- Chỉ dùng API công khai: nghe event `'scene:change'` (payload `{from, to, params}`, xem `OG.EV.SCENE_CHANGE` trong
-  [src/core/events.js](../../src/core/events.js)).
+- Chỉ dùng API công khai: nghe event `'scene:change'` (payload `{from, to, params, push?, pop?}`, xem `OG.EV.SCENE_CHANGE` trong
+  [src/core/events.js](../../src/core/events.js)). `push: true` khi một scene được **đè lên** (vd `pause`), `pop: true` khi scene
+  trên cùng được **gỡ xuống**; đổi hẳn scene bằng `go()` thì không có hai field này (khối đầu [src/core/scenes.js](../../src/core/scenes.js)).
+  Ghi thêm `(push)`/`(pop)` vào dòng in ra để thấy scene stack hoạt động.
 - Chọn vị trí thẻ `<script>` hợp lý trong `index.html` và giải thích vì sao: file này cần gì đã có lúc nạp?
 - Smoke test vẫn phải XANH.
 

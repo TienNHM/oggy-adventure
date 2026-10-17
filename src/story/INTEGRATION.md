@@ -1,6 +1,6 @@
-# story-ui → Integrator
+# story-ui → nhóm Tích hợp
 
-Agent story-ui chỉ sửa `src/story/`. Các việc dưới đây nằm ngoài thư mục này, Integrator cần làm.
+Nhóm story-ui chỉ sửa `src/story/`. Các việc dưới đây nằm ngoài thư mục này, nhóm Tích hợp cần làm.
 
 ## File
 - Không thêm script mới. `index.html` đã load đủ: `story.css` (trong `<head>`), sau đó `story.js → learn.js → guide.js → scenes.js` (mục 10).
@@ -27,6 +27,6 @@ Hiện chưa có âm cho các event v2. Ánh xạ đề nghị:
 - Câu đố: chọn bắt đầu ở 0, đổi bằng ←→↑↓, chọn bằng Enter/Space/E. Phím số **1–3** (`num1..num3` trong `input.js`) chọn thẳng đáp án.
   Sau khi chọn sai, ô chọn đứng yên (smoke test dựa vào điều này).
 
-## Dữ liệu hành trình (gửi agent journey-vietnam)
+## Dữ liệu hành trình (gửi nhóm journey-vietnam)
 - Emoji cờ `🇻🇳` (cặp ký tự regional indicator) hiện thành chữ "VN" trên Windows (Segoe UI Emoji không có cờ quốc gia).
   Nên đổi `emoji` của hành trình sang ký tự khác, ví dụ `🏮` hoặc `⭐`.

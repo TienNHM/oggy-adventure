@@ -48,7 +48,17 @@ Sau khi đổi chỗ, phần đầu `index.html` thành:
   `Uncaught TypeError: Cannot set properties of undefined (setting 'EV')`. Câu chữ có thể khác một chút tuỳ trình duyệt.
 - Sau đó là **hàng loạt lỗi dây chuyền** ở các file sau: `OG.Events` không tồn tại nên mọi file gọi `OG.Events.on(...)` lúc nạp
   đều lỗi theo.
-- Smoke test in dòng `✗ Lỗi khi load src/core/events.js: TypeError: ...` và kết thúc ĐỎ.
+- Smoke test in một khối như dưới đây (dòng đầu là thông báo lỗi, các dòng sau là vị trí trong file) và kết thúc ĐỎ:
+
+  ```text
+    ✗ Lỗi khi load src/core/events.js: TypeError: Cannot set properties of undefined (setting 'EV')
+        src/core/events.js:31
+          OG.EV = {
+                ^
+  ```
+
+  Số dòng có thể lệch nếu `events.js` đã được sửa. Vì sao dòng thông báo lỗi lại đứng trước vị trí nguồn? Xem `⚠️ Bẫy` ở hàm
+  `errText` đầu `tests/smoke.js`.
 
 **Giải thích.** `events.js` mở đầu bằng `var OG = window.OG;`. Lúc này `namespace.js` chưa chạy nên `window.OG` là `undefined`.
 Lệnh gán đầu tiên vào `OG.EV` ném `TypeError` và **cả IIFE dừng lại**: `OG.Events` không bao giờ được tạo. Không có `import`,
@@ -100,7 +110,9 @@ Thêm thẻ script vào `index.html`, ví dụ ngay **trước** nhóm 12 (`main
   dựa vào may mắn.
 
 **Kiểm tra:** mở game → console in `[scene] (chưa có) → boot`, `[scene] boot → menu`... Bấm Esc trong màn chơi để thấy `(push)`
-và `(pop)`. Chạy `node tests/smoke.js`: vẫn XANH, nhưng output có thêm rất nhiều dòng `[scene]` vì test đi qua hàng trăm scene.
+và `(pop)`. Chạy `node tests/smoke.js`: vẫn XANH và **không** thấy dòng `[scene]` nào, vì smoke test thay `console.log` của game bằng
+bản giả chỉ in khi có cờ `--verbose`. Chạy `node tests/smoke.js --verbose` thì sẽ thấy hàng trăm dòng `[scene]` vì test đi qua
+hàng trăm lần đổi scene.
 Đây là lý do code thật nên có cờ bật/tắt. Thử bọc `console.log` trong `if (OG.Config.DEBUG)` xem sao.
 
 > Xong bài tập thì xoá thẻ script đó (hoặc giữ lại có cờ DEBUG). `src/` đã được đóng gói khi deploy

@@ -85,6 +85,9 @@ flowchart TD
   được rơi xuống đầu với đâm ngang.
 - **Hitbox** là hình chữ nhật thật của con gián, dùng để giẫm. **Hurtbox** là vùng làm người chơi đau, **nhỏ hơn** một chút. Nhờ vậy
   chạm sượt mép không bị trừ mạng, và game có cảm giác "công bằng".
+  > ⚠️ Hai từ này **có nghĩa khác** trong game đối kháng (fighting game): ở đó hitbox là vùng **gây** sát thương (nắm đấm) và hurtbox
+  > là vùng **nhận** sát thương (thân người). Giáo trình và code dự án này luôn dùng nghĩa ở trên (xem bảng thuật ngữ trong
+  > [README](README.md#7-bảng-thuật-ngữ-nhanh)); đọc tài liệu bên ngoài thì kiểm tra họ dùng nghĩa nào.
 - Chế độ Bé chơi nới thêm: dung sai giẫm lớn hơn, hurtbox chỉ còn 70%, chồng nhau dưới 6 px (**graze**, chạm sượt) không tính.
 
 ## 🔍 Đọc code
@@ -200,21 +203,33 @@ người chơi tính từ góc trên-trái.
 
 ## 🧪 Thử ngay
 
-Vào một màn chơi rồi gõ trong console:
+Vào một màn chơi rồi gõ trong console. **Trước tiên** chuyển sang chế độ Thử thách, vì mọi con số đỉnh nhảy dưới đây tính cho chế
+độ này:
 
-1. **Trọng lực Mặt Trăng:** `OG.Config.GRAVITY = 600`. Nhảy thử. Đỉnh nhảy theo công thức giờ là 590² / 1200 ≈ 290 px.
+```js
+OG.Difficulty.set('challenge')
+```
+
+> ⚠️ Chế độ mặc định là **Bé chơi** (`kid`). Ở đó `jumpHoldGravityMul = 0.72`: đang bay lên mà còn giữ nút nhảy thì trọng lực chỉ
+> còn 72%, nên Oggy nhảy cao hơn hẳn. Đo thật: Thử thách ≈ 111 px; Bé chơi bấm nhanh rồi thả ≈ 119 px; Bé chơi **giữ** nút
+> ≈ 156 px. Quên đổi chế độ thì số bạn thấy sẽ khác xa số trong bài. `Difficulty.set` được **lưu vào save**, nên tải lại trang không
+> trả về; làm xong nhớ gõ `OG.Difficulty.set('kid')`.
+
+1. **Trọng lực Mặt Trăng:** `OG.Config.GRAVITY = 600`. Nhảy thử. Đỉnh nhảy theo công thức giờ là 590² / 1200 ≈ 290 px (Thử thách;
+   số đo thật thấp hơn công thức một chút, xem bài tập ⭐).
 2. **Rơi siêu nhanh mà không xuyên sàn:** `OG.Config.MAX_FALL = 3000`, nhảy từ bục cao nhất xuống. Rơi nhanh hơn hẳn nhưng vẫn đứng
    được trên sàn, nhờ điều kiện `wasAbove` dùng `oldY`.
 3. **Xem hitbox người chơi:** `OG.Level.state.player`. Với Oggy, hitbox là `{x, y, w: 34, h: 52}`. Gõ lại vài lần khi chạy và khi
    nhảy: `ground` và `vy` thay đổi thế nào?
 4. **Nâng một cái bục:** `OG.Level.state.platforms[1].y -= 60`. Bục được vẽ lại ở chỗ mới ngay frame sau, vì cả vật lý lẫn hàm vẽ
-   cùng đọc mảng `platforms`. Nếu bục giờ cao hơn đỉnh nhảy (~111 px tính từ chỗ bạn đứng) thì không nhảy lên được nữa. Đây là
+   cùng đọc mảng `platforms`. Nếu bục giờ cao hơn đỉnh nhảy (~111 px tính từ chỗ bạn đứng ở chế độ Thử thách; Bé chơi giữ nút thì ~156 px) thì không nhảy lên được nữa. Đây là
    **trạng thái chạy** (state) nên sửa thoải mái: chơi lại màn là có lại, vì dữ liệu gốc `LevelDef` không bị đổi (xem `buildState`
    trong `level.js`).
 5. **Hurtbox cực nhỏ:** `OG.Difficulty.MODES.kid.enemyHitboxScale = 0.2`, rồi `OG.Difficulty.set('challenge'); OG.Difficulty.set('kid');`
    để tham số được tính lại. Bạn phải lao thẳng vào chân gián mới bị đau.
 
-Tải lại trang để trả mọi thứ về như cũ.
+Tải lại trang để trả mọi thứ về như cũ, rồi gõ `OG.Difficulty.set('kid')` nếu muốn quay về chế độ Bé chơi (chế độ được lưu
+vào save nên tải lại trang không trả về).
 
 ## ✍️ Bài tập
 

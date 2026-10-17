@@ -79,7 +79,18 @@ function fail(msg) {
 }
 function warn(msg) { warnings.push('[' + stage + '] ' + msg); if (VERBOSE) console.log('  ! ' + msg); }
 function log(msg) { if (VERBOSE) console.log('    ' + msg); }
-function errText(e) { return e && e.stack ? String(e.stack).split('\n').slice(0, 4).join('\n      ') : String(e); }
+/**
+ * Rút gọn một lỗi để in: "TênLỗi: thông báo" rồi tối đa 4 dòng đầu của stack.
+ * ⚠️ Bẫy: với lỗi ném ra lúc vm.runInContext NẠP file, V8 đặt vị trí nguồn ("src/x.js:31", dòng code, dấu ^) LÊN TRƯỚC
+ *   thông báo lỗi trong e.stack. Chỉ cắt 4 dòng đầu của stack thì mất luôn chữ "TypeError: ..." → phải tự ghép e.message.
+ */
+function errText(e) {
+  if (!e || !e.stack) return String(e);
+  const lines = String(e.stack).split('\n').slice(0, 4);
+  const head = (e.name || 'Error') + ': ' + e.message;
+  if (lines[0] !== head) lines.unshift(head);
+  return lines.join('\n      ');
+}
 D.setListenerErrorHandler((err, type) => fail('Lỗi trong listener "' + type + '": ' + errText(err)));
 
 // ---------------------------------------------------------------------------
@@ -1253,7 +1264,7 @@ async function menuFlowChecks() {
   if (click('#overlay [data-act="notebook"]', 'Sổ tay khám phá')) {
     await stepAsync(3);
     if (expectScene('notebookHub', 'menu → sổ tay khám phá')) {
-      check(countMatches('#overlay [data-act="book"]') === JOURNEYS.length, 'Sổ tay khám phá không liệt kê đủ 4 hành trình');
+      check(countMatches('#overlay [data-act="book"]') === JOURNEYS.length, 'Sổ tay khám phá không liệt kê đủ ' + JOURNEYS.length + ' hành trình');
       click('#overlay [data-act="book"][data-arg="home"]', 'Sổ tay: home'); await stepAsync(3);
       expectScene('notebook', 'sổ tay khám phá → sổ tay home');
       await press('Escape'); await stepAsync(2);

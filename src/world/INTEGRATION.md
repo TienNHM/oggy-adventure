@@ -1,6 +1,6 @@
 # World & Quests: ghi chú tích hợp
 
-## 1. Thẻ script mới (agent Tích hợp thêm vào index.html)
+## 1. Thẻ script mới (nhóm Tích hợp thêm vào index.html)
 
 ```html
 <script src="src/world/extraLevels.js"></script>   <!-- NGAY TRƯỚC src/world/world.js -->

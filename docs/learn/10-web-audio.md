@@ -107,7 +107,7 @@ Hai file chính:
 - [src/audio/audio.js](../../src/audio/audio.js): engine (context, bus, `tone`, `noise`), thư viện SFX, ánh xạ event → âm thanh.
 - [src/audio/music.js](../../src/audio/music.js): dữ liệu bản nhạc (`TRACKS`), `compile`, sequencer (`tick`).
 
-### 3.1 `createContext`: tạo đồ thị một lần
+### 1. `createContext`: tạo đồ thị một lần
 
 Tìm hàm `createContext` trong audio.js. Lưu ý thứ tự nối dây: compressor → destination, master → compressor, rồi hai bus → master:
 
@@ -130,7 +130,7 @@ Ngay sau đó là **noise buffer**: 1 giây nhiễu trắng tạo **một lần*
       for (var i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1;
 ```
 
-### 3.2 `unlock`: mở khoá theo autoplay policy
+### 2. `unlock`: mở khoá theo autoplay policy
 
 Hàm `unlock` được gọi từ listener của `'input:firstGesture'` (xem `bindEvents`). Nó chỉ coi là "đã mở" khi Promise của `resume()` thành công, và có một mẹo cho iOS là phát một buffer im lặng dài 1 mẫu ngay trong cử chỉ đó:
 
@@ -147,7 +147,7 @@ Hàm `unlock` được gọi từ listener của `'input:firstGesture'` (xem `bi
 
 `onUnlocked` phát lại bản nhạc đã được yêu cầu *trước* khi mở khoá (`Audio.currentTrack`). Nhờ vậy menu có thể gọi `playMusic('menu')` ngay lúc boot mà không bị mất lệnh.
 
-### 3.3 `tone`: một nốt có envelope
+### 3. `tone`: một nốt có envelope
 
 Đây là hàm quan trọng nhất của engine. Tìm `function tone(o)`:
 
@@ -179,7 +179,7 @@ Cuối hàm `tone` có một chi tiết dễ bỏ qua: oscillator **chỉ dùng 
       osc.stop(t0 + dur + STOP_PAD);
 ```
 
-### 3.4 `mtof` và thư viện SFX (data-driven)
+### 4. `mtof` và thư viện SFX (data-driven)
 
 ```js
   function mtof(m) { return 440 * Math.pow(2, (m - 69) / 12); }
@@ -196,7 +196,7 @@ Bảng `SFX` là một object, mỗi khoá là một "công thức" ghép vài `
 
 `f2` làm cao độ **trượt** từ `f` lên `f2`, tạo tiếng nhảy "vút lên".
 
-### 3.5 `playSfx`: ba lớp bảo vệ
+### 5. `playSfx`: ba lớp bảo vệ
 
 Tìm `function playSfx`. Trước khi phát, hàm kiểm tra:
 
@@ -210,7 +210,7 @@ Tìm `function playSfx`. Trước khi phát, hàm kiểm tra:
     lastPlayed[name] = now;
 ```
 
-### 3.6 `bindEvents`: Audio chỉ là một observer
+### 6. `bindEvents`: Audio chỉ là một observer
 
 ```js
     function on(name, fn) {
@@ -226,7 +226,7 @@ Mọi listener đều được bọc `try/catch`: lỗi âm thanh tuyệt đối
 
 Bạn có thể xoá cả thư mục `src/audio/` thì game vẫn chạy được, chỉ là im lặng. Đó chính là **loose coupling** (ghép lỏng) của [Bài 06](06-event-bus-observer.md).
 
-### 3.7 music.js: bản nhạc là dữ liệu chữ
+### 7. music.js: bản nhạc là dữ liệu chữ
 
 ```js
     menu: {
@@ -256,7 +256,7 @@ Cuối hàm, `stepDur` được tính sẵn từ `bpm`:
 
 > ⚠️ **Bẫy (cache):** sau khi một bản đã được biên dịch, sửa `bpm` hay `melody` của nó sẽ **không có tác dụng** vì sequencer đọc bản trong cache. Ngược lại, `swing` và `lead.vol` được đọc lại *mỗi lần* `tick`/`playEvent` chạy, nên đổi là nghe thấy ngay. Ô "Thử ngay" bên dưới cho bạn kiểm chứng điều này.
 
-### 3.8 `tick()`: lookahead scheduling
+### 8. `tick()`: lookahead scheduling
 
 ```js
   var LOOKAHEAD = 0.15;      // lên lịch trước bao nhiêu giây
@@ -280,7 +280,7 @@ Phần lõi của `tick`:
 
 Dòng đầu là **cơ chế nhảy tới**: nếu `tick()` bị chặn vài giây (luồng chính nghẽn), ta không xả dồn mấy giây nốt vào "quá khứ" (trình duyệt sẽ phát tất cả cùng lúc thành một tràng ồn), mà bỏ qua và bắt đầu lại ngay sau "bây giờ".
 
-### 3.9 `playEvent`: trống cũng chỉ là tone/noise
+### 9. `playEvent`: trống cũng chỉ là tone/noise
 
 ```js
       case 'kick':

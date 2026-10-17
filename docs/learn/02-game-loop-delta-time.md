@@ -173,13 +173,22 @@ tự đứng yên.
    Máy bình thường: hai số gần bằng nhau. Bây giờ mở DevTools → **Performance** → biểu tượng ⚙️ → **CPU: 6× slowdown** rồi chạy
    lại. Nếu FPS tụt dưới 30, thời gian game trôi **chậm hơn** thời gian thật. Đó chính là tác dụng của `MAX_DT`.
 
-2. **Tạo một cú khựng.** Vào màn chơi, giữ phím → để Oggy chạy, rồi gõ vào console (khoá luồng chính 300 ms):
+2. **Tạo một cú khựng.** Ta muốn khoá luồng chính 300 ms **trong lúc** Oggy đang chạy. Nhưng bấm vào Console để gõ lệnh thì
+   game mất focus: nó tự tạm dừng và nhả mọi phím (xem ô ⚠️ ngay dưới). Vì vậy ta **hẹn giờ** cho cú khựng. Vào màn chơi, gõ
+   vào Console:
 
    ```js
-   OG.Config.MAX_DT = 0.5; var s = performance.now(); while (performance.now() - s < 300) {}
+   OG.Config.MAX_DT = 0.5;
+   setTimeout(function () { var s = performance.now(); while (performance.now() - s < 300) {} }, 4000);
    ```
 
-   Oggy "nhảy cóc" một đoạn dài. Gõ `OG.Config.MAX_DT = 0.033` và lặp lại: chỉ còn một chút khựng.
+   Nhấn Enter, bấm "Tiếp tục" trên màn hình game rồi **giữ phím →** để Oggy chạy. Sau khoảng 4 giây, Oggy "nhảy cóc" một đoạn
+   dài. Gõ `OG.Config.MAX_DT = 0.033` và lặp lại: chỉ còn một chút khựng.
+
+   > ⚠️ **Gõ Console khi đang chơi.** Bấm vào DevTools làm cửa sổ phát `blur`: `main.js` (`autoPause`) push scene `pause` và
+   > `input.js` gọi `OG.Input.reset()`; bấm "Tiếp tục" thì `Scenes.pop()` lại gọi `reset()` lần nữa. Mọi phím đang giữ (kể cả phím
+   > ép bằng `OG.Input.setKey`) đều bị nhả. Thí nghiệm nào cần "đang giữ phím rồi làm gì đó" thì bọc lệnh trong
+   > `setTimeout(..., 3000)` như trên. Chi tiết: [README mục 2.3](README.md#23-mở-devtools), [bài 03](03-input.md) "Thử ngay" bước 4.
 
 3. **Bước từng frame bằng tay.** Bấm Esc để tạm dừng, rồi gõ `OG.Loop.step(1)`. Đây là một bước 1 giây (lớn hơn `MAX_DT`, vì `step`
    không kẹp). Scene trên cùng là `pause` nên màn chơi bên dưới không đổi: đó là scene stack đang làm việc.

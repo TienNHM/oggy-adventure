@@ -326,6 +326,17 @@ Tải lại trang (F5) để xoá mọi thứ đã gõ.
 
 > Mọi bài làm được bằng cách dán code vào Console (hoặc tạo file `src/dev/*.js` và thêm thẻ `<script>` ngay trước `src/core/main.js`
 > trong `index.html`). Đọc khối đầu file `src/game/level.js` để biết hợp đồng **level hook** (`OG.Level.addHook`).
+>
+> ⚠️ **Tính năng làm đổi luồng scene sẽ làm smoke test ĐỎ.** Smoke test kiểm tra từng bước đổi scene (`expectScene`, bài 13). Nếu
+> bạn để countdown (⭐⭐) hay fade (⭐⭐⭐) thành file thật trong `index.html`, mỗi lần vào màn đều có thêm một scene chen vào, và
+> test báo hàng chục lỗi kiểu `Mong đợi scene "level" ... thực tế: level>countdown`. Luật chung vẫn là smoke test phải XANH, nên
+> hãy chọn một trong hai cách:
+>
+> - Chỉ **dán vào Console** để thử (mất khi tải lại trang), hoặc
+> - Làm file thật nhưng **bật bằng cờ**: chỉ đăng ký hook / bọc `go` khi `OG.Config.DEBUG` đang bật, vd trong hook kiểm tra
+>   `if (!OG.Config.DEBUG) return;` trước khi `push('countdown')`. Smoke test không bật cờ này nên luồng scene không đổi.
+>
+> Bài ⭐ (scene `'hello'`) không đổi luồng có sẵn nên làm file thật vẫn XANH.
 
 ### ⭐ Dễ — Scene "Xin chào"
 

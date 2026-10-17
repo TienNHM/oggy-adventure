@@ -5,7 +5,7 @@
 >
 > Quay lại bài học: [08-camera-parallax.md](../08-camera-parallax.md)
 
-Mọi đoạn dưới đây dán vào Console khi đang ở trong một màn chơi. Đã chạy thử với codebase hiện tại.
+Mọi đoạn dưới đây dán vào Console khi đang ở trong một màn chơi, rồi bấm "Tiếp tục" nếu game đã tự tạm dừng.
 
 ---
 

@@ -167,8 +167,22 @@ Ngay dưới là **variable jump height** (nhảy cao theo thời gian giữ ph�
 
 ## 🧪 Thử ngay
 
-1. **Điều khiển bằng code.** Vào một màn, gõ `OG.Input.setKey('right', true)`: Oggy tự chạy. Gõ `OG.Input.setKey('right', false)`
-   để dừng. Đây chính là cách smoke test "chơi" game (nguồn `'api'`).
+> ⚠️ **Bấm vào DevTools = game mất focus.** Cửa sổ phát `blur` → game tự push `pause` (`autoPause` trong `main.js`) và gọi
+> `Input.reset()`; bấm "Tiếp tục" thì `Scenes.pop()` lại `reset()` thêm lần nữa. Vì vậy lệnh `setKey` gõ thẳng vào Console bị xoá
+> trước khi bạn kịp quay lại chơi. Với các thí nghiệm cần phím đang giữ, hãy **hẹn giờ** bằng `setTimeout` rồi bấm "Tiếp tục"
+> trên màn hình game trước khi hết giờ. Chi tiết: [README mục 2.3](README.md#23-mở-devtools). Bước 4 bên dưới giải thích chính
+> cơ chế này.
+
+1. **Điều khiển bằng code.** Vào một màn, gõ lệnh dưới đây vào Console, nhấn Enter, rồi trong vòng 3 giây bấm "Tiếp tục" trên
+   màn hình game (đừng chạm phím nào):
+
+   ```js
+   setTimeout(function () { OG.Input.setKey('right', true); }, 3000);
+   ```
+
+   Hết 3 giây, Oggy tự chạy sang phải. Muốn dừng thì hẹn giờ tương tự với `OG.Input.setKey('right', false)`, hoặc chỉ cần mở
+   Console (game tự tạm dừng và `reset()` xoá luôn phím `'api'`). Đây chính là cách smoke test "chơi" game (nguồn `'api'`);
+   trong smoke test không có cửa sổ nào mất focus nên không cần hẹn giờ.
 2. **Held vs pressed.** Gõ dòng sau rồi giữ Space 2 giây:
 
    ```js

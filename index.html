@@ -79,7 +79,7 @@ button:active{transform:translateY(3px);box-shadow:0 2px 0 #b74b2b}
        khi hiển thị. Code game luôn vẽ theo 960×540 bất kể màn hình thật to hay nhỏ.
        Các phần tử DOM bên dưới nằm ĐÈ lên canvas (position:absolute) — chữ và nút sắc nét, dễ bấm. -->
   <canvas id="game" width="960" height="540" aria-label="Oggy Adventure game"></canvas>
-  <!-- HUD mặc định: OG.Menus.updateHud() cập nhật; agent UI được thay nội dung bên trong #hud -->
+  <!-- HUD mặc định: OG.Menus.updateHud() cập nhật; nhóm UI được thay nội dung bên trong #hud -->
   <div id="hud">
     <div id="hudLeft"><div class="pill" id="level">🏡 Nhà Oggy</div><div class="pill" id="objective">🍕 0/5</div></div>
     <div id="hudRight"><div class="pill" id="coins">🪙 0</div><div class="pill" id="lives">❤️❤️❤️</div><div class="pill" id="score">⭐ 0</div></div>
@@ -100,8 +100,11 @@ button:active{transform:translateY(3px);box-shadow:0 2px 0 #b74b2b}
      → khởi động. Trong lúc NẠP, mỗi file chỉ đăng ký (gắn OG.X, registerType, register...); việc thật sự
      (tạo DOM, nghe event, đọc save) chờ tới init() do main.js gọi, khi MỌI file đã có mặt.
      Đặt script ở cuối trang: lúc chạy, các phần tử phía trên (canvas, #hud...) đã có trong DOM.
-     Sinh viên nên đọc code theo đúng thứ tự này. -->
-<!-- 1. Core (agent Tích hợp): namespace.js PHẢI đầu tiên (tạo window.OG, OG.util, OG.Config); events.js ngay
+     Sinh viên nên đọc code theo đúng thứ tự này.
+     "Nhóm phụ trách" trong tiêu đề mỗi nhóm: dự án được viết song song bởi nhiều nhóm, mỗi nhóm chỉ sửa thư mục của mình.
+     Nhóm Tích hợp ghép các phần lại (sửa file này, src/core/, src/game/). Việc một nhóm cần nhóm khác làm hộ được ghi
+     trong src/(thư mục)/INTEGRATION.md — xem docs/learn/00-bat-dau.md, bảng thư mục. -->
+<!-- 1. Core (nhóm phụ trách: Tích hợp): namespace.js PHẢI đầu tiên (tạo window.OG, OG.util, OG.Config); events.js ngay
         sau vì hầu hết file khác dùng OG.EV / OG.Events. loop.js chỉ định nghĩa vòng lặp, main.js mới bật nó. -->
 <script src="src/core/namespace.js"></script>
 <script src="src/core/events.js"></script>
@@ -114,20 +117,20 @@ button:active{transform:translateY(3px);box-shadow:0 2px 0 #b74b2b}
 <script src="src/core/loop.js"></script>
 <script src="src/core/scenery-registry.js"></script>
 <script src="src/core/journeys.js"></script>
-<!-- 2. Dữ liệu (agent Tích hợp) -->
+<!-- 2. Dữ liệu (nhóm phụ trách: Tích hợp) -->
 <script src="src/data/characters.js"></script>
 <script src="src/data/levels.js"></script>
-<!-- 3. Đồ hoạ (agent Sprites) -->
+<!-- 3. Đồ hoạ (nhóm phụ trách: Sprites) -->
 <script src="src/gfx/sprites.js"></script>
 <script src="src/gfx/skins.js"></script>
 <script src="src/gfx/scenery.js"></script>
 <script src="src/gfx/decor.js"></script>
 <script src="src/gfx/decor-places.js"></script>
 <script src="src/gfx/decor-home.js"></script>
-<!-- 4. Âm thanh (agent Audio) -->
+<!-- 4. Âm thanh (nhóm phụ trách: Audio) -->
 <script src="src/audio/audio.js"></script>
 <script src="src/audio/music.js"></script>
-<!-- 5. Gameplay (agent Tích hợp) — đăng ký scene mặc định.
+<!-- 5. Gameplay (nhóm phụ trách: Tích hợp) — đăng ký scene mặc định.
         default-scenes.js là "stub": đăng ký bản đơn giản của các scene; các module tính năng nạp SAU ghi đè
         bằng bản đầy đủ. Nếu một module tính năng lỗi, game vẫn còn scene dự phòng để chạy tiếp. -->
 <script src="src/game/particles.js"></script>
@@ -140,25 +143,25 @@ button:active{transform:translateY(3px);box-shadow:0 2px 0 #b74b2b}
 <script src="src/game/level.js"></script>
 <script src="src/game/boss-scene.js"></script>
 <script src="src/game/default-scenes.js"></script>
-<!-- 6. Trùm (agent Bosses) -->
+<!-- 6. Trùm (nhóm phụ trách: Bosses) -->
 <script src="src/bosses/bosses.js"></script>
 <script src="src/bosses/joey.js"></script>
 <script src="src/bosses/marky.js"></script>
 <script src="src/bosses/deedee.js"></script>
 <script src="src/bosses/trio.js"></script>
-<!-- 7. Bản đồ & nhiệm vụ (agent World & Quests) -->
+<!-- 7. Bản đồ & nhiệm vụ (nhóm phụ trách: World & Quests) -->
 <script src="src/world/extraLevels.js"></script>
 <script src="src/world/world.js"></script>
 <script src="src/world/journey-map.js"></script>
 <script src="src/world/quests.js"></script>
-<!-- 8. Giao diện & cửa hàng (agent Menus & Shop) -->
+<!-- 8. Giao diện & cửa hàng (nhóm phụ trách: Menus & Shop) -->
 <script src="src/ui/menus.js"></script>
 <script src="src/ui/hud.js"></script>
 <script src="src/ui/shop.js"></script>
-<!-- 9. Xã hội (agent Social) -->
+<!-- 9. Xã hội (nhóm phụ trách: Social) -->
 <script src="src/social/social.js"></script>
 <script src="src/social/leaderboard.js"></script>
-<!-- 10. Hành trình học tập v2 (agent story-ui) — docs/STORY.md -->
+<!-- 10. Hành trình học tập v2 (nhóm phụ trách: story-ui) — docs/STORY.md -->
 <script src="src/story/story.js"></script>
 <script src="src/story/learn.js"></script>
 <script src="src/story/photos.js"></script>
@@ -169,7 +172,7 @@ button:active{transform:translateY(3px);box-shadow:0 2px 0 #b74b2b}
 <script src="assets/photos/science/credits.js"></script>
 <script src="src/story/guide.js"></script>
 <script src="src/story/scenes.js"></script>
-<!-- 11. Dữ liệu hành trình (mỗi agent journey-(id) chỉ sửa thư mục của mình): theme → content → extras → journey.
+<!-- 11. Dữ liệu hành trình (mỗi nhóm journey-(id) chỉ sửa thư mục của mình): theme → content → extras → journey.
          Data-driven: thêm hành trình mới = thêm 4 dòng như dưới + một thư mục dữ liệu, không sửa code engine.
          content.js và journey.js cùng gọi OG.Journeys.register với cùng id; OG.Journeys GỘP theo id, còn kiểm
          tra (validate) chỉ chạy lúc init khi mọi file đã nạp. Vẫn giữ đúng thứ tự quy ước này cho dễ đọc. -->
@@ -189,7 +192,7 @@ button:active{transform:translateY(3px);box-shadow:0 2px 0 #b74b2b}
 <script src="src/journeys/science/content.js"></script>
 <script src="src/journeys/science/extras.js"></script>
 <script src="src/journeys/science/journey.js"></script>
-<!-- 12. Khởi động (agent Tích hợp) — LUÔN CUỐI: main.js gọi init() của mọi module theo thứ tự rồi bật game loop.
+<!-- 12. Khởi động (nhóm phụ trách: Tích hợp) — LUÔN CUỐI: main.js gọi init() của mọi module theo thứ tự rồi bật game loop.
          ⚠️ Bẫy: thêm file mới SAU dòng này thì file đó nạp khi game đã khởi động → bỏ lỡ init và event đầu. -->
 
 <script src="src/core/main.js"></script>

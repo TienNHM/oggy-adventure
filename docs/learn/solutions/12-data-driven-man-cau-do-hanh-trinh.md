@@ -3,7 +3,7 @@
 > ✋ **Hãy tự làm trước.** Lời giải chỉ là *một* cách làm. Nếu bài của bạn khác nhưng chạy đúng và giải thích được vì sao, bài đó vẫn đạt.
 > Quay lại bài học: [12-data-driven-man-cau-do-hanh-trinh.md](../12-data-driven-man-cau-do-hanh-trinh.md)
 
-Cả ba lời giải dưới đây đã được áp dụng **cùng lúc** lên một bản sao của repo: `node tests/smoke.js` XANH, `tsc` sạch, `OG.Journeys.validate` không có lỗi và không có cảnh báo cho `home` và `ocean`.
+Ba lời giải dưới đây áp dụng được **cùng lúc**. Tự kiểm tra sau mỗi bài: `node tests/smoke.js` phải XANH, `npx -y -p typescript@5.6.3 tsc -p jsconfig.json --noEmit` không in gì, và trong Console `OG.Journeys.validate('home')` (cùng `OG.Journeys.validate('ocean')` sau bài ⭐⭐⭐) không có lỗi lẫn cảnh báo.
 
 ---
 

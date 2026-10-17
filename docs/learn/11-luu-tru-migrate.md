@@ -308,11 +308,15 @@ Thêm cài đặt `settings.showFps` (mặc định `false`) vào `defaults()`. 
 1. Người chơi có save cũ (không có `showFps`) sau khi tải lại nhận được `false`.
 2. `OG.Save.setSetting('showFps', true)` rồi tải lại trang thì giá trị vẫn là `true`.
 3. Event `'settings:change'` được phát với đúng `{key, value}`.
+4. Kiểm tra kiểu vẫn sạch: `src/core/save.js` có `// @ts-check` ở dòng 1, nên chạy
+   `npx -y -p typescript@5.6.3 tsc -p jsconfig.json --noEmit` (không in gì, mã thoát 0). Rồi `node --check src/core/save.js` và
+   `node tests/smoke.js` phải XANH.
 
 <details>
 <summary>💡 Gợi ý</summary>
 
-- Chỉ cần sửa object `settings` trong `defaults()`. Nhớ cập nhật `@typedef SaveSettings` ở đầu file cho đúng.
+- Chỉ cần sửa object `settings` trong `defaults()`. Nhớ cập nhật `@typedef SaveSettings` ở đầu file: quên bước này thì tsc
+  báo lỗi `'showFps' does not exist in type 'SaveSettings'` (bước 4 sẽ bắt được).
 - Nghe event trong console: `OG.Events.on('settings:change', function (e) { console.log(e); });`.
 - Mô phỏng save cũ bằng bước 4 của "Thử ngay".
 

@@ -164,7 +164,8 @@ npx -y -p typescript@5.6.3 tsc -p jsconfig.json --noEmit
 node tests/smoke.js
 ```
 
-Cả ba đều sạch. Lời giải này đã được chạy thử trên một bản sao dự án, cùng với các lời giải bài 00–03.
+Cả ba phải sạch: `node --check` và `tsc` không in gì (mã thoát 0), smoke test in `XANH`. Nếu tsc báo lỗi ở `physics.js`, đọc lại ý
+về `src/types.d.ts` ở trên. Nếu smoke test đỏ, đọc dòng `✗` đầu tiên: nó cho biết bước kiểm tra nào hỏng và đang ở scene nào.
 
 **Mở rộng để suy nghĩ.** Muốn màn chơi khai báo bục đặc bằng **dữ liệu**, thì `LevelDef.platforms` hiện là mảng `[x, y, w, h]` nên
 không có chỗ cho cờ. Bạn sẽ phải mở rộng định dạng (ví dụ phần tử thứ 5 là `{ solid: true }`) và sửa `buildState` trong `level.js`

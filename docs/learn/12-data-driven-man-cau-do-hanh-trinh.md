@@ -84,7 +84,7 @@ sequenceDiagram
 
 File lõi: [src/core/journeys.js](../../src/core/journeys.js). Dữ liệu mẫu: [src/journeys/home/journey.js](../../src/journeys/home/journey.js), [src/journeys/home/content.js](../../src/journeys/home/content.js), [src/journeys/home/extras.js](../../src/journeys/home/extras.js).
 
-### 5.1 `register` và `mergeById`: đăng ký nhiều lần
+### 1. `register` và `mergeById`: đăng ký nhiều lần
 
 ```js
     register: function (def) {
@@ -128,7 +128,7 @@ Nhờ vậy `extras.js` có thể **ghi đè đúng một thẻ** bằng cách �
 
 Cuối hàm là `compiled = null`, tức **invalidate** (vô hiệu hoá) cache biên dịch.
 
-### 5.2 `getCompiled`: cache lười
+### 2. `getCompiled`: cache lười
 
 ```js
   function getCompiled() { return compiled || compileAll(); }
@@ -136,7 +136,7 @@ Cuối hàm là `compiled = null`, tức **invalidate** (vô hiệu hoá) cache 
 
 Có 20 lần `register` lúc load thì cũng chỉ đặt `compiled = null` 20 lần. Chỉ lần *đọc* đầu tiên mới biên dịch thật, một lần duy nhất.
 
-### 5.3 `compileLevel`: dữ liệu gọn → dữ liệu đầy đủ
+### 3. `compileLevel`: dữ liệu gọn → dữ liệu đầy đủ
 
 Tác giả màn được phép viết rất gọn. `compileLevel` lo phần còn lại:
 
@@ -189,7 +189,7 @@ Ví dụ thật trong home/journey.js: màn chỉ ghi `from`, `goal`, `enemies` 
 
 Trùm của khu tự gắn vào **màn cuối** khu. Màn nào ghi `boss: null` thì tự tắt trùm (so sánh `=== undefined`, không phải falsy).
 
-### 5.4 Viết tắt cổng câu đố: `normalizeGates`
+### 4. Viết tắt cổng câu đố: `normalizeGates`
 
 ```js
     return arr.map(function (g, i) {
@@ -201,7 +201,7 @@ Trùm của khu tự gắn vào **màn cuối** khu. Màn nào ghi `boss: null` 
 
 `quizGate` (một cổng) và `quizGates` (mảng) được gộp lại thành một dạng chuẩn. Không ghi `x` thì cổng nằm ở cửa EXIT. Đây là kỹ thuật **chuẩn hoá ở cửa vào** (normalize at the boundary): bên trong engine chỉ phải xử lý *một* dạng.
 
-### 5.5 `validateDef`: bắt lỗi dữ liệu lúc boot
+### 5. `validateDef`: bắt lỗi dữ liệu lúc boot
 
 ```js
     validateHeader(j, V);
@@ -233,7 +233,7 @@ Có hai mức: **lỗi** (`err`) làm hành trình bị ẩn khỏi màn chọn 
 
 `validateLevel` kiểm tra trên **bản đã biên dịch**, nhờ vậy bắt được cả lỗi sinh ra từ giá trị mặc định hoặc từ hình học mượn qua `from`.
 
-### 5.6 Tra cứu "rơi" sang nguồn thứ hai
+### 6. Tra cứu "rơi" sang nguồn thứ hai
 
 [src/data/levels.js](../../src/data/levels.js) giữ chiến dịch cổ điển. Màn hành trình **không** nằm trong `OG.Data.levels`, nhưng mọi chỗ gọi `OG.Data.getLevel(id)` vẫn tìm được nhờ fallback (tra cứu dự phòng):
 
@@ -246,7 +246,7 @@ Có hai mức: **lỗi** (`err`) làm hành trình bị ẩn khỏi màn chọn 
   };
 ```
 
-### 5.7 Hook: `level.js` không biết gì về thẻ học
+### 7. Hook: `level.js` không biết gì về thẻ học
 
 [src/game/level.js](../../src/game/level.js) mở sẵn các điểm cắm `enter / update / canExit / drawWorld / drawFront / drawScreen` (kiểu `LevelHook` trong `types.d.ts`):
 
@@ -260,7 +260,7 @@ Có hai mức: **lỗi** (`err`) làm hành trình bị ẩn khỏi màn chọn 
     },
 ```
 
-Các module tự cắm vào: `checkpoints` (order 10, [src/game/difficulty.js](../../src/game/difficulty.js)), `learn` (order 20, [src/story/learn.js](../../src/story/learn.js), trang sách + cổng câu đố), `guide` (order 30, [src/story/guide.js](../../src/story/guide.js), người dẫn đường). Mỗi hook đọc **field dữ liệu** của LevelDef (`pages`, `quizGates`, `guideSpots`, `checkpoints`). Đó là cách dữ liệu "chảy" vào gameplay.
+Các module tự cắm vào: `checkpoints` (order 10, [src/game/difficulty.js](../../src/game/difficulty.js)), `learn` (order 20, [src/story/learn.js](../../src/story/learn.js), trang sách + cổng câu đố), `guide` (order 30, [src/story/guide.js](../../src/story/guide.js), người dẫn đường), `story-comics` (order 40, [src/story/story.js](../../src/story/story.js), truyện tranh bật lên giữa màn khi Oggy chạy qua một mốc `x`). Mỗi hook đọc **field dữ liệu** của LevelDef (`pages`, `quizGates`, `guideSpots`, `checkpoints`, `comicTriggers`). Đó là cách dữ liệu "chảy" vào gameplay.
 
 Hook chặn cửa ra trả `false`. Trong `exitBlocked` của level.js:
 
@@ -269,7 +269,7 @@ Hook chặn cửa ra trả `false`. Trong `exitBlocked` của level.js:
       if (U.safe('levelHook ' + h.id + '.canExit', h.canExit, h, [st, p]) === false) return true;
 ```
 
-### 5.8 Extension point: `extras.js`
+### 8. Extension point: `extras.js`
 
 [src/journeys/home/extras.js](../../src/journeys/home/extras.js) hiện để trống, nhưng ghi rõ cách cắm thêm loại kẻ địch riêng:
 
@@ -281,7 +281,7 @@ Hook chặn cửa ra trả `false`. Trong `exitBlocked` của level.js:
 
 Xem ví dụ có code thật ở [src/journeys/science/extras.js](../../src/journeys/science/extras.js) và [Bài 09](09-ai-ke-dich-boss.md).
 
-### 5.9 Nối hành trình vào trang
+### 9. Nối hành trình vào trang
 
 Hành trình mới chỉ cần thêm các thẻ `<script>` vào [index.html](../../index.html), đúng thứ tự quy ước:
 
@@ -327,7 +327,7 @@ Mở game, DevTools → Console.
    Tải lại trang thì thẻ thử biến mất, vì nó chỉ sống trong bộ nhớ.
 5. **Hook:**
    ```js
-   OG.Level.hookIds();     // có 'checkpoints', 'learn', 'guide' theo thứ tự order
+   OG.Level.hookIds();     // ['checkpoints', 'learn', 'guide', 'story-comics'] theo thứ tự order (mục Đọc code 7)
    OG.Level.addHook({ id: 'demo', order: 60,
      drawScreen: function (ctx, st) { ctx.fillStyle = '#000'; ctx.font = OG.font(20); ctx.fillText('Pizza: ' + OG.Game.stage.pizzas, 20, 520); } });
    // vào một màn bất kỳ: góc dưới trái hiện số pizza. Gỡ: OG.Level.removeHook('demo');
@@ -371,7 +371,7 @@ Trả lời thêm hai câu hỏi:
 <details>
 <summary>💡 Gợi ý</summary>
 
-- Đỉnh nhảy ≈ 116 px (`JUMP_VELOCITY` 590, `GRAVITY` 1500). Bục cao hơn chỗ đứng 60–80 px là vừa sức trẻ em. Từ sàn (y = 480) lên bục y = 400 là 80 px.
+- Đỉnh nhảy ≈ 116 px theo công thức (`JUMP_VELOCITY` 590, `GRAVITY` 1500; đo thật ở chế độ Thử thách ≈ 111 px). Chế độ Bé chơi mà **giữ** nút nhảy thì cao hơn, ≈ 150 px (`jumpHoldGravityMul` 0,72, bài 04), nhưng đừng thiết kế màn dựa vào con số đó: trẻ em thường bấm nhanh rồi thả (≈ 119 px). Bục cao hơn chỗ đứng 60–80 px là vừa sức trẻ em. Từ sàn (y = 480) lên bục y = 400 là 80 px.
 - `platforms[0]` phải là sàn `[0, 480, 1800, 60]`.
 - Pizza/xu là toạ độ **tâm** `[x, y]`. Pizza trên bục y = 400 nên đặt ở y ≈ 360.
 - Dùng lại thẻ và câu đố có sẵn cũng được (vd thẻ `k_water`, câu đố `q_wash`).

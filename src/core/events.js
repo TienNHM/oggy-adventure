@@ -29,7 +29,7 @@
   // Quy ước tên: '<chủ thể>:<việc vừa xảy ra>' ở thì quá khứ/hoàn thành, vd 'item:collect', 'boss:defeated'.
   // Comment cuối dòng = các field của payload.
   OG.EV = {
-    SCENE_CHANGE: 'scene:change',       // {from, to, params}
+    SCENE_CHANGE: 'scene:change',       // {from, to, params, push?, pop?}  push/pop: true khi Scenes.push/pop (go() không có)
     GAME_START: 'game:start',           // {charId, run}
     GAME_PAUSE: 'game:pause',           // {scene}
     GAME_RESUME: 'game:resume',         // {scene}

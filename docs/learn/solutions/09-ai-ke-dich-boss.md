@@ -5,8 +5,8 @@
 >
 > Quay lại bài học: [09-ai-ke-dich-boss.md](../09-ai-ke-dich-boss.md)
 
-Hai bài đầu dán vào Console khi đang ở trong một màn chơi. Bài ba dán ở bất kỳ đâu rồi gọi `OG.Scenes.go('boss', ...)`. Đã chạy thử
-với codebase hiện tại (kể cả đánh hạ trùm ở bài ba).
+Hai bài đầu dán vào Console khi đang ở trong một màn chơi. Bài ba dán ở bất kỳ đâu rồi gọi `OG.Game.ensureRun()` và
+`OG.Scenes.go('boss', ...)` (thiếu `ensureRun()` khi chưa bấm "Chơi" thì `boss.enter` báo lỗi, xem bài 09 "Thử ngay" bước 1).
 
 ---
 
@@ -240,7 +240,7 @@ st.enemies.push(OG.Enemies.create({ type: 'chaser', x: st.player.x + 400, range:
   OG.Bosses.register({ id: SPEC.id, name: SPEC.name, maxHp: SPEC.maxHp, create: function (arena) { return create(arena); } });
 })();
 // Đánh thử (ghi tiến độ màn kitchen vào save khi thắng):
-// OG.Scenes.go('boss', { levelId: 'kitchen', bossId: 'bigroach' });
+// OG.Game.ensureRun(); OG.Scenes.go('boss', { levelId: 'kitchen', bossId: 'bigroach' });
 ```
 
 Trong một lần chạy thử, chuỗi trạng thái ghi được là `intro → walk → chargeWind → charge → dizzy → recoil → ... → roar → ... → dead`.

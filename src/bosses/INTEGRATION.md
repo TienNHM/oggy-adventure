@@ -1,4 +1,4 @@
-# src/bosses — ghi chú tích hợp (agent Bosses)
+# src/bosses — ghi chú tích hợp (nhóm Bosses)
 
 ## Không cần sửa index.html
 Vẫn dùng đúng 5 file stub theo thứ tự load hiện có:

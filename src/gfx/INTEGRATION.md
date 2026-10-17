@@ -1,4 +1,4 @@
-# src/gfx: yêu cầu cho agent Tích hợp
+# src/gfx: yêu cầu cho nhóm Tích hợp
 
 ## 1. Thêm script `skins.js` (bắt buộc để có skin Đầu Bếp và Siêu Mèo)
 

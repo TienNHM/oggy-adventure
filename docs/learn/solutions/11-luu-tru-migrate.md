@@ -21,6 +21,11 @@ và cập nhật typedef ở đầu file:
  * @property {boolean} showFps                 hiện bộ đếm FPS (mặc định false)
 ```
 
+Bước typedef là **bắt buộc**, không phải cho đẹp: `save.js` bật `// @ts-check` ở dòng 1, nên nếu chỉ thêm field vào `defaults()`
+thì `npx -y -p typescript@5.6.3 tsc -p jsconfig.json --noEmit` báo đỏ
+lỗi kiểu `... 'showFps' does not exist in type 'SaveSettings'`. Thêm dòng `@property`
+ở trên xong chạy lại tsc: không in gì, mã thoát 0.
+
 **Kiểm chứng trong console**
 
 ```js

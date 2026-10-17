@@ -1,4 +1,4 @@
-# src/ui — ghi chú cho agent Tích hợp
+# src/ui — ghi chú cho nhóm Tích hợp
 
 Module: `OG.Menus` (menus.js + hud.js), `OG.Shop` (shop.js), style `ui.css`.
 Không cần thêm thẻ `<script>` hay `<link>` mới: dùng đúng 3 file stub và `ui.css` đã có trong `index.html`.
@@ -9,7 +9,7 @@ Không cần thêm thẻ `<script>` hay `<link>` mới: dùng đúng 3 file stub
 - `settings` có 2 chế độ: `go('settings', {back})` từ menu, hoặc `push('settings', {back:'pause', overlay:true})` từ pause
   (khi đó nút Xong gọi `pop()` và `pause.resume()` vẽ lại panel tạm dừng).
 
-## Hook cần agent Tích hợp thêm (khuyến nghị)
+## Hook cần nhóm Tích hợp thêm (khuyến nghị)
 
 1. **Nhảy đôi (Giày lò xo)**: `OG.Player` chưa hỗ trợ. Hiện `OG.Menus.drawHud` gọi `OG.Shop.tickPlayer(p, dt)` mỗi frame
    như phương án dự phòng (chạy được ở scene `level`). Đề nghị thêm vào cuối `OG.Player.update(p, dt, world)`

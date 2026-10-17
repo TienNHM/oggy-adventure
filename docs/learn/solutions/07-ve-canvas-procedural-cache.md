@@ -5,8 +5,8 @@
 >
 > Quay lại bài học: [07-ve-canvas-procedural-cache.md](../07-ve-canvas-procedural-cache.md)
 
-Mọi đoạn dưới đây dán vào Console khi đang ở trong một màn chơi. Hook có `update`/`draw*` chạy ngay từ frame kế tiếp. Đã chạy thử
-với codebase hiện tại.
+Mọi đoạn dưới đây dán vào Console khi đang ở trong một màn chơi. Hook có `update`/`draw*` chạy ngay từ frame kế tiếp
+(bấm "Tiếp tục" nếu game đã tự tạm dừng khi bạn bấm vào Console).
 
 ---
 
@@ -134,7 +134,7 @@ Thử trong Console: `ballPose(0)` → `{h: 0, sx: 1, sy: 1}` (vừa chạm đ�
   tích phân từng frame (bài 04).
 - **Hai pha.** Pha "dính đất" chiếm 16% chu kỳ, `h = 0` nên chân bóng không lún xuống đất. Pha "bay" tự co thang `u` về 0..1 để parabol
   liền mạch với pha chạm đất (cả hai đầu đều `h = 0`). Nếu chỉ "đè" pha bẹp lên một parabol phủ cả chu kỳ, `h` sẽ nhảy cóc từ 0 lên
-  khoảng 40 px ở frame bóng rời đất.
+  khoảng 75 px ở frame bóng rời đất (`4 · 140 · 0,16 · 0,84 ≈ 75`).
 - **Giữ diện tích.** `sx = 1/sy` nên diện tích elip (`π·R·sx·R·sy`) không đổi. Thử đặt `sx = 1` cố định: bóng như đang phồng xẹp
   chứ không như cao su.
 - **Co giãn quanh chân.** `translate(footX, footY − h)` đưa gốc tới **điểm thấp nhất** của bóng, rồi vẽ tâm ở `(0, −R)`. `scale` vì

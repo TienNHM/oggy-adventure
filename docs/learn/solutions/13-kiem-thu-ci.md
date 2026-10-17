@@ -45,7 +45,8 @@ Kết luận: hai công cụ **bổ sung** cho nhau. Smoke test bắt lỗi tíc
 
 ## ⭐⭐ `musicChecks()`
 
-Thêm vào [tests/smoke.js](../../../tests/smoke.js), ngay **trước** comment `// In tổng kết.` (phía trên hàm `finish`):
+Thêm vào [tests/smoke.js](../../../tests/smoke.js), ngay **trước** comment `// In tổng kết.`. Comment này nằm
+ngay phía trên hàm `finish(t0)`, khoảng dòng 1660 (tìm nhanh bằng `Ctrl + F` với chữ `function finish`):
 
 ```js
 // ---------------------------------------------------------------------------
@@ -148,7 +149,7 @@ jobs:
         run: npx -y -p typescript@5.6.3 tsc -p jsconfig.json --noEmit
 ```
 
-**Đã kiểm tra:** file YAML hợp lệ (đọc lại được bằng một trình phân tích YAML). Vòng lặp `node --check` qua mọi file hiện có. Smoke test XANH, và `tsc` thoát mã 0 trên code hiện tại. Riêng việc chạy trên GitHub thì bạn cần push lên một nhánh để xem trong tab **Actions**.
+**Tự kiểm tra:** file YAML phải hợp lệ (dán vào một trình kiểm tra YAML, hoặc xem VS Code có gạch đỏ không). Vòng lặp `node --check` phải qua mọi file hiện có, smoke test XANH, và `tsc` thoát mã 0. Riêng việc chạy trên GitHub thì bạn cần push lên một nhánh để xem trong tab **Actions**.
 
 **Giải thích từng phần**
 

@@ -147,9 +147,10 @@ Sau đó mở http://localhost:8080.
 node tests/smoke.js            # chạy toàn bộ luồng game trong Node, thoát mã 1 nếu có lỗi
 node tests/smoke.js --verbose  # in từng bước và số lần phát mỗi event
 node --check src/core/main.js  # kiểm tra cú pháp một file
+node tests/check-doc-links.js  # kiểm tra link tương đối trong giáo trình docs/learn/
 ```
 
-Không cần cài gì thêm, Node 20 trở lên là đủ (CI dùng Node 22). Smoke test chơi hết 38 màn hành trình nên mất khoảng 40 giây.
+Không cần cài gì thêm, Node 20 trở lên là đủ (CI dùng Node 22). Smoke test chơi hết 38 màn hành trình nên mất khoảng 20–60 giây tuỳ máy.
 
 Smoke test làm những việc sau:
 - Dựng DOM, canvas, `localStorage` và `AudioContext` giả (`tests/fake-dom.js`).

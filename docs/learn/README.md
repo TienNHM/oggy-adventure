@@ -120,12 +120,13 @@ npx serve -l 8080 .
 
 Dừng server bằng `Ctrl + C` trong cửa sổ terminal đã mở nó.
 
-**Chạy smoke test** (kiểm thử tự động chơi hết game, mất khoảng 20–40 giây tuỳ máy):
+**Chạy smoke test** (kiểm thử tự động chơi hết game, mất khoảng 20–60 giây tuỳ máy):
 
 ```bash
 node tests/smoke.js            # ổn thì in "XANH — không có lỗi runtime." và thoát mã 0; có lỗi thì thoát mã 1
 node tests/smoke.js --verbose  # in từng bước và số lần phát mỗi event
 node --check src/core/loop.js  # chỉ kiểm tra cú pháp một file
+node tests/check-doc-links.js  # kiểm tra mọi link tương đối trong docs/learn/ (in "SẠCH" nếu không có link gãy)
 ```
 
 ### 2.3 Mở DevTools
@@ -161,6 +162,28 @@ OG.Journeys.validate('home')           // kiểm tra dữ liệu hành trình (b
 ```
 
 > ⚠️ Thay đổi gõ trong Console chỉ sống tới khi tải lại trang (F5). Muốn thay đổi lâu dài thì sửa file trong `src/`.
+
+> ⚠️ **Gõ Console khi đang chơi: game tự tạm dừng và xoá phím.** Bấm chuột vào DevTools để gõ lệnh thì cửa sổ game mất focus
+> (phát event `blur`; có thể xảy ra cả khi DevTools gắn liền cửa sổ). Lúc đó hai việc xảy ra:
+>
+> 1. `src/core/main.js` (hàm `autoPause`) **push** scene `pause` nếu đang ở `level`/`boss` → stack thành `["level", "pause"]`.
+> 2. `src/core/input.js` gọi `OG.Input.reset()` → mọi phím đang giữ bị nhả. Bấm "Tiếp tục" thì `OG.Scenes.pop()` lại gọi
+>    `OG.Input.reset()` thêm lần nữa.
+>
+> Hậu quả: lệnh như `OG.Input.setKey('right', true)` gõ thẳng vào Console sẽ **không** làm Oggy tự chạy (phím bị xoá khi bạn bấm
+> "Tiếp tục"), và thí nghiệm "giữ phím rồi làm gì đó" không làm được. Đây là hành vi **cố ý** của game (bài 03 mục 4, bài 05),
+> không phải lỗi của bạn. Cách làm thí nghiệm:
+>
+> - **Hẹn giờ:** bọc lệnh trong `setTimeout(..., 3000)`, nhấn Enter, rồi trong vòng 3 giây bấm "Tiếp tục" trên màn hình game
+>   (bấm vào game để trang có lại focus). Lệnh chạy khi bạn đã quay lại chơi:
+>
+>   ```js
+>   setTimeout(function () { OG.Input.setKey('right', true); }, 3000);   // dừng: OG.Input.setKey('right', false)
+>   ```
+>
+> - **Tách DevTools ra cửa sổ riêng** (menu ⋮ của DevTools → Dock side → Undock) cũng vẫn làm game mất focus, nên vẫn cần hẹn giờ.
+> - Lệnh chỉ **đọc** trạng thái (`OG.Scenes.stackNames()`, `OG.Loop.fps`, `OG.Sprites.cacheStats()`) hay đổi cấu hình
+>   (`OG.Config.GRAVITY = 600`) thì không bị ảnh hưởng: gõ xong bấm "Tiếp tục" là được.
 
 ---
 
@@ -330,7 +353,7 @@ Sơ đồ module, scene, event và vòng đời frame: [`ARCHITECTURE-DIAGRAMS.m
 | FSM (finite state machine) | Máy hữu hạn trạng thái: tại mỗi lúc chỉ ở một trạng thái, chuyển theo luật | 05, 09 |
 | event bus / observer | Kênh sự kiện: bên phát không cần biết bên nghe là ai | 06 |
 | AABB | Hình chữ nhật thẳng trục dùng để xét va chạm | 04 |
-| hitbox / hurtbox | Vùng gây sát thương / vùng nhận sát thương | 04, 09 |
+| hitbox / hurtbox | **Trong dự án này:** hitbox là khung va chạm thật của vật (dùng để giẫm, đỡ, nhặt); hurtbox là vùng của kẻ địch làm người chơi bị đau, nhỏ hơn hitbox để game dễ tha thứ (`OG.Enemies.hurtbox`, `OG.Difficulty.enemyHurtbox`). ⚠️ Game đối kháng thường dùng nghĩa khác (hitbox = vùng gây sát thương, hurtbox = vùng nhận sát thương); khi đọc tài liệu bên ngoài nhớ kiểm tra lại | 04, 09 |
 | one-way platform | Bục chỉ đỡ khi rơi từ trên xuống, nhảy xuyên từ dưới lên được | 04 |
 | coyote time | Cho phép nhảy thêm một chút sau khi đã rời mép bục | 03 |
 | procedural drawing | Vẽ bằng code (path, hình học) thay vì dùng file ảnh | 07 |
@@ -366,4 +389,5 @@ Sơ đồ module, scene, event và vòng đời frame: [`ARCHITECTURE-DIAGRAMS.m
 - [`docs/ARCHITECTURE.md`](../ARCHITECTURE.md): hợp đồng API v1 (thứ tự load, toạ độ, scene, event, API từng module).
 - [`docs/STORY.md`](../STORY.md): hợp đồng v2 (dữ liệu hành trình, độ khó, truyện, thẻ, câu đố).
 - [`src/types.d.ts`](../../src/types.d.ts): kiểu dữ liệu dùng chung cho JSDoc.
+- `src/<thư mục>/INTEGRATION.md` (vd [`src/gfx/INTEGRATION.md`](../../src/gfx/INTEGRATION.md)): ghi chú tích hợp của từng thư mục. Dự án được viết song song bởi nhiều nhóm, mỗi nhóm giữ một thư mục; file này ghi việc nhóm đó cần **nhóm Tích hợp** làm ở ngoài thư mục (thêm thẻ `<script>`, gắn hook, payload event mới). Khi bài tập bảo "ghi vào `INTEGRATION.md` của module", hãy viết theo cùng kiểu.
 - [`README.md`](../../README.md) ở thư mục gốc: giới thiệu game, cách chơi, deploy.

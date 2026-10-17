@@ -89,7 +89,7 @@ Cơ chế nối test với CI chỉ là **mã thoát** (exit code) của tiến 
 
 File chính: [tests/smoke.js](../../tests/smoke.js), [tests/fake-dom.js](../../tests/fake-dom.js), [.github/workflows/pages.yml](../../.github/workflows/pages.yml), [jsconfig.json](../../jsconfig.json), [src/types.d.ts](../../src/types.d.ts).
 
-### 6.1 Sandbox: trình duyệt "vừa đủ"
+### 1. Sandbox: trình duyệt "vừa đủ"
 
 Trong smoke.js, tìm `const sandbox = {`. Vài dòng đáng chú ý:
 
@@ -116,7 +116,7 @@ win.window = win;
 win.self = win;
 ```
 
-### 6.2 Nạp script đúng thứ tự `index.html`
+### 2. Nạp script đúng thứ tự `index.html`
 
 ```js
 const scripts = Array.from(indexHtml.matchAll(/<script\s+src="([^"]+)"\s*><\/script>/g)).map((m) => m[1]);
@@ -139,7 +139,7 @@ Ngay sau đó, test đăng ký **wildcard listener** để đếm mọi event m�
   OG.Events.on('*', (name, payload) => { evCount[name] = (evCount[name] || 0) + 1; evLast[name] = payload; });
 ```
 
-### 6.3 `step()`: fixed step + bất biến sau mỗi frame
+### 3. `step()`: fixed step + bất biến sau mỗi frame
 
 ```js
 function step(n) {
@@ -173,7 +173,7 @@ AudioContext giả thì ngược lại: nó cố tình **ném lỗi giống trì
 
 Đây là lý do `audio.js` dùng `SILENCE = 0.0001` (xem [Bài 10](10-web-audio.md)).
 
-### 6.4 Điều khiển như người chơi
+### 4. Điều khiển như người chơi
 
 ```js
 async function press(code, hold) { keyDown(code); step(hold || 1); keyUp(code); await stepAsync(1); }
@@ -196,7 +196,7 @@ function expectScene(name, label) {
 
 > 💡 Test **không cố chơi giỏi** như người. Phần chạy tự do dùng input thật để thử AI/vật lý; phần cần kết quả chắc chắn (nhặt đồ, giẫm địch) thì **dịch chuyển** người chơi tới đúng chỗ (`p.x = ...`) rồi để game tự xử lý va chạm.
 
-### 6.5 PRNG có seed trong `fightBoss`
+### 5. PRNG có seed trong `fightBoss`
 
 ```js
   let seed = 7;
@@ -205,7 +205,7 @@ function expectScene(name, label) {
 
 Đây là công thức Park–Miller. Cùng seed thì cùng dãy số, nên mỗi lần chạy, "người chơi ảo" bấm phím y hệt nhau và lỗi luôn tái hiện được. Test không dùng `Math.random()` vì nó dùng chung với game và không đặt seed được.
 
-### 6.6 Phát hiện memory leak bằng cách đếm
+### 6. Phát hiện memory leak bằng cách đếm
 
 Mục 13 của `qaChecks`:
 
@@ -222,7 +222,7 @@ Mục 13 của `qaChecks`:
 
 Scene nào `addEventListener` trong `enter()` mà quên gỡ trong `exit()` sẽ làm số listener tăng sau mỗi lượt. `intervalCount() <= 1` thì bắt lỗi **nhạc phát chồng**: sequencer của music.js chỉ dùng đúng một `setInterval`.
 
-### 6.7 Kiểm tra tĩnh: `fontChecks`
+### 7. Kiểm tra tĩnh: `fontChecks`
 
 ```js
   let scanned = 0;
@@ -238,7 +238,13 @@ Scene nào `addEventListener` trong `enter()` mà quên gỡ trong `exit()` sẽ
 
 Dòng cuối là một kỹ thuật quan trọng: **test cho chính test**. Một check không quét được file nào sẽ luôn "xanh", và đó là kiểu "xanh giả" nguy hiểm nhất.
 
-### 6.8 Mã thoát: nối test với CI
+Kiểm tra tĩnh không chỉ dành cho code. [tests/check-doc-links.js](../../tests/check-doc-links.js) quét mọi file `.md` trong
+`docs/learn/` (kể cả `solutions/`), tìm link Markdown `[chữ](đích)` và `<a href="đích">`, rồi báo link **tương đối** nào trỏ tới
+file không tồn tại. Bất biến của nó là "mọi link trong giáo trình đều mở được". Chạy `node tests/check-doc-links.js`: in `SẠCH` và
+thoát mã 0, hoặc in danh sách link gãy và thoát mã 1 (nên gắn được vào CI giống smoke test). Mỗi lần bạn viết hoặc đổi tên một file
+tài liệu, hãy chạy nó.
+
+### 8. Mã thoát: nối test với CI
 
 ```js
   if (errors.length) {
@@ -252,7 +258,7 @@ Dòng cuối là một kỹ thuật quan trọng: **test cho chính test**. Mộ
 
 Dùng `process.exitCode = 1` thay vì `process.exit(1)`, để Node in hết log rồi mới thoát.
 
-### 6.9 Workflow `pages.yml`
+### 9. Workflow `pages.yml`
 
 ```yaml
 on:
@@ -282,7 +288,7 @@ on:
 
 > ⚠️ Workflow này chỉ test khi push vào `master`. Một Pull Request hỏng sẽ không bị chặn trước khi merge. Bài tập ⭐⭐⭐ sửa điều đó.
 
-### 6.10 Kiểm tra kiểu bằng JSDoc + tsc, không build step
+### 10. Kiểm tra kiểu bằng JSDoc + tsc, không build step
 
 [jsconfig.json](../../jsconfig.json):
 
@@ -317,7 +323,8 @@ Smoke test và tsc bắt **hai loại lỗi khác nhau**. Hãy thử ở bài t�
    node tests/smoke.js
    node tests/smoke.js --verbose
    ```
-   Bản `--verbose` in từng bước, log của game (`[game] ...`) và số lần phát mỗi event.
+   Bản `--verbose` in từng bước, log của game (`[game] ...`) và số lần phát mỗi event. Một lần chạy mất khoảng 20–60 giây tuỳ máy.
+   Chạy thêm `node tests/check-doc-links.js` để kiểm tra link trong giáo trình (mục Đọc code 7).
 
 2. **Fixed step và dt:** trong `tests/smoke.js`, đổi `const DT = 1 / 60;` thành `1 / 30` rồi chạy. Những check bắt đầu đỏ chính là chỗ game nhạy với delta time. Nhớ trả lại.
 
@@ -325,7 +332,7 @@ Smoke test và tsc bắt **hai loại lỗi khác nhau**. Hãy thử ở bài t�
 
 4. **Kiểm tra tĩnh hoạt động:** thêm vào cuối một file bất kỳ trong `src/` một dòng comment có tên font cấm (xem `fontChecks`), chạy test: đỏ, kèm tên file. Xoá dòng đó.
 
-5. **Kiểm tra kiểu:** chạy lệnh `tsc` ở mục 6.10 → không in gì. Xem tab **Actions** trên trang GitHub của repo để thấy lịch sử các lần chạy `pages.yml`.
+5. **Kiểm tra kiểu:** chạy lệnh `tsc` ở mục Đọc code 10 → không in gì. Xem tab **Actions** trên trang GitHub của repo để thấy lịch sử các lần chạy `pages.yml`.
 
 ---
 

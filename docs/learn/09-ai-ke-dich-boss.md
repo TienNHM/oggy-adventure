@@ -362,7 +362,17 @@ Và **`bossTimeScale`** chỉ một dòng: `bossTimeScale: function () { return 
 
 Mở Console. Lưu ý: thắng trận trùm sẽ ghi tiến độ màn vào save như chơi thật.
 
-1. **Vào thẳng trận trùm:** từ menu, gõ `OG.Scenes.go('boss', { levelId: 'kitchen', bossId: 'deedee' })`.
+1. **Vào thẳng trận trùm:** từ menu, gõ
+
+   ```js
+   OG.Game.ensureRun();   // tạo lượt chơi (OG.Game.run) nếu chưa có
+   OG.Scenes.go('boss', { levelId: 'kitchen', bossId: 'deedee' });
+   ```
+
+   > ⚠️ Dòng `ensureRun()` là bắt buộc nếu bạn vừa tải trang và chưa bấm "Chơi": khi đó `OG.Game.run` còn là `null`, và
+   > `boss.enter` gọi `OG.Game.beginStage` (ghi vào `run.levelId`) sẽ báo lỗi
+   > `[OG] Lỗi trong scene boss.enter: TypeError: Cannot set properties of null (setting 'levelId')`. Trận trùm không được tạo nên
+   > `OG.BossScene.getBoss()` trả `null` và bước 2 cũng hỏng. Đi qua màn bình thường thì `startLevel` đã gọi `ensureRun()` hộ.
 2. **Nhìn state machine chạy:** trong trận, gõ
    ```js
    var b = OG.BossScene.getBoss(), oldSet = b.setState;
@@ -433,7 +443,7 @@ Mỗi trạng thái dùng một animation khác (`run`, `idle`, `attack`, `stunn
 ### ⭐⭐⭐ Khó — Trùm mới trên khung `K.createBase`
 
 Viết trùm **"Gián Khổng Lồ"** (`id: 'bigroach'`, dùng hình `'roach'` phóng 2,6 lần), đăng ký vào `OG.Bosses` và đánh thử bằng
-`OG.Scenes.go('boss', { levelId: 'kitchen', bossId: 'bigroach' })`.
+`OG.Game.ensureRun(); OG.Scenes.go('boss', { levelId: 'kitchen', bossId: 'bigroach' })` (cần `ensureRun()` nếu chưa bấm "Chơi", xem "Thử ngay" bước 1).
 
 - 4 máu, 2 pha (`phaseAt: [2]`), có câu toast khi sang pha 2.
 - Đòn `'walk'`: đi về phía người chơi 1,5 giây, **giẫm được**.

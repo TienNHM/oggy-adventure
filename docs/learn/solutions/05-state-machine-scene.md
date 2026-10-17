@@ -5,8 +5,9 @@
 >
 > Quay lại bài học: [05-state-machine-scene.md](../05-state-machine-scene.md)
 
-Mọi đoạn dưới đây dán thẳng vào Console của trình duyệt (hoặc đặt vào một file `src/dev/*.js` nạp trước `src/core/main.js`). Đã
-chạy thử với codebase hiện tại.
+Mọi đoạn dưới đây dán thẳng vào Console của trình duyệt (hoặc đặt vào một file `src/dev/*.js` nạp trước `src/core/main.js`).
+Nếu bạn làm file thật, nhớ chạy `node tests/smoke.js`: lời giải ⭐⭐ và ⭐⭐⭐ đổi luồng scene nên chỉ được bật sau cờ
+`OG.Config.DEBUG` (xem ô ⚠️ đầu phần Bài tập của bài 05), nếu không test sẽ ĐỎ.
 
 ---
 
@@ -119,7 +120,9 @@ Dán xong là đếm ngược ngay trong màn hiện tại (hook `update` chạy
   cờ tự mất mà không cần nghe event nào. Đây là lợi ích của việc tách **dữ liệu màn** (LevelDef) khỏi **trạng thái chạy** (`st`).
 
 **Trả lời câu hỏi kiểm tra.** Giữ → trong lúc đếm: nhân vật không đi, `OG.Level.state.t` không tăng. Khi `pop()`, `Input.reset()`
-xoá phím đang giữ. Muốn đi tiếp, người chơi phải nhấn lại. Sau đó `level.resume()` ẩn panel DOM (nếu có) và phát `'game:resume'`.
+xoá phím đang giữ. Với nhảy và tạm dừng, người chơi phải nhấn lại. Với ←/→ thì không cần: trên trình duyệt thật, phím đang
+giữ được hệ điều hành bắn `keydown` lặp (`e.repeat`), và `bindKeyboard` cố ý cho trái/phải "giữ lại" ngay sau `reset()` (bài 03,
+mục Đọc code 4). Vì vậy Oggy đi tiếp gần như ngay khi đếm xong. Sau đó `level.resume()` ẩn panel DOM (nếu có) và phát `'game:resume'`.
 
 **Mở rộng.** Đổi `drawBelow` thành `false` để thấy cách `Scenes.draw` bỏ qua scene dưới. Thử bấm P trong lúc đếm: không có gì xảy ra,
 vì `countdown.update` không đọc phím `pause`. Muốn cho phép tạm dừng thì phải tự xử lý, và đó là một quyết định thiết kế.

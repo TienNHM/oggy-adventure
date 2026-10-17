@@ -5,7 +5,8 @@
 >
 > Quay lại bài học: [06-event-bus-observer.md](../06-event-bus-observer.md)
 
-Mọi đoạn dưới đây dán thẳng vào Console khi đang ở trong một màn chơi. Đã chạy thử với codebase hiện tại.
+Mọi đoạn dưới đây dán thẳng vào Console khi đang ở trong một màn chơi. Bấm vào Console làm game tự tạm dừng: dán xong thì bấm
+"Tiếp tục" để chơi tiếp (xem [README mục 2.3](../README.md#23-mở-devtools)).
 
 ---
 

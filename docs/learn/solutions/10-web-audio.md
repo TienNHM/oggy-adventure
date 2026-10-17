@@ -147,7 +147,7 @@ Metro.start(120);
 // Metro.setBpm(180);  Metro.stop();
 ```
 
-Mã này đã được chạy thử với một đồng hồ giả (mỗi tick tăng 25 ms): ở 120 BPM, các nốt được lên lịch đúng tại 0,05 · 0,55 · 1,05 · 1,55 · 2,05 giây, và phách mạnh rơi vào nốt thứ 1 và thứ 5.
+Tự kiểm tra bằng một đồng hồ giả (mỗi tick tăng 25 ms) thì ở 120 BPM, các nốt phải được lên lịch đúng tại 0,05 · 0,55 · 1,05 · 1,55 · 2,05 giây, và phách mạnh rơi vào nốt thứ 1 và thứ 5.
 
 **So sánh với bản ngây thơ**
 
