@@ -72,7 +72,8 @@
   // Định dạng số kiểu Việt Nam: 12345 → "12.345" (regex chèn dấu chấm trước mỗi nhóm 3 chữ số).
   function fmt(n) { return String(Math.round(+n || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
   // 💡 Khái niệm: dirty checking — chỉ ghi vào DOM khi giá trị THẬT SỰ đổi. Gán textContent/innerHTML
-  //   (kể cả cùng giá trị) bắt trình duyệt tính lại bố cục; updateHud được gọi rất thường xuyên.
+  //   (kể cả cùng giá trị) làm trình duyệt xoá và tạo lại nút con, rồi đánh dấu bố cục cần tính lại (layout);
+  //   updateHud được gọi rất thường xuyên nên so sánh trước rẻ hơn nhiều.
   function setText(el, s) { if (el && el.textContent !== s) el.textContent = s; }
   // innerHTML đọc lại sẽ bị trình duyệt "chuẩn hoá" (khác chuỗi gốc) → lưu chuỗi gốc vào el.__html để so.
   function setHtml(el, s) { if (el && el.__html !== s) { el.__html = s; el.innerHTML = s; } }

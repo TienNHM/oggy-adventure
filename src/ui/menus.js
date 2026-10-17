@@ -362,10 +362,12 @@
   // Bàn phím cho panel: chạy ở pha capture để Enter kích hoạt đúng nút đang focus
   // (thay vì luôn bấm nút primary như OG.DOM mặc định).
   // 💡 Khái niệm: pha capture — sự kiện DOM đi từ window XUỐNG phần tử (capture) rồi nổi NGƯỢC lên (bubble).
-  //   addEventListener(..., true) nghe ở pha capture nên chạy TRƯỚC listener của OG.DOM/OG.Input, và
-  //   stopPropagation() chặn họ xử lý lại cùng phím đó.
-  // ⚠️ Bẫy: vì chặn Enter/Space ở đây, nếu phím đầu tiên người chơi bấm trong menu là Enter thì OG.Input không
-  //   thấy phím đó → không phát 'input:firstGesture' (xem src/ui/INTEGRATION.md mục 3).
+  //   addEventListener(..., true) nghe ở pha capture nên chạy TRƯỚC các listener pha bubble của OG.DOM
+  //   (Enter → nút chính) và OG.Input (bindKeyboard), và stopPropagation() chặn họ xử lý lại cùng phím đó.
+  // ⚠️ Bẫy: stopPropagation() KHÔNG chặn listener khác trên CÙNG window ở CÙNG pha capture — chúng chạy theo
+  //   thứ tự đăng ký. Nhờ vậy listener capture của OG.Input (bindFirstGesture, đăng ký sớm hơn trong
+  //   OG.Input.init) vẫn phát 'input:firstGesture' dù phím đầu tiên là Enter/Space trong menu. Đổi sang
+  //   stopImmediatePropagation() hoặc gắn listener này trước OG.Input.init() thì âm thanh có thể không mở khoá.
   function onKeyDown(e) {
     if (!UI.isMine()) return;
     // Ép kiểu HTMLInputElement để đọc .type / .isContentEditable (activeElement có thể là bất kỳ phần tử nào).

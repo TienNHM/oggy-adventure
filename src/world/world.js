@@ -79,8 +79,9 @@
   var FONT = OG.FONT;        // font chuẩn đủ dấu tiếng Việt (src/core/namespace.js)
   var NODE_R = 28;           // bán kính nút màn
   // 💡 Khái niệm: vùng chạm (hit area) LỚN hơn hình vẽ. Ngón tay trẻ em to và kém chính xác;
-  //   hướng dẫn accessibility khuyên vùng chạm tối thiểu ~44 px, nên bán kính 46 > NODE_R 28.
-  var HIT_R = 46;            // bán kính vùng chạm nút (≥ 44px)
+  //   hướng dẫn accessibility khuyên vùng chạm tối thiểu ~44×44 px. Nút vẽ có đường kính 56 px (NODE_R 28),
+  //   còn vùng chạm có đường kính 92 px (HIT_R 46) — chạm hơi trượt ra ngoài hình vẫn trúng.
+  var HIT_R = 46;            // px — bán kính vùng chạm nút (đường kính 92 px, rộng hơn mức tối thiểu 44 px)
   var WALK_SPEED = 300;      // px/giây khi Oggy đi giữa các nút
   var LEAVE_TIME = 0.5;      // giây hiệu ứng khép màn trước khi vào màn
   var INTRO_TIME = 0.45;     // giây hiệu ứng mở màn khi vừa vào bản đồ

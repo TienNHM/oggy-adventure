@@ -32,6 +32,8 @@ Không cần thêm thẻ `<script>` hay `<link>` mới: dùng đúng 3 file stub
    Ngoài ra, module UI chặn `keydown` Enter/Space ở pha capture khi panel `.ui-panel` đang mở (để Enter bấm đúng nút đang focus
    thay vì luôn bấm nút primary của OG.DOM). Hệ quả: nếu phím đầu tiên người chơi bấm là Enter hoặc Space trong menu, Input
    sẽ không phát `input:firstGesture`. Các phím khác (mũi tên, WASD) vẫn tới được Input.
+   **Đã xử lý:** `src/core/input.js` (`bindFirstGesture`) nay gắn `pointerdown`/`touchstart`/`keydown` ở pha capture trên
+   `window` ngay trong `OG.Input.init()` (trước `OG.Menus.init()`), nên cử chỉ đầu tiên ở bất kỳ đâu đều phát `input:firstGesture`.
 
 ## Event mới
 | Event | Payload | Ai phát | Ghi chú |
