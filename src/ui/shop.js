@@ -1,7 +1,29 @@
-/* OG.Shop — cửa hàng: vật phẩm hỗ trợ, skin, mở khoá nhân vật; áp dụng vật phẩm vào player qua Modifiers.
- * Chủ sở hữu: agent Menus & Shop (src/ui/). Load SAU src/ui/hud.js (dùng OG.Menus.ui từ menus.js).
+// @ts-check
+/* ============================================================================
+ * OG.Shop — CỬA HÀNG: vật phẩm hỗ trợ, skin, mở khoá nhân vật + áp vật phẩm vào gameplay qua Modifiers
+ * ----------------------------------------------------------------------------
+ * Vai trò:      Bán/mở khoá bằng xu (ghi OG.Save), và khi vào màn thì "tiêu thụ" vật phẩm đã bật mang theo,
+ *               trả về Modifiers (bộ chỉnh chỉ số) cho OG.Game/Player. Scene 'shop' là panel DOM dùng chung
+ *               bộ tiện ích OG.Menus.ui. Main gọi OG.Shop.init() sau OG.Menus.init().
+ * Khái niệm:    data-driven catalog (danh mục = bảng dữ liệu) · modifiers (gói chỉnh chỉ số cộng dồn, thay vì
+ *               sửa chỉ số gốc) · mua 2 bước chống bấm nhầm · chống gọi trùng trong cùng frame · event bus
+ *               ('shop:purchase', 'shop:use') · DOM overlay với uỷ quyền sự kiện (data-act)
+ * Bài học:      docs/learn/12-data-driven-man-cau-do-hanh-trinh.md (danh mục, perk) · docs/learn/11-luu-tru-migrate.md
+ *               (ghi save, namespace ext.shop) · docs/learn/06-event-bus-observer.md (event mua/dùng)
+ * Phụ thuộc:    OG.Data.registerSkin (đọc lúc LOAD — file phải nằm sau src/data/characters.js) ·
+ *               lúc CHẠY: OG.Save (ns, spendCoins, addItem, getItemCount, commit), OG.Data (skins, characters,
+ *               getSkin, getCharacter, playable), OG.Scenes, OG.Input, OG.Config.JUMP_VELOCITY, OG.Menus.ui.
+ *               Load SAU src/ui/hud.js (dùng OG.Menus.ui từ menus.js).
+ * Event:        phát: 'shop:purchase', 'shop:use', 'char:unlock', 'char:select', 'skin:equip',
+ *               'player:jump' (nhảy đôi, có double:true) · nghe: 'player:hurt', 'level:start', 'game:start', 'save:reset'
+ * API công khai: OG.Shop.init(), listItems(kind?), buy(itemId), getRunModifiers(charId),
+ *               getLevelModifiers(levelId, charId), getCharPerk, getActive, getActiveSummary, tickPlayer,
+ *               isLoadoutOn, setLoadout, items, perks, lastError
+ * Đọc tiếp:     src/game/game.js (newRun / startLevel gọi get*Modifiers) → src/game/player.js (đọc shield, magnet)
+ *               → src/ui/menus.js (bộ tiện ích panel OG.Menus.ui)
+ * Dữ liệu:      ShopItem, Modifiers, ActiveItems (typedef bên dưới)
  *
- * HỢP ĐỒNG (docs/ARCHITECTURE.md mục 8.5):
+ * Hợp đồng (docs/ARCHITECTURE.md mục 8.5):
  *   OG.Shop.init()                          — đăng ký scene 'shop' (params.back, params.backParams).
  *   OG.Shop.listItems(kind?) -> [ShopItem]  — {id, kind:'skin'|'char'|'consumable', name, desc, price, icon, owned, count, ...}
  *   OG.Shop.buy(itemId) -> bool             — trừ xu, ghi Save, phát 'shop:purchase' {itemId, cost, kind}.
@@ -18,13 +40,60 @@
  *   Event mới: 'shop:use' {itemId, levelId|null} khi một vật phẩm được tiêu thụ.
  *
  * Mã item: vật phẩm 'shield' | 'boots' | 'magnet' | 'heart'; skin = id skin (vd 'oggy_gold', chấp nhận cả
- * 'skin:oggy_gold'); nhân vật = 'char:<charId>'. */
+ * 'skin:oggy_gold'); nhân vật = 'char:<charId>'.
+ * ========================================================================== */
+
+/**
+ * Một dòng hàng trong cửa hàng (kết quả listItems).
+ * @typedef {Object} ShopItem
+ * @property {string} id       mã item (xem "Mã item" ở trên)
+ * @property {'consumable'|'skin'|'char'} kind
+ * @property {string} name
+ * @property {string} desc
+ * @property {number} price    xu
+ * @property {string} icon
+ * @property {boolean} owned
+ * @property {number} count    số đang có (skin/nhân vật: 0 hoặc 1)
+ * @property {number} [max]    vật phẩm: số tối đa được giữ
+ * @property {boolean} [loadout]  vật phẩm: có bật "mang theo" không
+ * @property {string} [charId]
+ * @property {Object} [unlock] nhân vật: điều kiện mở khoá {type:'free'|'coins'|'level', cost?, levelId?}
+ * @property {boolean} [buyable]  nhân vật: mở khoá được bằng xu
+ */
+
+/**
+ * Modifiers — gói chỉnh chỉ số trả cho OG.Game; field nào thiếu = không đổi. OG.Game cộng dồn
+ * (mergeMods) nhiều gói lại rồi Player đọc.
+ * @typedef {Object} Modifiers
+ * @property {number} [scoreMul]   nhân điểm
+ * @property {number} [jumpMul]    nhân lực nhảy
+ * @property {number} [speedMul]   nhân tốc độ chạy
+ * @property {number} [extraLives] mạng cộng thêm cho lượt chơi
+ * @property {number} [shield]     số đòn được chặn
+ * @property {number} [magnet]     px — bán kính hút pizza/xu
+ * @property {number} [doubleJump] số lần nhảy thêm trên không (field mở rộng, xem tickPlayer)
+ */
+
+/**
+ * Vật phẩm đang có tác dụng trong màn hiện tại.
+ * @typedef {Object} ActiveItems
+ * @property {string} levelId
+ * @property {number} shieldItem   khiên MUA còn lại (0/1)
+ * @property {number} perkShield   khiên từ đặc tính nhân vật (Jack)
+ * @property {number} shieldUsed   số khiên đã vỡ trong màn (đếm từ 'player:hurt'.shielded)
+ * @property {number} doubleJump
+ * @property {number} magnet       px
+ * @property {string[]} used       id vật phẩm đã tiêu thụ khi vào màn
+ */
 (function () {
   'use strict';
   var OG = window.OG;
   var U = OG.util;
 
-  // ---- Danh mục vật phẩm tiêu hao ----
+  // ---------------------------------------------------------------------------
+  // Danh mục (data-driven: thêm hàng = thêm 1 object, giao diện tự hiện)
+  // ---------------------------------------------------------------------------
+  // 🧪 Thử: đổi price của 'shield' 40 → 1 rồi vào 🛒 Cửa hàng: mua khiên gần như miễn phí (save vẫn hợp lệ).
   var CONSUMABLES = [
     { id: 'shield', icon: '🛡️', name: 'Khiên bong bóng', price: 40, max: 9,
       desc: 'Chặn 1 đòn trong màn kế tiếp (kể cả trận trùm của màn đó).' },
@@ -39,13 +108,17 @@
   var DOUBLE_JUMP_MUL = 0.88; // lực nhảy lần 2 so với lực nhảy gốc
 
   // Đặc tính riêng từng nhân vật (áp vào run qua getRunModifiers).
+  // 💡 Khái niệm: modifiers — KHÔNG sửa chỉ số gốc trong src/data/characters.js; chỉ khai báo "nhân 1.12 lực nhảy".
+  //   Nhiều nguồn (đặc tính, vật phẩm, độ khó) cùng trả gói modifiers, Game gộp lại → bỏ một nguồn là gỡ sạch
+  //   hiệu ứng của nó, không sợ chỉ số bị cộng dồn sai qua nhiều lượt chơi.
   var PERKS = {
     oggy: { label: 'Cân bằng', desc: 'Được thưởng thêm 10% điểm.', mods: { scoreMul: 1.1 } },
     jack: { label: 'Da dày', desc: 'Mỗi màn bắt đầu với 1 khiên chặn đòn.', mods: { shield: 1 } },
     olivia: { label: 'Nhẹ như mây', desc: 'Nhảy cao nhất đội (+12% lực nhảy).', mods: { jumpMul: 1.12 } }
   };
 
-  // Skin bổ sung (đăng ký lúc load, hợp lệ theo hợp đồng).
+  // Skin bổ sung (đăng ký lúc load, hợp lệ theo hợp đồng). Chỉ cần bảng màu — hàm vẽ nhân vật procedural
+  // tô theo `colors`, nên một skin mới không cần thêm ảnh nào.
   if (OG.Data && typeof OG.Data.registerSkin === 'function') {
     OG.Data.registerSkin({ id: 'oggy_candy', charId: 'oggy', name: 'Oggy Kẹo Ngọt', price: 180,
       colors: { body: '#f58fb7', head: '#ffa9cb', ear: '#ef7fab', feet: '#b34a78', muzzle: '#fff0f6' } });
@@ -55,7 +128,11 @@
       colors: { body: '#6c5aa8', head: '#8572c4', ear: '#5d4c96', feet: '#3a2f66', muzzle: '#efe9ff', accent: '#ffd36b' } });
   }
 
+  // ---------------------------------------------------------------------------
+  // Tiện ích tra cứu
+  // ---------------------------------------------------------------------------
   function save() { return (OG.Save && OG.Save.data) || null; }
+  // Dữ liệu riêng của module trong save (Save.data.ext.shop) — vá field thiếu khi save cũ chưa có.
   function shopNs() {
     var ns = OG.Save.ns('shop');
     if (!ns.loadout || typeof ns.loadout !== 'object') ns.loadout = {};
@@ -68,7 +145,7 @@
   function count(id) { return OG.Save && OG.Save.getItemCount ? OG.Save.getItemCount(id) : 0; }
   function ownsSkin(skinId) {
     var sk = OG.Data.getSkin(skinId);
-    if (sk && !sk.price) return true;
+    if (sk && !sk.price) return true; // skin giá 0 (mặc định) luôn "có"
     var s = save();
     return !!(s && (s.ownedSkins || []).indexOf(skinId) >= 0);
   }
@@ -77,7 +154,8 @@
     return !!(s && (s.unlockedChars || []).indexOf(id) >= 0);
   }
 
-  // Phân giải itemId -> {kind, price, ...}
+  // Phân giải itemId -> {kind, price, ...}. Một chỗ duy nhất hiểu định dạng mã item ('char:', 'skin:'),
+  // mọi hàm khác (buy, fkFor, scene) đi qua đây. null = mã không hợp lệ / nhân vật không bán bằng xu.
   function resolve(itemId) {
     itemId = String(itemId || '');
     var c = getConsumable(itemId);
@@ -93,10 +171,14 @@
     return null;
   }
 
-  // ---- Trạng thái vật phẩm đang dùng trong màn hiện tại ----
-  var active = null;   // {levelId, shieldItem, perkShield, shieldUsed, doubleJump, magnet, used:[id]}
-  var heartUsedRun = false;
-  // Nhảy đôi
+  // ---------------------------------------------------------------------------
+  // Trạng thái vật phẩm đang dùng trong màn hiện tại (RAM, không lưu)
+  // ---------------------------------------------------------------------------
+  /** @type {ActiveItems|null} */
+  var active = null;
+  var heartUsedRun = false; // lượt chơi này đã dùng tim dự phòng chưa (để báo toast lúc game:start)
+  // Nhảy đôi: player đang theo dõi, số lần đã nhảy trên không, frame trước có chạm đất không,
+  // và OG.time của lần tick gần nhất (chống gọi trùng).
   var dj = { player: null, airJumps: 0, wasGround: true, lastT: -1 };
 
   var Shop = (OG.Shop = {
@@ -105,6 +187,11 @@
     lastError: null,  // 'coins' | 'owned' | 'max' | 'unknown' sau lần buy() thất bại
 
     // ------------------------------------------------------------------
+    /**
+     * Liệt kê hàng trong cửa hàng, kèm trạng thái sở hữu đọc từ save.
+     * @param {string} [kind]  'consumable' | 'skin' | 'char'; bỏ trống = tất cả
+     * @returns {ShopItem[]}
+     */
     listItems: function (kind) {
       var out = [];
       if (!kind || kind === 'consumable') {
@@ -133,10 +220,19 @@
       return out;
     },
 
+    /**
+     * Mua một item: kiểm tra điều kiện → trừ xu → ghi save → phát 'shop:purchase' (và 'char:unlock' nếu là nhân vật).
+     * Thất bại thì trả false và đặt Shop.lastError = 'coins' | 'owned' | 'max' | 'unknown'.
+     * @param {string} itemId  vd 'shield', 'oggy_candy', 'char:jack'
+     * @returns {boolean}
+     * @example
+     *   if (!OG.Shop.buy('shield')) console.log('Không mua được:', OG.Shop.lastError);
+     */
     buy: function (itemId) {
       Shop.lastError = null;
       var it = resolve(itemId);
       var s = save();
+      // Kiểm tra mọi điều kiện TRƯỚC khi trừ xu: spendCoins là bước không hoàn tác.
       if (!it || !s) { Shop.lastError = 'unknown'; return false; }
       if (it.kind === 'consumable' && count(it.id) >= it.def.max) { Shop.lastError = 'max'; return false; }
       if (it.kind === 'skin' && ownsSkin(it.id)) { Shop.lastError = 'owned'; return false; }
@@ -159,19 +255,40 @@
     },
 
     // ------------------------------------------------------------------
+    /**
+     * Cho biết vật phẩm có đang bật "mang theo" (tự dùng khi vào màn) không.
+     * Mặc định BẬT: chỉ lưu khi người chơi tắt (`!== false`), save cũ không có field vẫn đúng.
+     * @param {string} itemId
+     * @returns {boolean}
+     */
     isLoadoutOn: function (itemId) {
       if (!save()) return true;
       var l = shopNs().loadout;
       return l[itemId] !== false;
     },
+    /**
+     * Bật/tắt "mang theo" một vật phẩm và ghi save.
+     * @param {string} itemId
+     * @param {boolean} on
+     */
     setLoadout: function (itemId, on) {
       shopNs().loadout[itemId] = !!on;
       OG.Save.commit();
     },
 
+    /**
+     * Lấy đặc tính của nhân vật.
+     * @param {string} charId
+     * @returns {{label: string, desc: string, mods: Modifiers}|null}
+     */
     getCharPerk: function (charId) { return PERKS[charId] || null; },
 
-    // Gọi 1 lần lúc OG.Game.newRun().
+    /**
+     * Tạo modifiers cho cả LƯỢT CHƠI: đặc tính nhân vật + tiêu thụ 1 tim dự phòng (nếu bật mang theo).
+     * Gọi đúng 1 lần trong OG.Game.newRun(). Có thể SỬA save (trừ tim) và phát 'shop:use'.
+     * @param {string} charId
+     * @returns {Modifiers}
+     */
     getRunModifiers: function (charId) {
       var m = {};
       var perk = PERKS[charId];
@@ -187,8 +304,16 @@
       return m;
     },
 
-    // Gọi khi vào màn (scene 'level') hoặc trận trùm (scene 'boss') của màn đó.
-    // Vào màn = kích hoạt mới (tiêu thụ kho). Vào trùm cùng màn = dùng lại, khiên chỉ còn phần chưa vỡ.
+    /**
+     * Tạo modifiers cho MỘT MÀN. Gọi khi vào màn (scene 'level') hoặc trận trùm (scene 'boss') của màn đó.
+     * Vào màn = kích hoạt mới (tiêu thụ kho, SỬA save, phát 'shop:use'). Vào trùm cùng màn = dùng lại,
+     * không tiêu thụ thêm; khiên mua chỉ còn nếu chưa vỡ ở phần màn trước đó.
+     * ⚠️ Bẫy: hàm phân biệt "vào màn" hay "vào trùm" bằng OG.Scenes.current() — phải gọi SAU khi scene
+     *   tương ứng đã thành scene hiện tại, nếu không vào trùm sẽ bị tính là vào màn mới và trừ kho lần nữa.
+     * @param {string} levelId
+     * @param {string} charId
+     * @returns {Modifiers}
+     */
     getLevelModifiers: function (levelId, charId) {
       if (!save()) return {};
       var scene = OG.Scenes && OG.Scenes.current ? OG.Scenes.current() : null;
@@ -196,6 +321,7 @@
       var reuse = active && active.levelId === levelId && scene !== 'level';
       if (reuse) {
         // Khiên của đặc tính nhân vật được làm mới; khiên mua chỉ còn phần chưa dùng.
+        // Khiên vỡ được tính trừ vào khiên đặc tính TRƯỚC (shieldUsed − perkShield), phần dư mới trừ khiên mua.
         var itemLeft = Math.max(0, active.shieldItem - Math.max(0, active.shieldUsed - active.perkShield));
         active.shieldItem = itemLeft;
         active.perkShield = perkShield;
@@ -220,7 +346,9 @@
       return mods;
     },
 
+    /** @returns {ActiveItems|null} vật phẩm đang có tác dụng (null khi chưa vào màn nào trong lượt) */
     getActive: function () { return active; },
+    /** @returns {{id: string, icon: string, name: string}[]} danh sách gọn để hiện ở HUD / màn tạm dừng */
     getActiveSummary: function () {
       if (!active) return [];
       var out = [];
@@ -230,16 +358,25 @@
       return out;
     },
 
-    // Nhảy đôi: gọi mỗi frame SAU khi Player.update chạy (hoặc ở cuối Player.update).
-    // Chống gọi trùng trong cùng frame bằng OG.time.
+    /**
+     * Xử lý NHẢY ĐÔI (giày lò xo) cho player: đang trên không mà vừa nhấn nhảy thì bật lên lần nữa.
+     * Gọi mỗi frame SAU khi Player.update chạy (hoặc ở cuối Player.update). SỬA p.vy, phát 'player:jump'.
+     * @param {Player} p
+     * @param {number} dt  giây (hiện chưa dùng, giữ cho chữ ký giống các hàm update)
+     */
     tickPlayer: function (p, dt) {
       if (!p || !active || !active.doubleJump) return;
+      // 💡 Khái niệm: chống gọi trùng trong cùng frame — hàm được gọi từ 2 nơi (HUD và có thể cả Player).
+      //   OG.time chỉ đổi một lần mỗi frame, nên "đã chạy với OG.time này rồi" = đã chạy trong frame này.
       if (dj.lastT === OG.time) return;
       dj.lastT = OG.time;
+      // Object player khác lần trước (vd vào màn mới) → bắt đầu đếm lại, bỏ qua frame đầu.
       if (dj.player !== p) { dj.player = p; dj.airJumps = 0; dj.wasGround = !!p.ground; return; }
       if (p.ground) {
         dj.airJumps = 0;
       } else if (!dj.wasGround && !p.celebrate && OG.Input.pressed('jump') && dj.airJumps < active.doubleJump) {
+        // ⚠️ Bẫy: phải kiểm tra frame TRƯỚC cũng đang trên không (!dj.wasGround). Frame vừa rời đất do cú nhảy
+        //   thường thì pressed('jump') vẫn đang true → không có điều kiện này, cú nhảy thường bị "nuốt" thành nhảy đôi.
         dj.airJumps++;
         p.vy = -(p.jumpV || OG.Config.JUMP_VELOCITY) * DOUBLE_JUMP_MUL;
         OG.Events.emit('player:jump', { charId: p.charId, x: p.x, y: p.y, double: true });
@@ -249,6 +386,10 @@
     },
 
     // ------------------------------------------------------------------
+    /**
+     * Gắn listener (khiên vỡ, báo vật phẩm mang theo, reset) và đăng ký scene 'shop'.
+     * Gọi một lần từ main.js, SAU OG.Menus.init() (scene cần OG.Menus.ui).
+     */
     init: function () {
       // Theo dõi khiên vỡ để trận trùm biết khiên mua còn hay không.
       OG.Events.on('player:hurt', function (e) { if (e && e.shielded && active) active.shieldUsed++; });
@@ -256,6 +397,7 @@
       OG.Events.on('level:start', function (e) {
         if (!active || active.levelId !== (e && e.levelId) || !active.used.length) return;
         var names = active.used.map(function (id) { var c = getConsumable(id); return c.icon + ' ' + c.name; });
+        // Trễ 900 ms: đợi màn chơi hiện ra hẳn rồi mới báo, để bé kịp để ý.
         setTimeout(function () { U.call('DOM', 'toast', 'Mang theo: ' + names.join(' · '), 2.2); }, 900);
       });
       OG.Events.on('game:start', function () {
@@ -267,8 +409,11 @@
   });
 
   // ======================================================================
-  // Scene 'shop'
+  // Scene 'shop' — giao diện DOM (panel trong #overlay), không vẽ canvas trừ nền
   // ======================================================================
+  // Mỗi thao tác → đổi trạng thái (S.tab, S.pending) → render() dựng lại TOÀN BỘ HTML panel, rồi trả focus
+  // về đúng nút vừa bấm qua selector data-fk ("focus key"). Đơn giản kiểu "vẽ lại hết" như canvas,
+  // nhưng nhờ data-fk người dùng bàn phím không bị nhảy focus về đầu sau mỗi lần bấm.
   function shopScene() {
     var UI = OG.Menus.ui;
     var TABS = [
@@ -295,6 +440,8 @@
         return '<span class="ui-price' + (afford ? '' : ' is-poor') + '">' + (extra || '') + UI.fmt(it.price) + ' 🪙</span>';
       },
 
+      // Thẻ hàng: [data-act] = tên handler, [data-arg] = tham số, [data-id] = id cho 'ui:click' (âm thanh/test),
+      // [data-fk] = khoá focus. aria-hidden trên emoji để trình đọc màn hình chỉ đọc tên món, không đọc tên emoji.
       cardConsumable: function (it) {
         var full = it.count >= it.max;
         var confirm = S.pending === it.id;
@@ -407,6 +554,8 @@
       },
 
       // Mua 2 bước: lần 1 hiện "Xác nhận?", lần 2 mới trừ xu.
+      // 💡 Khái niệm: xác nhận thao tác không hoàn tác ngay trên chính nút bấm (không bật hộp thoại riêng) —
+      //   trẻ em hay bấm nhầm/bấm liên tục; S.pending nhớ item đang chờ xác nhận, đổi tab hay chọn món khác là huỷ.
       buy: function (id) {
         var it = resolve(id);
         if (!it) return;
@@ -443,6 +592,8 @@
       },
 
       exit: function () { UI.close(); },
+      // Panel DOM tự xử lý chuột/Enter/mũi tên (menus.js); update() chỉ cần bắt Esc qua OG.Input.
+      // consume('back') để scene vừa chuyển tới không thấy lại cùng cú nhấn Esc trong frame này.
       update: function () {
         if (OG.Input.pressed('back')) { OG.Input.consume('back'); S.leave(); }
       },

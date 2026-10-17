@@ -1,35 +1,103 @@
-/* OG.World — bản đồ thế giới "Ngôi nhà của Oggy" (scene 'worldmap').
- * Chủ sở hữu: agent World & Quests (src/world/).
+// @ts-check
+/* ============================================================================
+ * OG.World — BẢN ĐỒ THẾ GIỚI CỔ ĐIỂN "Ngôi nhà của Oggy" (scene 'worldmap', vẽ toàn bộ bằng canvas)
+ * ----------------------------------------------------------------------------
+ * Vai trò:      Hiện các màn như những NÚT của một đồ thị (graph), nối bằng con đường theo quan hệ
+ *               `requires`. Người chơi chọn nút bằng phím/chuột/chạm, Oggy đi bộ theo đường tới đó rồi
+ *               vào màn qua OG.Game.startLevel(id). Main gọi OG.World.init() để đăng ký scene; Game quay về
+ *               đây với params.completed sau mỗi màn (hiện banner kết quả).
+ * Khái niệm:    đồ thị nút–cạnh (graph) + danh sách kề (adjacency list) · tìm đường BFS (breadth-first
+ *               search) · đường cong Bézier bậc 2 · scene với các "mode" con (map / quests / banner) ·
+ *               UI vẽ trên canvas + tự làm hit-test (xét điểm chạm rơi vào nút nào) · điều hướng bàn phím
+ *               theo hướng (spatial navigation) · hiệu ứng chuyển cảnh iris (vòng tròn khép/mở)
+ * Bài học:      docs/learn/05-state-machine-scene.md (scene, mode) · docs/learn/12-data-driven-man-cau-do-hanh-trinh.md
+ *               (bản đồ dựng từ dữ liệu LevelDef) · docs/learn/03-input.md (pressed, pointer)
+ * Phụ thuộc:    OG.Data.levels/getLevel/characters, OG.Progress (isUnlocked, isCompleted, getRecord...),
+ *               OG.Scenes, OG.Input, OG.DOM (toast, ẩn HUD), OG.Sprites.drawCharacter, OG.Quests (tuỳ chọn),
+ *               OG.util (call, safe, fillRound, clamp) — tất cả đọc lúc CHẠY. File load SAU extraLevels.js.
+ * Event:        phát: 'world:select' {levelId}, 'world:arrive' {levelId}, 'ui:click' {id:'world_*'} · nghe: (không)
+ * API công khai: OG.World.init(), OG.World.enabled, OG.World.focusLevel(id), OG.World.isActive(),
+ *               OG.World.getNodes()
+ * Đọc tiếp:     src/world/journey-map.js (bản đồ v2 cuộn ngang, có camera) → src/world/quests.js (bảng nhiệm vụ)
+ *               → src/ui/menus.js (so sánh: UI bằng DOM overlay thay vì canvas)
+ * Dữ liệu:      MapNode, CanvasButton (typedef bên dưới) · LevelDef, Scene (src/types.d.ts)
  *
- * HỢP ĐỒNG (docs/ARCHITECTURE.md mục 8.4):
+ * Hợp đồng (docs/ARCHITECTURE.md mục 8.4):
  *   OG.World.init()             — đăng ký scene 'worldmap' (thay bản mặc định).
  *   OG.World.enabled            — true khi bản đồ thật đã sẵn sàng.
  *   OG.World.focusLevel(id)     — đặt con trỏ chọn (và Oggy) vào màn.
  * Mở rộng: OG.World.isActive(), OG.World.getNodes(), OG.World.extraLevels (src/world/extraLevels.js).
  *
  * Bản đồ: mỗi màn là một "ô khu vực" (Nhà bếp, Khu vườn, Mái nhà, Hang ổ, Tầng hầm…) đặt tại level.map,
- * nối với nhau bằng đường đi theo quan hệ `requires` (mặc định: màn liền trước — giống OG.Progress).
- * Trạng thái khoá/mở/sao lấy từ OG.Progress. Oggy (nhân vật đang chơi) đi bộ giữa các ô.
- * Điều khiển:
+ * nối với nhau theo `requires` (mặc định: màn liền trước — giống OG.Progress). Khoá/mở/sao lấy từ OG.Progress.
+ * Điều khiển (mọi thao tác đều có cả đường bàn phím lẫn đường chạm — trẻ em dùng máy tính bảng):
  *   Bàn phím: ←↑→↓ / WASD chọn màn · Enter/Space chơi · E/J bảng nhiệm vụ · Esc về menu.
  *   Chạm/chuột: chạm ô để đi tới, chạm lần nữa (hoặc chạm thẻ thông tin / nút CHƠI) để vào màn.
- * Event mới phát ra: 'world:select' {levelId} khi bắt đầu vào màn từ bản đồ. */
+ * Toạ độ: mọi thứ ở toạ độ MÀN HÌNH logic 960×540, gốc góc trên-trái (bản đồ không cuộn, không có camera).
+ * ========================================================================== */
+
+/**
+ * Một nút trên bản đồ = một màn chơi.
+ * @typedef {Object} MapNode
+ * @property {string} id         = level.id
+ * @property {LevelDef} level
+ * @property {number} index      vị trí trong OG.Data.levels
+ * @property {number} x          tâm nút, px màn hình
+ * @property {number} y
+ * @property {boolean} unlocked
+ * @property {boolean} completed
+ * @property {Object|null} record  kỷ lục từ OG.Progress.getRecord ({stars, bestScore, bestTime...})
+ * @property {string|null} boss
+ * @property {string[]} requires  id các màn phải xong trước (= cạnh đi VÀO nút này)
+ * @property {{key: string, s: {label: string, fill: string, dark: string, light: string}}} style
+ * @property {number} [shakeT]   giây rung còn lại khi bấm vào nút đang khoá
+ */
+
+/**
+ * Nút bấm vẽ trên canvas (hình chữ nhật toạ độ màn hình, góc trên-trái x, y).
+ * @typedef {Object} CanvasButton
+ * @property {string} id
+ * @property {string} label
+ * @property {number} [x]
+ * @property {number} [y]
+ * @property {number} [w]
+ * @property {number} [h]
+ * @property {boolean} [primary]   nút chính (to, màu cam)
+ * @property {boolean} [disabled]
+ */
 (function () {
   'use strict';
   var OG = window.OG;
   var U = OG.util;
-  var World = (OG.World = OG.World || {}); // giữ extraLevels nếu extraLevels.js load trước
+  // `OG.World || {}`: giữ field extraLevels mà extraLevels.js (load trước) đã gắn. Ép any vì namespace
+  // được nhiều file gắn thêm field lúc chạy.
+  var World = /** @type {any} */ (OG.World = OG.World || {});
 
-  var FONT = '"Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif';
+  // ---------------------------------------------------------------------------
+  // Hằng số (thời gian: giây · khoảng cách: px màn hình)
+  // ---------------------------------------------------------------------------
+  var FONT = OG.FONT;        // font chuẩn đủ dấu tiếng Việt (src/core/namespace.js)
   var NODE_R = 28;           // bán kính nút màn
+  // 💡 Khái niệm: vùng chạm (hit area) LỚN hơn hình vẽ. Ngón tay trẻ em to và kém chính xác;
+  //   hướng dẫn accessibility khuyên vùng chạm tối thiểu ~44 px, nên bán kính 46 > NODE_R 28.
   var HIT_R = 46;            // bán kính vùng chạm nút (≥ 44px)
-  var WALK_SPEED = 300;      // px/s khi Oggy đi giữa các nút
-  var LEAVE_TIME = 0.5;      // hiệu ứng khép màn trước khi vào màn
-  var INTRO_TIME = 0.45;
+  var WALK_SPEED = 300;      // px/giây khi Oggy đi giữa các nút
+  var LEAVE_TIME = 0.5;      // giây hiệu ứng khép màn trước khi vào màn
+  var INTRO_TIME = 0.45;     // giây hiệu ứng mở màn khi vừa vào bản đồ
+  var IRIS_MAX_R = 1100;     // px — bán kính đủ lớn để vòng iris phủ hết 960×540 từ bất kỳ điểm nào
+  var UNLOCK_FX_TIME = 1.6;  // giây hiệu ứng "vừa mở khoá" quanh nút
+  var LOCKED_SHAKE_TIME = 0.45; // giây rung nút khi bấm vào màn đang khoá
+  var BANNER_MIN_TIME = 0.35;   // giây — banner chưa nhận thao tác đóng (tránh cú chạm vào màn trước đóng luôn)
+  var BANNER_AUTO_CLOSE = 6;    // giây — tự đóng banner nếu bé không bấm gì
+  var QUESTS_TAP_GUARD = 0.15;  // giây — bảng nhiệm vụ mới mở chưa nhận chạm (chính cú chạm mở bảng)
+  var CURVE_BEND = 0.18;     // độ cong đường đi: điểm điều khiển lệch 18% chiều dài đoạn
+  var PATH_LEN_FACTOR = 1.08; // đường cong dài hơn đoạn thẳng ~8% → tốc độ đi bộ trông đều hơn
+  var DIR_MIN_COS = 0.3;     // điều hướng phím: nút phải lệch < ~72° so với hướng bấm
+  var DIR_ANGLE_PENALTY = 2.2; // điều hướng phím: phạt nút lệch hướng (càng lớn càng ưu tiên nút thẳng hàng)
 
   function pal(k, fb) { return (OG.Palette && OG.Palette[k]) || fb; }
 
-  // Kiểu vẽ ô khu vực theo mapStyle / theme.
+  // Kiểu vẽ ô khu vực theo mapStyle / theme (dữ liệu màu, thêm khu mới = thêm 1 dòng).
   var STYLES = {
     kitchen: { label: 'Nhà bếp', fill: '#f4a66f', dark: '#c97a45', light: '#ffd7b0' },
     garden: { label: 'Khu vườn', fill: '#9bd47a', dark: '#4a9d62', light: '#d8f3b5' },
@@ -48,10 +116,14 @@
   }
   function zoneLabel(level) { return level.zone || styleOf(level).s.label; }
 
-  // ---------- Trạng thái ----------
-  var S = null;              // trạng thái scene (null khi không ở bản đồ)
-  var pendingFocus = null;   // focusLevel() gọi trước khi vào scene
+  // ---------------------------------------------------------------------------
+  // Trạng thái
+  // ---------------------------------------------------------------------------
+  // S được tạo mới trong enter() và đặt null trong exit(): mọi hàm bên dưới coi "S != null" là "đang ở bản đồ".
+  var S = null;              // trạng thái scene (null khi không ở bản đồ) — xem newState()
+  var pendingFocus = null;   // focusLevel() gọi trước khi vào scene → nhớ lại, dùng ở initialFocus()
 
+  // Gọi OG.Progress.<method>(...) an toàn: module thiếu thì trả undefined thay vì ném lỗi.
   function progress(method) {
     var args = Array.prototype.slice.call(arguments, 1);
     return U.call.apply(null, ['Progress', method].concat(args));
@@ -72,11 +144,21 @@
     return ch ? ch.name : id;
   }
 
-  // Dựng đồ thị nút + cạnh từ OG.Data.levels.
+  // ---------------------------------------------------------------------------
+  // Đồ thị màn chơi
+  // ---------------------------------------------------------------------------
+  /**
+   * Dựng đồ thị nút + cạnh từ OG.Data.levels, ghi vào S.nodes / S.byId / S.edges / S.adj.
+   * 💡 Khái niệm: graph (đồ thị) — nút = màn, cạnh = "màn A phải xong trước màn B" (requires).
+   *   Ta giữ 2 dạng: `edges` (danh sách cạnh [from, to]) để VẼ đường, và `adj` (danh sách kề,
+   *   id → các id hàng xóm) để TÌM ĐƯỜNG. Cùng một dữ liệu, mỗi dạng tiện cho một việc.
+   * 🧪 Thử: xoá `map` của một màn trong src/data/levels.js → nút đó tự xếp theo hàng ngang mặc định.
+   */
   function buildGraph() {
     var ls = levels();
     var nodes = [], byId = {}, edges = [];
     ls.forEach(function (l, i) {
+      // Màn thiếu `map`: rải đều trên đoạn x = 120..840, y = 300 (bản đồ vẫn dùng được với dữ liệu tối thiểu).
       var m = l.map || { x: 120 + (ls.length > 1 ? i * (720 / (ls.length - 1)) : 360), y: 300 };
       var n = {
         id: l.id, level: l, index: i, x: m.x, y: m.y,
@@ -94,26 +176,41 @@
       n.requires.forEach(function (r) { if (byId[r]) edges.push([byId[r], n]); });
     });
     S.nodes = nodes; S.byId = byId; S.edges = edges;
-    // danh sách kề (vô hướng) cho tìm đường
+    // Danh sách kề VÔ HƯỚNG: quan hệ khoá/mở có hướng, nhưng Oggy đi bộ được cả hai chiều trên đường.
     S.adj = {};
     nodes.forEach(function (n) { S.adj[n.id] = []; });
     edges.forEach(function (e) { S.adj[e[0].id].push(e[1].id); S.adj[e[1].id].push(e[0].id); });
   }
 
-  // ---------- Hình học đường đi (bezier bậc 2, cùng một đường cho cả hai chiều) ----------
+  // ---------------------------------------------------------------------------
+  // Hình học đường đi (Bézier bậc 2, cùng một đường cho cả hai chiều)
+  // ---------------------------------------------------------------------------
+  // Điểm điều khiển của đường cong a–b: trung điểm, đẩy lệch theo pháp tuyến (vuông góc với đoạn a→b).
+  // ⚠️ Bẫy: luôn sắp (a, b) theo id trước khi tính. Nếu không, đi a→b cong lên còn b→a cong xuống —
+  //   Oggy sẽ đi lệch khỏi con đường đã vẽ khi quay ngược lại.
   function ctrlPoint(a, b) {
     var p = a.id < b.id ? a : b, q = p === a ? b : a;
     var dx = q.x - p.x, dy = q.y - p.y, len = Math.sqrt(dx * dx + dy * dy) || 1;
-    var k = 0.18 * len;
+    var k = CURVE_BEND * len;
     return { x: (p.x + q.x) / 2 - dy / len * k, y: (p.y + q.y) / 2 + dx / len * k };
   }
+  // 💡 Khái niệm: Bézier bậc 2 — B(t) = (1−t)²·A + 2(1−t)t·C + t²·B, t chạy 0 → 1. Cùng công thức với
+  //   ctx.quadraticCurveTo trong drawEdges, nên vị trí Oggy khớp đúng nét đường trên màn hình.
   function curveAt(a, b, t) {
     var c = ctrlPoint(a, b), u = 1 - t;
     return { x: u * u * a.x + 2 * u * t * c.x + t * t * b.x, y: u * u * a.y + 2 * u * t * c.y + t * t * b.y };
   }
   function dist(a, b) { var dx = a.x - b.x, dy = a.y - b.y; return Math.sqrt(dx * dx + dy * dy); }
 
-  // Tìm đường BFS qua các nút đã mở. Trả mảng id (không gồm nút xuất phát) hoặc null.
+  /**
+   * Tìm đường ngắn nhất (ít cạnh nhất) giữa hai nút, chỉ đi qua nút đã mở khoá (riêng nút đích được phép).
+   * 💡 Khái niệm: BFS (breadth-first search, tìm theo chiều rộng) — duyệt hàng đợi theo từng "lớp" khoảng cách,
+   *   nên lần đầu chạm tới đích chính là đường ít bước nhất. `prev` ghi "đến nút này từ nút nào"
+   *   để lần ngược ra đường đi.
+   * @param {string} fromId
+   * @param {string} toId
+   * @returns {string[]|null} mảng id các nút phải đi qua (KHÔNG gồm nút xuất phát), null nếu không có đường
+   */
   function findPath(fromId, toId) {
     if (fromId === toId) return [];
     var prev = {}, queue = [fromId], seen = {};
@@ -139,13 +236,18 @@
     return null;
   }
 
-  // ---------- Hành động ----------
+  // ---------------------------------------------------------------------------
+  // Hành động
+  // ---------------------------------------------------------------------------
   function sfx(name) { U.call('Audio', 'sfx', name); }
+  // Phát 'ui:click' thay vì gọi Audio trực tiếp: module nào cần (âm thanh, thống kê) tự nghe.
   function click(id) { OG.Events.emit('ui:click', { id: 'world_' + id }); }
 
+  // Đặt lộ trình cho Oggy tới nút `id`. Oggy đi theo từng ĐOẠN (seg = một cạnh), path = các nút còn lại.
   function walkTo(id) {
     var o = S.oggy, target = S.byId[id];
     if (!target || !target.unlocked) return;
+    // Đang đi giữa đường thì tìm đường từ đầu kia của đoạn hiện tại (đi nốt đoạn này rồi rẽ).
     var from = o.seg ? o.seg.to.id : o.nodeId;
     var path = findPath(from, id);
     o.path = path ? path : [id]; // không có đường → đi thẳng
@@ -157,7 +259,7 @@
     if (!o.path.length) { o.seg = null; return; }
     var from = S.byId[o.nodeId], to = S.byId[o.path.shift()];
     if (!from || !to) { o.seg = null; return; }
-    o.seg = { from: from, to: to, t: 0, len: Math.max(1, dist(from, to) * 1.08) };
+    o.seg = { from: from, to: to, t: 0, len: Math.max(1, dist(from, to) * PATH_LEN_FACTOR) };
     if (to.x !== from.x) o.face = to.x > from.x ? 1 : -1;
   }
 
@@ -173,13 +275,16 @@
     else if (opts.feedback) lockedFeedback(n);
   }
 
+  // Phản hồi khi bấm màn đang khoá: rung + âm thanh + chữ nói rõ CẦN LÀM GÌ (không chỉ "bị khoá").
+  // Ba kênh cùng lúc (hình, tiếng, chữ) để bé nào cũng nhận ra, kể cả khi tắt tiếng.
   function lockedFeedback(n) {
-    n.shakeT = 0.45;
+    n.shakeT = LOCKED_SHAKE_TIME;
     sfx('locked');
     var names = n.requires.map(function (r) { var l = OG.Data.getLevel(r); return l ? l.name : r; });
     OG.DOM.toast('🔒 Cần hoàn thành: ' + (names.join(', ') || 'màn trước'));
   }
 
+  // "Chơi" nút đang chọn. Oggy chưa đứng ở đó → đi tới trước, ghi pendingStart để updateWalk vào màn khi tới nơi.
   function confirmSelection() {
     var n = S.byId[S.sel];
     if (!n) return;
@@ -188,6 +293,7 @@
     else { S.pendingStart = n.id; walkTo(n.id); }
   }
 
+  // Bắt đầu hiệu ứng khép iris; LEAVE_TIME giây sau update() mới gọi OG.Game.startLevel.
   function startLeaving(id) {
     if (S.leaving) return;
     S.leaving = { id: id, t: 0 };
@@ -196,7 +302,16 @@
     OG.Events.emit('world:select', { levelId: id });
   }
 
-  // Chọn nút theo hướng (dx,dy) từ nút đang chọn.
+  /**
+   * Chọn nút theo hướng phím mũi tên (dx, dy) tính từ nút đang chọn.
+   * 💡 Khái niệm: spatial navigation (điều hướng theo không gian) — nút trên bản đồ không xếp thành lưới,
+   *   nên "nút bên phải" = nút có góc lệch nhỏ (cos lớn) VÀ gần. Điểm = khoảng cách × (1 + phạt lệch góc),
+   *   lấy điểm nhỏ nhất. Nhờ vậy bản đồ chơi được hoàn toàn bằng bàn phím (accessibility).
+   * 🧪 Thử: đổi DIR_ANGLE_PENALTY 2.2 → 0 rồi bấm →: nút gần nhất trong nửa bên phải được chọn,
+   *   kể cả khi nó nằm chéo lên trên.
+   * @param {number} dx  -1 trái, 1 phải, 0
+   * @param {number} dy  -1 lên, 1 xuống, 0
+   */
   function moveSelection(dx, dy) {
     var cur = S.byId[S.sel];
     if (!cur) return;
@@ -204,9 +319,9 @@
     S.nodes.forEach(function (n) {
       if (n === cur) return;
       var vx = n.x - cur.x, vy = n.y - cur.y, d = Math.sqrt(vx * vx + vy * vy) || 1;
-      var cos = (vx * dx + vy * dy) / d;
-      if (cos < 0.3) return; // phải nằm đúng hướng
-      var score = d * (1 + 2.2 * (1 - cos));
+      var cos = (vx * dx + vy * dy) / d; // tích vô hướng với vector hướng đơn vị = cos góc lệch
+      if (cos < DIR_MIN_COS) return; // phải nằm đúng hướng
+      var score = d * (1 + DIR_ANGLE_PENALTY * (1 - cos));
       if (score < bestScore) { bestScore = score; best = n; }
     });
     // Không có nút theo hướng ←/→: đi theo thứ tự danh sách cho dễ dùng.
@@ -217,9 +332,19 @@
     if (best) select(best.id, { walk: true });
   }
 
-  // ---------- Bố cục nút bấm trên canvas ----------
+  // ---------------------------------------------------------------------------
+  // Bố cục nút bấm trên canvas
+  // ---------------------------------------------------------------------------
+  // 💡 Khái niệm: canvas UI — canvas chỉ là một tấm ảnh, KHÔNG có <button> thật. Ta tự giữ danh sách
+  //   hình chữ nhật {x, y, w, h} (toạ độ màn hình), dùng chung cho cả VẼ (drawButtons) lẫn XÉT CHẠM (hit).
+  //   Tính lại mỗi frame từ cùng một hàm nên hình vẽ và vùng bấm không bao giờ lệch nhau.
+  //   Đánh đổi so với DOM (src/ui/menus.js): tự do hình ảnh, nhưng phải tự lo focus, con trỏ, phím tắt.
+  /** @returns {CanvasButton[]} */
   function buttons() {
+    /** @type {CanvasButton[]} */
     var list = [{ id: 'menu', x: 14, y: 10, w: 118, h: 52, label: '◀ Menu' }];
+    // Nhóm nút bên phải xếp từ mép phải vào trong; x/y/w/h điền sau trong vòng lặp.
+    /** @type {CanvasButton[]} */
     var right = [];
     right.push({ id: 'quests', label: '📜 Nhiệm vụ' });
     if (OG.Scenes.has('charselect')) right.push({ id: 'chars', label: '🐱 Nhân vật' });
@@ -238,6 +363,7 @@
     return list;
   }
 
+  // Hit-test: điểm (x, y) có nằm trong hình chữ nhật b không — dạng "điểm trong hộp" của phép xét AABB.
   function hit(b, x, y) { return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h; }
 
   function onButton(id) {
@@ -251,13 +377,18 @@
 
   function openQuests() { S.mode = 'quests'; S.questsT = 0; }
 
+  // Nút GẦN NHẤT trong bán kính HIT_R quanh điểm chạm (không phải nút đầu tiên trùng) —
+  // hai vùng chạm chồng nhau thì vẫn chọn đúng nút bé định bấm.
   function nodeAt(x, y) {
     var best = null, bd = HIT_R;
     S.nodes.forEach(function (n) { var d = dist(n, { x: x, y: y }); if (d < bd) { bd = d; best = n; } });
     return best;
   }
 
-  // ---------- Banner sau khi hoàn thành màn ----------
+  // ---------------------------------------------------------------------------
+  // Banner sau khi hoàn thành màn
+  // ---------------------------------------------------------------------------
+  // Gom dữ liệu hiển thị MỘT lần từ LevelResult (params.result) → hàm vẽ chỉ đọc, không tra cứu lại mỗi frame.
   function makeBanner(params) {
     var r = params.result || null;
     var level = OG.Data.getLevel(params.completed);
@@ -287,7 +418,8 @@
       if (S.byId[id]) S.unlockFx[id] = 0;
     });
     if (b.unlocked.length) OG.DOM.toast('🔓 Đã mở khoá: ' + b.unlocked.join(', '));
-    // Đi tới màn tiếp theo hợp lý.
+    // Đi tới màn tiếp theo hợp lý, theo thứ tự ưu tiên: màn kế (nếu mở & chưa xong) → màn vừa mở khoá
+    // → màn chưa xong đầu tiên. Bé không phải tự tìm "chơi gì tiếp".
     var next = progress('nextLevelId', b.level.id);
     var target = null;
     if (next && S.byId[next] && S.byId[next].unlocked && !S.byId[next].completed) target = next;
@@ -296,7 +428,11 @@
     if (target && S.byId[target]) select(target, { walk: true });
   }
 
-  // ---------- Scene ----------
+  // ---------------------------------------------------------------------------
+  // Scene
+  // ---------------------------------------------------------------------------
+  // Trạng thái scene mới. mode: 'map' (chọn màn) | 'quests' (bảng nhiệm vụ) | 'banner' (kết quả màn) —
+  // một state machine nhỏ bên trong scene: update() xử lý input theo đúng mode đang bật.
   function newState() {
     return {
       t: 0, introT: 0, mode: 'map', sel: null, hover: null, hoverBtn: null,
@@ -306,6 +442,7 @@
     };
   }
 
+  // Nút được chọn khi mở bản đồ: focusLevel() đã hẹn → màn kế của lượt chơi → màn chưa xong đầu tiên → nút đầu.
   function initialFocus() {
     if (pendingFocus && S.byId[pendingFocus]) { var f = pendingFocus; pendingFocus = null; return f; }
     var run = OG.Game && OG.Game.run;
@@ -325,11 +462,13 @@
     o.nodeId = id; o.x = n.x; o.y = n.y; o.path = []; o.seg = null;
   }
 
+  /** @type {Scene} */
   var scene = {
     enter: function (params) {
       params = params || {};
       S = newState();
       buildGraph();
+      // Bản đồ tự vẽ mọi thứ trên canvas → giấu lớp DOM (HUD, nút cảm ứng, panel) để không che/bắt nhầm chạm.
       if (OG.DOM) {
         OG.DOM.hidePanel();
         OG.DOM.setHudVisible(false);
@@ -351,6 +490,8 @@
     },
 
     exit: function () {
+      // ⚠️ Bẫy: con trỏ 'pointer' là thuộc tính của <canvas> dùng chung. Quên trả lại khi rời scene
+      //   thì cả màn chơi hiện bàn tay dù không có gì để bấm.
       if (OG.canvas) OG.canvas.style.cursor = '';
       S = null;
     },
@@ -363,11 +504,9 @@
       S.introT += dt;
       var I = OG.Input, ptr = I.pointer;
 
-      // hiệu ứng mở khoá & rung nút khoá
-      for (var k in S.unlockFx) { S.unlockFx[k] += dt; if (S.unlockFx[k] > 1.6) delete S.unlockFx[k]; }
-      S.nodes.forEach(function (n) { if (n.shakeT) n.shakeT = Math.max(0, n.shakeT - dt); });
+      tickNodeFx(dt);
 
-      // Đang rời bản đồ để vào màn
+      // Đang rời bản đồ để vào màn: bỏ qua mọi input cho tới khi iris khép xong.
       if (S.leaving) {
         S.leaving.t += dt;
         if (S.leaving.t >= LEAVE_TIME) {
@@ -380,80 +519,105 @@
 
       updateWalk(dt);
 
-      var tapped = ptr.justPressed;
-      var px = ptr.x, py = ptr.y;
+      // ⚠️ Bẫy: phím logic 'jump' gồm cả Space, W và ↑. Ở bản đồ ↑/W dùng để CHỌN nút lên trên,
+      //   nên chỉ coi là "xác nhận" khi VỪA NHẤN 'jump' (pressed) mà không đang giữ 'up' — tức là Space.
       var spaceOnly = I.pressed('jump') && !I.keys.up; // Space (không phải ↑/W)
-      var confirmKey = I.pressed('confirm') || spaceOnly;
+      // Gom input của frame này một lần; các hàm con bên dưới chỉ đọc.
+      var inp = {
+        tapped: ptr.justPressed,
+        px: ptr.x, py: ptr.y,
+        confirmKey: I.pressed('confirm') || spaceOnly
+      };
 
-      // --- Banner kết quả ---
-      if (S.mode === 'banner') {
-        if (S.banner) S.banner.t += dt;
-        if ((S.banner && S.banner.t > 0.35 && (tapped || confirmKey || I.pressed('action') || I.pressed('back'))) || (S.banner && S.banner.t > 6)) {
-          click('banner');
-          closeBanner();
-        }
-        return;
-      }
-
-      // --- Bảng nhiệm vụ ---
-      if (S.mode === 'quests') {
-        S.questsT += dt;
-        if (I.pressed('back') || I.pressed('action') || confirmKey) { click('closeQuests'); S.mode = 'map'; return; }
-        if (tapped && S.questsT > 0.15) {
-          var box = questsBox();
-          var close = { x: box.x + box.w - 62, y: box.y + 8, w: 54, h: 54 };
-          if (hit(close, px, py) || !hit(box, px, py)) { click('closeQuests'); S.mode = 'map'; }
-        }
-        return;
-      }
-
-      // --- Bản đồ ---
-      // Di chuột: nút được hover
-      S.hover = null; S.hoverBtn = null;
-      var btns = buttons();
-      if (ptr.inside || tapped) {
-        for (var b = 0; b < btns.length; b++) if (hit(btns[b], px, py)) { S.hoverBtn = btns[b].id; break; }
-        if (!S.hoverBtn) { var hn = nodeAt(px, py); if (hn) S.hover = hn.id; }
-      }
-      if (OG.canvas) OG.canvas.style.cursor = (S.hover || S.hoverBtn || (ptr.inside && cardHit(px, py))) ? 'pointer' : '';
-
-      if (tapped) {
-        if (S.hoverBtn) { onButton(S.hoverBtn); return; }
-        var n = nodeAt(px, py);
-        if (n) {
-          if (n.id === S.sel && n.unlocked) confirmSelection();
-          else select(n.id, { walk: true, feedback: true });
-          return;
-        }
-        if (cardHit(px, py)) { confirmSelection(); return; }
-      }
-
-      if (I.pressed('back')) { click('menu'); OG.Scenes.go('menu'); return; }
-      if (I.pressed('action')) { click('quests'); openQuests(); return; }
-      if (confirmKey) { confirmSelection(); return; }
-      if (I.pressed('left')) moveSelection(-1, 0);
-      else if (I.pressed('right')) moveSelection(1, 0);
-      else if (I.pressed('up')) moveSelection(0, -1);
-      else if (I.pressed('down')) moveSelection(0, 1);
+      if (S.mode === 'banner') { updateBannerMode(dt, I, inp); return; }
+      if (S.mode === 'quests') { updateQuestsMode(dt, I, inp); return; }
+      updateMapMode(I, ptr, inp);
     },
 
     draw: function (ctx) {
       if (!S) { drawBackdrop(ctx, OG.time || 0); return; }
       var t = S.t;
+      // Thứ tự vẽ = thứ tự lớp (painter's algorithm): nền → đường → ô khu → nút → Oggy → UI → bảng phủ → iris.
       drawBackdrop(ctx, t);
       drawEdges(ctx, t);
       S.nodes.forEach(function (n) { drawZone(ctx, n, t); });
       S.nodes.forEach(function (n) { drawNode(ctx, n, t); });
       drawOggy(ctx, t);
-      drawTopBar(ctx, t);
+      drawTopBar(ctx);
       drawCard(ctx, t);
-      drawButtons(ctx, t);
+      drawButtons(ctx);
       if (S.mode === 'quests') drawQuestBoard(ctx, t);
       if (S.mode === 'banner' && S.banner) drawBanner(ctx, S.banner, t);
       drawIris(ctx);
     }
   };
 
+  // Đếm lùi hiệu ứng "vừa mở khoá" và rung nút khoá.
+  function tickNodeFx(dt) {
+    for (var k in S.unlockFx) { S.unlockFx[k] += dt; if (S.unlockFx[k] > UNLOCK_FX_TIME) delete S.unlockFx[k]; }
+    S.nodes.forEach(function (n) { if (n.shakeT) n.shakeT = Math.max(0, n.shakeT - dt); });
+  }
+
+  // Mode 'banner': đợi BANNER_MIN_TIME giây rồi mới nhận chạm/phím để đóng; tự đóng sau BANNER_AUTO_CLOSE giây.
+  function updateBannerMode(dt, I, inp) {
+    if (S.banner) S.banner.t += dt;
+    if ((S.banner && S.banner.t > BANNER_MIN_TIME && (inp.tapped || inp.confirmKey || I.pressed('action') || I.pressed('back'))) || (S.banner && S.banner.t > BANNER_AUTO_CLOSE)) {
+      click('banner');
+      closeBanner();
+    }
+  }
+
+  // Mode 'quests': đóng bằng Esc / E / Enter, chạm nút ✕ hoặc chạm RA NGOÀI bảng (thói quen quen thuộc
+  // với hộp thoại trên điện thoại).
+  function updateQuestsMode(dt, I, inp) {
+    S.questsT += dt;
+    if (I.pressed('back') || I.pressed('action') || inp.confirmKey) { click('closeQuests'); S.mode = 'map'; return; }
+    if (inp.tapped && S.questsT > QUESTS_TAP_GUARD) {
+      var box = questsBox();
+      var close = { x: box.x + box.w - 62, y: box.y + 8, w: 54, h: 54 };
+      if (hit(close, inp.px, inp.py) || !hit(box, inp.px, inp.py)) { click('closeQuests'); S.mode = 'map'; }
+    }
+  }
+
+  // Mode 'map': hover chuột → chạm/click → phím. Mỗi frame chỉ xử lý MỘT hành động (return sớm).
+  function updateMapMode(I, ptr, inp) {
+    var tapped = inp.tapped, px = inp.px, py = inp.py;
+    // Di chuột: nút được hover. Thứ tự ưu tiên giống thứ tự vẽ ngược: nút UI (vẽ trên) thắng nút màn.
+    S.hover = null; S.hoverBtn = null;
+    var btns = buttons();
+    if (ptr.inside || tapped) {
+      for (var b = 0; b < btns.length; b++) if (hit(btns[b], px, py)) { S.hoverBtn = btns[b].id; break; }
+      if (!S.hoverBtn) { var hn = nodeAt(px, py); if (hn) S.hover = hn.id; }
+    }
+    if (OG.canvas) OG.canvas.style.cursor = (S.hover || S.hoverBtn || (ptr.inside && cardHit(px, py))) ? 'pointer' : '';
+
+    if (tapped) {
+      if (S.hoverBtn) { onButton(S.hoverBtn); return; }
+      var n = nodeAt(px, py);
+      if (n) {
+        // Chạm lần 1 = chọn + đi tới, chạm lần 2 vào cùng nút = chơi (không cần nhắm nút CHƠI nhỏ ở góc).
+        if (n.id === S.sel && n.unlocked) confirmSelection();
+        else select(n.id, { walk: true, feedback: true });
+        return;
+      }
+      if (cardHit(px, py)) { confirmSelection(); return; }
+    }
+
+    if (I.pressed('back')) { click('menu'); OG.Scenes.go('menu'); return; }
+    if (I.pressed('action')) { click('quests'); openQuests(); return; }
+    if (inp.confirmKey) { confirmSelection(); return; }
+    if (I.pressed('left')) moveSelection(-1, 0);
+    else if (I.pressed('right')) moveSelection(1, 0);
+    else if (I.pressed('up')) moveSelection(0, -1);
+    else if (I.pressed('down')) moveSelection(0, 1);
+  }
+
+  /**
+   * Cho Oggy đi dọc đoạn đường hiện tại. Tham số t của đoạn tăng theo QUÃNG ĐƯỜNG (WALK_SPEED·dt / len)
+   * chứ không cộng thẳng dt — nhờ vậy đoạn dài hay ngắn Oggy đều đi cùng tốc độ px/giây.
+   * Tới cuối đoạn: còn path thì sang đoạn kế, hết path thì phát 'world:arrive'.
+   * @param {number} dt  giây
+   */
   function updateWalk(dt) {
     var o = S.oggy;
     if (!o.seg) {
@@ -474,7 +638,10 @@
     }
   }
 
-  // ---------- Vẽ ----------
+  // ---------------------------------------------------------------------------
+  // Vẽ — tiện ích chữ & hình
+  // ---------------------------------------------------------------------------
+  // Vẽ một dòng chữ căn giữa theo chiều dọc tại (x, y). Mặc định đậm, căn trái.
   function text(ctx, str, x, y, size, color, align, weight) {
     ctx.font = (weight || 'bold') + ' ' + size + 'px ' + FONT;
     ctx.fillStyle = color;
@@ -482,7 +649,8 @@
     ctx.textBaseline = 'middle';
     ctx.fillText(str, x, y);
   }
-  // Cắt chữ cho vừa bề rộng (thêm "…").
+  // Cắt chữ cho vừa bề rộng (thêm "…"). Canvas không tự xuống dòng/cắt chữ như CSS, phải đo bằng measureText.
+  // ⚠️ Bẫy: measureText đo theo ctx.font HIỆN TẠI — phải đặt ctx.font đúng cỡ chữ trước khi gọi fit().
   function fit(ctx, str, maxW) {
     str = String(str);
     if (ctx.measureText(str).width <= maxW) return str;
@@ -490,6 +658,7 @@
     return str + '…';
   }
 
+  // Ngôi sao 5 cánh tâm (x, y): 10 đỉnh xen kẽ bán kính ngoài r và trong 0.45r.
   function drawStar(ctx, x, y, r, filled, color) {
     ctx.save();
     ctx.beginPath();
@@ -506,7 +675,11 @@
     ctx.restore();
   }
 
-  // Nền: bầu trời, đồi, ngôi nhà cắt ngang, mặt đất và tầng hầm.
+  // ---------------------------------------------------------------------------
+  // Vẽ — nền, đường, ô khu, nút
+  // ---------------------------------------------------------------------------
+  // Nền: bầu trời, đồi, ngôi nhà cắt ngang, mặt đất và tầng hầm. Vẽ procedural (bằng lệnh, không dùng ảnh),
+  // hoạt ảnh (mây, khói) chỉ phụ thuộc thời gian t → không cần lưu trạng thái riêng cho từng đám mây.
   function drawBackdrop(ctx, t) {
     var W = OG.W, H = OG.H;
     ctx.save();
@@ -516,7 +689,7 @@
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
 
-    // mây trôi
+    // mây trôi: x = (vị trí gốc + t·tốc độ) % (bề rộng + lề) → trôi khỏi mép phải thì vòng lại từ mép trái
     ctx.fillStyle = '#ffffffb0';
     for (var c = 0; c < 4; c++) {
       var cx = ((c * 290 + t * (8 + c * 3)) % (W + 240)) - 120, cy = 92 + (c % 2) * 38;
@@ -565,6 +738,8 @@
     ctx.restore();
   }
 
+  // Đường nối các nút. Đường đã mở: 3 nét chồng (viền nâu, lòng vàng, vạch trắng chạy nhờ lineDashOffset
+  // giảm theo t → "kiến bò" chỉ hướng đi). Đường khoá: nét chấm mờ.
   function drawEdges(ctx, t) {
     ctx.save();
     ctx.lineCap = 'round';
@@ -596,6 +771,8 @@
     ctx.globalAlpha = n.unlocked ? 1 : 0.6;
     U.fillRound(ctx, x + 3, y + 5, w, h, 22, '#17233d33');
     U.fillRound(ctx, x, y, w, h, 22, st.fill);
+    // clip() giới hạn vùng vẽ trong khung bo góc → hoa văn tràn ra ngoài tự bị cắt. save/restore riêng
+    // để bỏ vùng clip ngay sau khi vẽ hoa văn (clip không "tắt" được bằng lệnh nào khác).
     ctx.save();
     U.roundRectPath(ctx, x, y, w, h, 22);
     ctx.clip();
@@ -618,6 +795,8 @@
     ctx.restore();
   }
 
+  // Hoa văn riêng từng khu (gạch bếp, cỏ, ngói, mắt gián trong bóng tối...). Toạ độ góc trên-trái (x, y).
+  // `globalAlpha *= k` thay vì `= k` để giữ độ mờ của ô khoá (0.6) mà drawZone đã đặt.
   function drawPattern(ctx, key, st, x, y, w, h, t) {
     var i, j;
     ctx.fillStyle = st.light;
@@ -671,7 +850,11 @@
     }
   }
 
+  // Nút màn: vòng chọn xoay → bóng → thân (màu theo trạng thái) → biểu tượng → khoá/dấu tích → sao → trùm → hiệu ứng mở khoá.
+  // Trạng thái được báo bằng NHIỀU dấu hiệu (màu + biểu tượng ổ khoá/dấu tích), không chỉ màu —
+  // người mù màu vẫn phân biệt được màn khoá / đã xong.
   function drawNode(ctx, n, t) {
+    // rung ngang ±5 px bằng sin khi vừa bấm vào nút khoá
     var x = n.x + (n.shakeT ? Math.sin(n.shakeT * 60) * 5 : 0), y = n.y;
     var selected = n.id === S.sel, hovered = n.id === S.hover;
     ctx.save();
@@ -787,6 +970,7 @@
     ctx.translate(o.x, o.y - lift);
     ctx.fillStyle = '#17233d40';
     ctx.beginPath(); ctx.ellipse(0, 2, 16, 5, 0, 0, Math.PI * 2); ctx.fill();
+    // U.safe: lỗi trong module Sprites không làm sập cả bản đồ (cô lập lỗi module).
     var ok = U.safe('World.drawOggy', OG.Sprites && OG.Sprites.drawCharacter, OG.Sprites, [ctx, c.id, anim, t, { face: o.face, skin: c.skin, w: c.w, h: c.h, scale: 0.8, vx: walking ? o.face * WALK_SPEED : 0 }]);
     if (ok === undefined && !(OG.Sprites && OG.Sprites.drawCharacter)) {
       // dự phòng khi không có Sprites: chấm tròn xanh
@@ -796,6 +980,9 @@
     ctx.restore();
   }
 
+  // ---------------------------------------------------------------------------
+  // Vẽ — lớp UI trên canvas (thanh trên, nút, thẻ thông tin)
+  // ---------------------------------------------------------------------------
   function drawTopBar(ctx) {
     ctx.save();
     U.fillRound(ctx, 6, 4, OG.W - 12, 64, 18, '#fff6dfe6');
@@ -820,6 +1007,7 @@
       var hov = S.hoverBtn === b.id;
       var face = b.disabled ? '#8a94a6' : b.primary ? pal('orange', '#f27a43') : pal('secondary', '#52b9df');
       var shadow = b.disabled ? '#5c6577' : b.primary ? pal('orangeShadow', '#b74b2b') : pal('secondaryShadow', '#2582aa');
+      // Nút "lún" 3 px khi đang nhấn: phản hồi bằng hình thay cho hiệu ứng :active của CSS.
       var pressY = hov && OG.Input.pointer.down ? 3 : 0;
       ctx.save();
       U.fillRound(ctx, b.x, b.y + 5, b.w, b.h, 16, shadow);
@@ -840,7 +1028,8 @@
     });
   }
 
-  // Thẻ thông tin của nút đang chọn.
+  // Bố cục thẻ thông tin của nút đang chọn: đặt bên PHẢI nút nếu nút ở nửa trái màn hình và ngược lại,
+  // rồi kẹp trong màn hình. Dùng chung cho drawCard (vẽ) và cardHit (xét chạm) — một nguồn sự thật.
   function cardLayout() {
     var n = S && S.byId[S.sel];
     if (!n) return null;
@@ -910,7 +1099,9 @@
     ctx.restore();
   }
 
-  // ---------- Bảng nhiệm vụ ----------
+  // ---------------------------------------------------------------------------
+  // Bảng nhiệm vụ (mode 'quests') — chỉ ĐỌC dữ liệu từ OG.Quests, không tự đếm gì
+  // ---------------------------------------------------------------------------
   function questsBox() { return { x: 90, y: 56, w: OG.W - 180, h: 452 }; }
 
   function drawQuestRow(ctx, q, x, y, w) {
@@ -933,10 +1124,12 @@
 
   function drawQuestBoard(ctx, t) {
     var b = questsBox();
-    var k = Math.min(1, S.questsT * 6);
+    var k = Math.min(1, S.questsT * 6); // 0 → 1 trong ~0.17 giây đầu
     ctx.save();
     ctx.fillStyle = 'rgba(16,25,43,' + (0.55 * k) + ')';
     ctx.fillRect(0, 0, OG.W, OG.H);
+    // Phóng to quanh TÂM hộp = translate tới tâm → scale → translate ngược lại.
+    // Gọi scale trực tiếp thì hộp phóng to quanh góc (0, 0) của canvas và trượt lệch đi.
     ctx.translate(b.x + b.w / 2, b.y + b.h / 2);
     ctx.scale(0.9 + 0.1 * k, 0.9 + 0.1 * k);
     ctx.translate(-(b.x + b.w / 2), -(b.y + b.h / 2));
@@ -969,7 +1162,9 @@
     ctx.restore();
   }
 
-  // ---------- Banner hoàn thành màn ----------
+  // ---------------------------------------------------------------------------
+  // Banner hoàn thành màn (mode 'banner')
+  // ---------------------------------------------------------------------------
   function drawBanner(ctx, B, t) {
     var k = Math.min(1, B.t * 4);
     var lines = B.quests.length + (B.unlocked.length ? 1 : 0) + (B.chars.length ? 1 : 0);
@@ -979,6 +1174,7 @@
     ctx.fillStyle = 'rgba(16,25,43,' + (0.5 * k) + ')';
     ctx.fillRect(0, 0, OG.W, OG.H);
     ctx.translate(OG.W / 2, y + h / 2);
+    // easing "ease-out cubic" 1 − (1 − k)³: phóng nhanh lúc đầu rồi chậm dần, trông "bật" ra tự nhiên.
     var s = 0.7 + 0.3 * (1 - Math.pow(1 - k, 3));
     ctx.scale(s, s);
     ctx.translate(-OG.W / 2, -(y + h / 2));
@@ -987,7 +1183,7 @@
     text(ctx, '🎉 Hoàn thành màn!', OG.W / 2, y + 32, 28, pal('titleOrange', '#ed713c'), 'center');
     ctx.font = 'bold 17px ' + FONT;
     text(ctx, fit(ctx, (B.level.icon || '') + ' ' + B.level.name, w - 40), OG.W / 2, y + 64, 17, '#25314a', 'center');
-    // sao bật lần lượt
+    // sao bật lần lượt: sao thứ i bắt đầu sau 0.3 + 0.25·i giây, st chạy 0 → 1 trong 0.2 giây, cộng nảy sin
     for (var i = 0; i < 3; i++) {
       var st = Math.max(0, Math.min(1, (B.t - 0.3 - i * 0.25) * 5));
       var r = 20 * (i < B.stars ? (0.6 + 0.4 * st + (st < 1 ? 0.3 * Math.sin(st * Math.PI) : 0)) : 1);
@@ -1009,11 +1205,14 @@
     ctx.restore();
   }
 
-  // Hiệu ứng mở/khép tròn quanh Oggy.
+  // Hiệu ứng iris (vòng tròn khép/mở quanh Oggy) khi vào và rời bản đồ.
+  // 💡 Khái niệm: tô "màn hình TRỪ một hình tròn" = vẽ chung một path gồm hình chữ nhật + hình tròn
+  //   rồi fill với quy tắc 'evenodd' — vùng nằm trong cả hai hình bị tính 2 lần nên bị khoét rỗng.
+  // 🧪 Thử: đổi LEAVE_TIME 0.5 → 2 rồi chọn một màn: vòng tròn khép chậm như phim hoạt hình cũ.
   function drawIris(ctx) {
     var r = null;
-    if (S.leaving) r = (1 - Math.min(1, S.leaving.t / LEAVE_TIME)) * 1100;
-    else if (S.introT < INTRO_TIME) r = (S.introT / INTRO_TIME) * 1100;
+    if (S.leaving) r = (1 - Math.min(1, S.leaving.t / LEAVE_TIME)) * IRIS_MAX_R;
+    else if (S.introT < INTRO_TIME) r = (S.introT / INTRO_TIME) * IRIS_MAX_R;
     if (r == null) return;
     var o = S.oggy;
     ctx.save();
@@ -1025,9 +1224,15 @@
     ctx.restore();
   }
 
-  // ---------- API công khai ----------
+  // ---------------------------------------------------------------------------
+  // API công khai
+  // ---------------------------------------------------------------------------
   World.enabled = false;
 
+  /**
+   * Đăng ký scene 'worldmap' (ghi đè bản mặc định của src/game/default-scenes.js) và scene 'journeyMap'.
+   * Gọi một lần từ src/core/main.js. Đặt OG.World.enabled = true khi thành công.
+   */
   World.init = function () {
     if (!OG.Scenes || !OG.Scenes.register) return;
     OG.Scenes.register('worldmap', scene);
@@ -1036,6 +1241,13 @@
     if (World.journeyMap && typeof World.journeyMap.register === 'function') U.safe('World.journeyMap.register', World.journeyMap.register, World.journeyMap);
   };
 
+  /**
+   * Chọn sẵn một màn trên bản đồ. Đang ở bản đồ → chọn ngay và cho Oggy đi tới; chưa ở bản đồ →
+   * nhớ lại để lần vào scene kế tiếp chọn màn đó.
+   * @param {string} levelId
+   * @example
+   *   OG.World.focusLevel('garden'); OG.Scenes.go('worldmap');
+   */
   World.focusLevel = function (levelId) {
     if (S && S.byId[levelId]) {
       S.sel = levelId;
@@ -1045,7 +1257,12 @@
     }
   };
 
+  /** Cho biết scene 'worldmap' có đang mở không. @returns {boolean} */
   World.isActive = function () { return !!S; };
+  /**
+   * Liệt kê các nút đang hiển thị (cho test / tự động hoá bấm vào nút). Toạ độ màn hình 960×540.
+   * @returns {{id: string, x: number, y: number, unlocked: boolean, completed: boolean}[]} [] khi không ở bản đồ
+   */
   World.getNodes = function () {
     return S ? S.nodes.map(function (n) { return { id: n.id, x: n.x, y: n.y, unlocked: n.unlocked, completed: n.completed }; }) : [];
   };

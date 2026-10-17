@@ -1,15 +1,57 @@
-/* OG.Data.characters / OG.Data.skins — dữ liệu nhân vật và skin.
- * Chủ sở hữu: agent Tích hợp. Agent tính năng thêm skin/nhân vật qua
- * OG.Data.registerSkin() / OG.Data.registerCharacter() trong file của mình (không sửa file này). */
+// @ts-check
+/* ============================================================================
+ * OG.Data.characters / OG.Data.skins — DỮ LIỆU NHÂN VẬT VÀ SKIN
+ * ----------------------------------------------------------------------------
+ * Vai trò:      Bảng dữ liệu thuần về mọi nhân vật (người chơi, trùm, kẻ địch, NPC dẫn đường) và skin đổi màu.
+ *               Player đọc w/h/speed/jump, Sprites đọc colors, Shop/Menus đọc unlock/price.
+ *               Module khác thêm skin/nhân vật qua OG.Data.registerSkin() / registerCharacter() trong file của
+ *               mình (không sửa file này).
+ * Khái niệm:    data-driven design (chỉ số nhân vật là dữ liệu, không nằm trong code điều khiển) ·
+ *               registry có ghi đè theo id · ghép màu theo lớp (màu gốc ← màu skin)
+ * Bài học:      docs/learn/12-data-driven-man-cau-do-hanh-trinh.md, docs/learn/03-input.md (speed/jump dùng trong Player)
+ * Phụ thuộc:    OG.Palette (đọc LÚC LOAD → namespace.js phải load trước)
+ * Event:        phát: (không) · nghe: (không)
+ * API công khai: OG.Data.characters, playable, skins, getCharacter(id), getSkin(id), skinsFor(charId),
+ *               registerSkin(skin), registerCharacter(ch), resolveColors(charId, skinId)
+ * Đọc tiếp:     src/game/player.js (dùng speed/jump/w/h) → src/gfx/sprites.js (dùng colors)
+ * Định dạng:    CharacterDef, SkinDef bên dưới (docs/ARCHITECTURE.md mục 3 và 7 — OG.Data).
+ * ========================================================================== */
+
+/**
+ * @typedef {Object} CharacterDef  một nhân vật
+ * @property {string} id
+ * @property {string} name
+ * @property {'player'|'boss'|'enemy'|'npc'} role  'player' = chơi được; 'npc' = không chơi được, không gây sát thương
+ * @property {number} w       bề rộng hitbox, px
+ * @property {number} h       chiều cao hitbox, px
+ * @property {number} [speed] tốc độ chạy, px/giây (chỉ nhân vật chơi được)
+ * @property {number} [jump]  vận tốc nhảy, px/giây (chỉ nhân vật chơi được)
+ * @property {string} desc
+ * @property {{type: 'free'} | {type: 'coins', cost: number} | {type: 'level', levelId: string}} [unlock]
+ * @property {Object<string, string>} colors  khoá màu: body, head, ear, feet, muzzle, accent (gián/trùm: body, shell, leg)
+ */
+
+/**
+ * @typedef {Object} SkinDef  bộ màu thay thế cho một nhân vật
+ * @property {string} id      duy nhất toàn cục, vd 'oggy_gold'
+ * @property {string} charId
+ * @property {string} name
+ * @property {number} price   giá, xu (0 = có sẵn)
+ * @property {Object<string, string>} colors  chỉ cần ghi khoá muốn đổi; khoá thiếu lấy từ màu gốc
+ */
 (function () {
   'use strict';
   var OG = window.OG;
   var P = OG.Palette;
+  // `OG.Data || {}`: characters.js và levels.js cùng gắn vào OG.Data, file nào load trước cũng không xoá của file kia.
+  /** @type {any} namespace dựng dần từ nhiều file (characters.js, levels.js) */
   var Data = (OG.Data = OG.Data || {});
 
   // role: 'player' (chơi được), 'boss', 'enemy'.
-  // w,h: kích thước hitbox (px). speed/jump: vận tốc di chuyển/nhảy (px/s).
+  // w,h: kích thước hitbox (px). speed/jump: vận tốc di chuyển/nhảy (px/giây).
   // unlock: điều kiện mở khoá (Shop/Menus diễn giải): {type:'free'} | {type:'coins', cost} | {type:'level', levelId}
+  // 🧪 Thử: đổi jump của oggy 590 → 800 rồi chơi: đỉnh nhảy ≈ v²/(2·g) tăng từ ≈116 px lên ≈213 px, gần gấp đôi.
+  /** @type {Object<string, CharacterDef>} */
   Data.characters = {
     oggy: {
       id: 'oggy', name: 'Oggy', role: 'player', w: 34, h: 52, speed: 255, jump: 590,
@@ -54,6 +96,15 @@
   // ---- v2: nhân vật DẪN ĐƯỜNG và NPC phụ (role 'npc': không chơi được, không gây sát thương). ----
   // Agent nhân vật vẽ chúng trong src/gfx/sprites.js (danh sách + mô tả: docs/STORY.md mục 9).
   // Khi chưa có hình riêng, Sprites vẽ dự phòng kiểu mèo theo colors.
+  /**
+   * Đăng ký nhanh một NPC (hàm tạo dữ liệu — tránh lặp lại cùng cấu trúc object 17 lần).
+   * @param {string} id
+   * @param {string} name
+   * @param {number} w hitbox, px
+   * @param {number} h hitbox, px
+   * @param {string} desc
+   * @param {Object<string, string>} colors
+   */
   function npc(id, name, w, h, desc, colors) {
     Data.characters[id] = { id: id, name: name, role: 'npc', w: w, h: h, desc: desc, colors: colors };
   }
@@ -82,6 +133,7 @@
 
   // Skin: đổi màu nhân vật (Sprites đọc skin.colors đè lên character.colors).
   // price: giá xu (Shop dùng). id duy nhất toàn cục.
+  /** @type {SkinDef[]} */
   Data.skins = [
     { id: 'oggy_default', charId: 'oggy', name: 'Cổ điển', price: 0, colors: {} },
     { id: 'oggy_gold', charId: 'oggy', name: 'Oggy Hoàng Kim', price: 200, colors: { body: '#e3a91c', head: '#f2c230', ear: '#d99b14', feet: '#9a6b08' } },
@@ -92,15 +144,34 @@
     { id: 'olivia_rose', charId: 'olivia', name: 'Olivia Hoa Hồng', price: 250, colors: { body: '#f6c6d6', head: '#fbd9e4', accent: '#d94f7c' } }
   ];
 
+  /**
+   * Lấy nhân vật theo id; id lạ thì trả Oggy (không bao giờ null → code vẽ không phải kiểm tra).
+   * @param {string} id
+   * @returns {CharacterDef}
+   */
   Data.getCharacter = function (id) { return Data.characters[id] || Data.characters.oggy; };
+  /**
+   * Lấy skin theo id.
+   * @param {string} id
+   * @returns {SkinDef | null}
+   */
   Data.getSkin = function (id) {
     for (var i = 0; i < Data.skins.length; i++) if (Data.skins[i].id === id) return Data.skins[i];
     return null;
   };
+  /**
+   * Liệt kê skin của một nhân vật (theo thứ tự trong Data.skins).
+   * @param {string} charId
+   * @returns {SkinDef[]}
+   */
   Data.skinsFor = function (charId) {
     return Data.skins.filter(function (s) { return s.charId === charId; });
   };
-  // Thêm/ghi đè skin (dùng từ file của agent tính năng).
+  /**
+   * Thêm skin mới hoặc ghi đè skin cùng id (dùng từ file của module tính năng).
+   * @param {SkinDef} skin
+   * @returns {SkinDef}
+   */
   Data.registerSkin = function (skin) {
     for (var i = 0; i < Data.skins.length; i++) {
       if (Data.skins[i].id === skin.id) { Data.skins[i] = skin; return skin; }
@@ -108,14 +179,30 @@
     Data.skins.push(skin);
     return skin;
   };
+  /**
+   * Thêm hoặc ghi đè nhân vật; role 'player' thì tự thêm vào danh sách chơi được.
+   * @param {CharacterDef} ch
+   * @returns {CharacterDef}
+   */
   Data.registerCharacter = function (ch) {
     Data.characters[ch.id] = ch;
     if (ch.role === 'player' && Data.playable.indexOf(ch.id) < 0) Data.playable.push(ch.id);
     return ch;
   };
-  // Màu cuối cùng của nhân vật sau khi áp skin.
+  /**
+   * Tính màu cuối cùng của nhân vật sau khi áp skin (object MỚI, không sửa dữ liệu gốc).
+   * 💡 Khái niệm: ghép theo lớp — chép màu gốc trước, rồi màu skin đè lên. Skin chỉ cần ghi vài khoá muốn đổi,
+   *   khoá còn lại tự lấy từ nhân vật (giống CSS: quy tắc sau đè quy tắc trước).
+   * @param {string} charId
+   * @param {string | null} [skinId]
+   * @returns {Object<string, string>}
+   * @example
+   *   OG.Data.resolveColors('oggy', 'oggy_gold').muzzle; // '#d9f0ff' — skin vàng không đổi màu mõm
+   */
   Data.resolveColors = function (charId, skinId) {
-    var ch = Data.getCharacter(charId), out = {}, k;
+    /** @type {Object<string, string>} */
+    var out = {};
+    var ch = Data.getCharacter(charId), k;
     for (k in ch.colors) out[k] = ch.colors[k];
     var skin = skinId ? Data.getSkin(skinId) : null;
     if (skin && skin.colors) for (k in skin.colors) out[k] = skin.colors[k];

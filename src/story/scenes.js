@@ -1,9 +1,56 @@
-/* Scene của hệ thống Hành trình v2:
- *   journeySelect · journeyMap · comic · card · quiz · notebook · journeyEnd
- * Chủ sở hữu v2: agent story-ui (src/story/). Hợp đồng (params, phím, event): docs/STORY.md mục 6.5.
+// @ts-check
+/* ============================================================================
+ * Scene v2 của HÀNH TRÌNH HỌC TẬP — journeySelect · journeyMap · comic · card · quiz · notebook · journeyEnd
+ * ----------------------------------------------------------------------------
+ * Vai trò:      Toàn bộ màn hình "ngoài màn chơi" của chế độ Hành trình: chọn hành trình, bản đồ (bản DOM dự phòng),
+ *               truyện tranh (comic), thẻ kiến thức (card), câu đố mở cửa (quiz), Sổ tay khám phá (notebook) và
+ *               màn kết thúc (journeyEnd). OG.Story / OG.Learn mở các scene này bằng OG.Scenes.go/push.
+ * Khái niệm:    scene = một trạng thái của finite state machine (máy trạng thái hữu hạn) có vòng đời
+ *               enter/update/draw/exit/resume · scene stack: go (thay) vs push (đè lên, drawBelow để thấy scene
+ *               dưới) · hai cách dựng UI: panel DOM (HTML + data-act) và canvas (vẽ + hit-test) · timeline hiện
+ *               chữ theo "nhịp" (beat) · co giãn đều kiểu cover · bố trí bong bóng tránh đè · ảnh polaroid +
+ *               lazy-load (OG.Photos) · điều hướng lưới bằng phím · hiệu ứng lật thẻ bằng scale
+ * Bài học:      docs/learn/05-state-machine-scene.md (vòng đời & stack) · docs/learn/07-ve-canvas-procedural-cache.md
+ *               (vẽ khung truyện, polaroid) · docs/learn/12-data-driven-man-cau-do-hanh-trinh.md (dữ liệu thẻ/câu đố/truyện)
+ * Phụ thuộc:    LOAD: OG.util (U), OG.Scenes.register (đăng ký ngay khi nạp file), OG.Story (gán drawComicPanel).
+ *               CHẠY: OG.Story.ui, OG.Journeys, OG.Learn, OG.Guide.guideOf, OG.Photos, OG.Input, OG.DOM
+ *               (panel, hidePanel, toast, setHudVisible, setControlsVisible, overlay, shell), OG.Sprites, OG.Data,
+ *               OG.Progress, OG.Difficulty, OG.Game (run, newRun, buildResult), OG.util.call('Social', 'mountResult')
+ * Event:        phát: 'ui:click' (nút DOM), 'comic:start', 'comic:end', 'photo:zoom' (+ event do OG.Learn/OG.Story phát)
+ *               · nghe: (không)
+ * API công khai: các scene đăng ký bằng tên: 'journeySelect', 'journeyMap', 'comic', 'card', 'quiz', 'notebook',
+ *               'journeyEnd' · OG.Story.drawComicPanel(ctx, panel, frameRect, t, appear, state) · OG.Story._beatsOf (test)
+ * Đọc tiếp:     src/core/scenes.js (go/push/pop, drawBelow) → src/story/story.js (bộ công cụ ui dùng ở đây)
+ *               → src/world/journey-map.js (bản đồ canvas thay thế scene journeyMap DOM bên dưới)
+ *
+ * Hợp đồng (params, phím, event): docs/STORY.md mục 6.5 — smoke test điều khiển các scene bằng đúng phím/selector đó.
  * Giao diện cho trẻ 5–10 tuổi: chữ to, nút to (≥ 56 px), nhiều hình, điều khiển bằng bàn phím lẫn cảm ứng.
  *   - journeySelect, journeyMap, journeyEnd: panel DOM (#overlay) — style trong src/story/story.css (.story-*).
- *   - comic, card, quiz, notebook: vẽ canvas 960×540 (tự co giãn theo khung). */
+ *   - comic, card, quiz, notebook: vẽ canvas 960×540 (tự co giãn theo khung). Toạ độ trong file là toạ độ
+ *     MÀN HÌNH logic 960×540, gốc góc trên-trái (trừ phần vẽ cảnh trong khung truyện).
+ * ========================================================================== */
+
+/* Kiểu UiRect (hình chữ nhật màn hình cho nút/hit-test) khai báo ở src/story/story.js. */
+/**
+ * @typedef {Object} ComicBeat  một "nhịp" kể chuyện trong khung truyện
+ * @property {string} kind  'caption' = lời dẫn; 'bubble' = lời thoại của nhân vật
+ * @property {string} text
+ * @property {string} [who]  charId người nói (bubble), 'narrator' = người kể chuyện
+ */
+/**
+ * @typedef {Object} RevealState  trạng thái hiện chữ của khung truyện tại một thời điểm
+ * @property {number[]} reveal        số ký tự đang hiện của từng nhịp
+ * @property {string|null} speaking   charId đang nói (để nhân vật đó mấp máy miệng, nhún nhẹ)
+ * @property {boolean} done           mọi nhịp đã hiện hết chữ
+ */
+/**
+ * @typedef {Object} PanelView  phép co giãn từ "sân khấu" 960×540 vào khung truyện
+ * @property {number} s     hệ số scale
+ * @property {number} visW  bề rộng phần sân khấu nhìn thấy, px sân khấu
+ * @property {number} visH  bề cao phần nhìn thấy
+ * @property {number} ox    lệch trái của phần nhìn thấy, px sân khấu
+ * @property {number} oy    lệch trên (phần bầu trời bị cắt), px sân khấu
+ */
 (function () {
   'use strict';
   var OG = window.OG;
@@ -15,8 +62,10 @@
   function ui() { return OG.Story.ui; }
   function esc(s) { return U.escapeHtml(s); }
   function I() { return OG.Input; }
+  // Cú chạm/nhấp chuột ở frame này (cạnh lên) và toạ độ logic 960×540 của nó.
   function tapped() { return I().pointer.justPressed; }
   function pt() { return I().pointer; }
+  // Esc hoặc P. consume() để scene NẰM DƯỚI (sau khi pop) không nhận lại cùng cú bấm trong frame này.
   function backPressed() {
     if (I().pressed('back') || I().pressed('pause')) { I().consume('back'); I().consume('pause'); return true; }
     return false;
@@ -53,11 +102,18 @@
     ui().guard(ctx, 'nhân vật ' + id, function () { OG.Sprites.drawCharacter(ctx, id, anim || 'idle', t, opts || {}); });
   }
 
-  // Gắn click cho mọi [data-act] trong panel DOM.
+  // 💡 Khái niệm: "data-act" — HTML chỉ khai báo Ý ĐỊNH (data-act="journey" data-arg="home"), JS gắn một
+  //   bảng handlers {tên hành động: hàm}. Thêm nút mới = thêm HTML + 1 handler; mọi cú bấm đều phát 'ui:click'
+  //   (âm thanh, thống kê) ở một chỗ duy nhất. Smoke test cũng bấm nút qua đúng selector [data-act].
+  /**
+   * @param {HTMLElement} panel
+   * @param {Object<string, function(string, HTMLElement): void>} handlers  act → hàm(arg, phần tử)
+   */
   function bindActs(panel, handlers) {
     var els = panel.querySelectorAll('[data-act]');
     for (var i = 0; i < els.length; i++) {
-      (function (el) {
+      // IIFE trong vòng lặp: mỗi listener "chụp" đúng phần tử của mình (var không có block scope).
+      (/** @param {any} el  nút/phần tử có data-act */ function (el) {
         el.addEventListener('click', function () {
           if (el.disabled) return;
           var act = el.getAttribute('data-act'), arg = el.getAttribute('data-arg');
@@ -69,6 +125,7 @@
   }
 
   // Chân dung nhân vật vẽ bằng canvas nhỏ đặt trong panel DOM: <span class="story-portrait" data-char="bob" data-size="48">
+  // Cùng một hàm vẽ procedural (OG.Sprites.drawPortrait) phục vụ cả canvas game lẫn giao diện HTML.
   function mountPortraits(root) {
     if (!OG.Sprites || !OG.Sprites.drawPortrait) return;
     var els = root.querySelectorAll('.story-portrait');
@@ -76,6 +133,7 @@
       var el = els[i], id = el.getAttribute('data-char'), size = +el.getAttribute('data-size') || 48;
       if (!id) continue;
       var cv = document.createElement('canvas');
+      // Bộ đệm gấp đôi kích thước hiển thị (CSS co về size px) + scale(2,2) → nét trên màn hình mật độ điểm ảnh cao.
       cv.width = size * 2; cv.height = size * 2;
       var c = cv.getContext && cv.getContext('2d');
       if (!c) continue;
@@ -120,6 +178,8 @@
   // ===========================================================================
   // journeySelect — chọn hành trình + độ khó.  params: {back}
   //   Chạm thẻ hành trình [data-act="journey"][data-arg=jid]; ←→↑↓ chọn, Enter bắt đầu; Esc = quay lại.
+  // 💡 Khái niệm: scene "lai" DOM + canvas — UI chính là panel HTML (chữ sắc nét, cuộn được, truy cập bằng
+  //   Tab), còn draw() vẫn vẽ cảnh nền động trên canvas phía sau. update() vẫn chạy mỗi frame để nhận phím.
   // ===========================================================================
   var DIFF_HINT = { kid: 'Nhiều mạng, rơi hố không sao, có trợ giúp', challenge: 'Ít mạng hơn, kẻ địch nhanh hơn' };
   var journeySelect = {
@@ -130,6 +190,8 @@
       ui().fx.clear();
       this.render();
     },
+    // Dựng lại TOÀN BỘ panel từ dữ liệu (đơn giản hơn cập nhật từng phần tử; panel nhỏ nên rẻ).
+    // ⚠️ Bẫy: `self` thay cho `this` trong các handler — bên trong function(){} của listener, `this` không còn là scene.
     render: function () {
       var self = this;
       var list = J().list().filter(function (j) { return !j.invalid; });
@@ -199,12 +261,14 @@
       var n = this.ids ? this.ids.length : 0, inp = I();
       if (!n) return;
       var i = Math.max(0, this.ids.indexOf(this.selId)), ni = i;
+      // Điều hướng lưới: ←→ đi ±1, ↑↓ đi ±số cột. Số cột phải KHỚP CSS (≤ 700 px: 1 cột, còn lại 2 cột).
       var cols = window.innerWidth && window.innerWidth <= 700 ? 1 : 2;
       if (inp.pressed('left')) ni = Math.max(0, i - 1);
       if (inp.pressed('right')) ni = Math.min(n - 1, i + 1);
       if (inp.pressed('up')) ni = Math.max(0, i - cols);
       if (inp.pressed('down')) ni = Math.min(n - 1, i + cols);
       if (ni !== i) { this.selId = this.ids[ni]; this.moved = true; this.highlight(); }
+      // ⚠️ Bẫy: nếu một nút DOM đang focus, Enter đã "click" nút đó rồi — xử lý thêm ở đây là chạy 2 lần.
       if (inp.pressed('confirm') && !overlayButtonFocused()) OG.Story.startJourney(this.selId);
     },
     draw: function (ctx) {
@@ -225,6 +289,9 @@
   // journeyMap — các khu & màn của 1 hành trình.  params: {journeyId, completed?, result?}
   //   Enter = ▶ CHƠI TIẾP (màn chưa xong đầu tiên; ←→ đổi màn được chọn); nút màn [data-act="level"][data-arg];
   //   📒 Sổ tay; Esc → journeySelect.
+  // 💡 Khái niệm: "stub rồi ghi đè" — đây là bản DOM DỰ PHÒNG. src/world/journey-map.js đăng ký scene cùng tên
+  //   'journeyMap' trong init() (chạy SAU khi mọi file đã nạp) nên bản canvas đẹp hơn sẽ thay thế bản này;
+  //   thiếu file đó (hoặc nó lỗi) thì game vẫn có bản đồ để chơi.
   // ===========================================================================
   var journeyMap = {
     enter: function (params) {
@@ -353,14 +420,22 @@
   //   Bỏ qua: Esc hoặc nút "Bỏ qua ⏭". Luôn phát comic:start / comic:end.
   //   overlay:true = được push lên màn đang chơi, tự pop khi xong.
   // ===========================================================================
+  // Bố cục cố định (px màn hình): khung truyện, nút Bỏ qua / Tiếp / Trước. Vẽ và hit-test dùng CHUNG các rect này.
   var CF = { x: 24, y: 66, w: 912, h: 402 };
   var SKIP = { x: 786, y: 8, w: 156, h: 50 };
   var NEXT = { x: 806, y: 478, w: 136, h: 54 };
   var PREV = { x: 18, y: 478, w: 70, h: 54 };
   var CPS = 38;          // ký tự/giây khi hiện chữ
-  var BEAT_GAP = 0.35;   // nghỉ giữa hai bong bóng
+  var BEAT_GAP = 0.35;   // nghỉ giữa hai bong bóng, giây
+  var REVEAL_ALL_T = 999; // gán rt bằng số này = "tua tới cuối" → mọi nhịp hiện hết chữ, giây
+  var INPUT_GRACE = 0.2;  // giây đầu của mỗi khung bỏ qua phím/chạm "tiến tới" (tránh một cú bấm lướt 2 khung)
+  // 🧪 Thử: đổi CPS 38 → 8 rồi mở một truyện: chữ hiện chậm từng ký tự, bấm Enter lần đầu chỉ hiện hết chữ, lần hai mới sang khung.
 
-  // Các "nhịp" của 1 khung: lời dẫn (caption) trước, rồi lần lượt từng bong bóng.
+  /**
+   * Tách 1 khung truyện thành các "nhịp": lời dẫn (caption) trước, rồi lần lượt từng bong bóng có chữ.
+   * @param {PanelDef|null} pn
+   * @returns {ComicBeat[]}
+   */
   function beatsOf(pn) {
     var out = [];
     if (!pn) return out;
@@ -368,7 +443,15 @@
     (pn.bubbles || []).forEach(function (b) { if (b && b.text) out.push({ kind: 'bubble', who: b.who, text: String(b.text) }); });
     return out;
   }
-  // Số ký tự đang hiện của từng nhịp tại thời điểm rt. Trả {reveal:[n], speaking: charId|null, done}
+  /**
+   * Tính số ký tự đang hiện của từng nhịp tại thời điểm rt.
+   * 💡 Khái niệm: timeline thuần (pure function of time) — không lưu "đang ở nhịp nào"; mọi thứ suy ra từ rt.
+   *   Nhịp i bắt đầu ở t0 = tổng (thời lượng gõ + BEAT_GAP) của các nhịp trước. Nhờ vậy tua (rt = REVEAL_ALL_T)
+   *   hay lùi khung chỉ là gán lại một con số.
+   * @param {ComicBeat[]} beats
+   * @param {number} rt  giây kể từ khi khung bắt đầu hiện chữ
+   * @returns {RevealState}
+   */
   function revealAt(beats, rt) {
     var res = { reveal: [], speaking: null, done: true }, t0 = 0;
     for (var i = 0; i < beats.length; i++) {
@@ -378,12 +461,16 @@
         res.done = false;
         if (n >= 0 && beats[i].kind === 'bubble') res.speaking = beats[i].who;
       }
+      // Nhịp đã tới giờ thì hiện ít nhất 1 ký tự (bong bóng xuất hiện ngay, không "trống" một frame).
       res.reveal.push(U.clamp(n, rt >= t0 ? 1 : 0, len));
       t0 += dur + BEAT_GAP;
     }
     return res;
   }
 
+  // 💡 Khái niệm: một scene, hai cách vào — go() khi chiếu giữa các màn (thay cả stack), push() với overlay:true
+  //   khi chen giữa màn chơi (màn chơi đứng yên bên dưới, drawBelow = true để vẫn thấy nó mờ phía sau).
+  /** @type {any} scene object — field (p, panels, i, t, rt...) gắn động lúc enter() */
   var comic = {
     drawBelow: false,
     enter: function (params) {
@@ -402,13 +489,16 @@
       this.beats = beatsOf(this.panels[this.i]);
       this.t = 0; this.rt = 0;
     },
+    // Kết thúc truyện (xem hết hoặc bỏ qua): đánh dấu đã xem, phát 'comic:end', rồi gọi continuation onDone.
     finish: function (skipped) {
+      // Cờ done chống gọi 2 lần (vd chạm Bỏ qua và Esc cùng frame) → onDone chạy 2 lần → nhảy 2 scene.
       if (this.done) return;
       this.done = true;
       OG.Story.markSeen(this.p.journeyId, this.p.comicId);
       OG.Events.emit('comic:end', { journeyId: this.p.journeyId, comicId: this.p.comicId, skipped: !!skipped });
       var cb = this.p.onDone;
       if (this.p.overlay) {
+        // ⚠️ Bẫy: pop TRƯỚC rồi mới gọi cb — cb có thể push scene khác; làm ngược lại sẽ pop nhầm scene mới.
         OG.Scenes.pop(); // exit() bật lại HUD khi về màn chơi
         if (cb) cb();
         return;
@@ -416,14 +506,14 @@
       if (cb) cb(); else OG.Scenes.go('journeyMap', { journeyId: this.p.journeyId });
     },
     advance: function () {
-      if (!revealAt(this.beats, this.rt).done) { this.rt = 999; return; } // hiện hết chữ trước
+      if (!revealAt(this.beats, this.rt).done) { this.rt = REVEAL_ALL_T; return; } // hiện hết chữ trước
       this.i++;
       if (this.i >= this.panels.length) { this.finish(false); return; }
       this.prep();
     },
     back: function () {
       if (this.i <= 0) return;
-      this.i--; this.prep(); this.rt = 999;
+      this.i--; this.prep(); this.rt = REVEAL_ALL_T; // khung đã đọc rồi → hiện hết chữ ngay
     },
     resume: function () { hideChrome(); },
     exit: function (to) { if (this.p && this.p.overlay) restoreChrome(to); },
@@ -436,9 +526,9 @@
         var px = pt().x, py = pt().y;
         if (ui().hit(SKIP, px, py)) { this.finish(true); return; }
         if (this.i > 0 && ui().hit(PREV, px, py)) { this.back(); return; }
-        if (this.t > 0.2) { this.advance(); return; }
+        if (this.t > INPUT_GRACE) { this.advance(); return; }
       }
-      if (this.t > 0.2 && ui().advancePressed()) { this.advance(); return; }
+      if (this.t > INPUT_GRACE && ui().advancePressed()) { this.advance(); return; }
       if (I().pressed('left')) this.back();
     },
     draw: function (ctx) {
@@ -490,8 +580,21 @@
     }
   };
 
-  // Vẽ 1 khung truyện. pn: {bg, chars:[{id, anim, x, y?, face?, scale?}], bubbles:[{who, text}], caption?}
-  // F = khung {x,y,w,h}; appear 0..1 (hiệu ứng xuất hiện); state = {reveal:[số ký tự từng nhịp], speaking, beats} (tuỳ chọn).
+  /**
+   * Vẽ 1 khung truyện: viền khung, cảnh nền + nhân vật (co giãn từ sân khấu 960×540), rồi lời dẫn và bong bóng.
+   * 💡 Khái niệm: "sân khấu" ảo — dữ liệu truyện mô tả cảnh trên một sân khấu 960×540 giống hệt màn chơi
+   *   (dùng chung drawBackground/drawPlatform/drawCharacter), rồi cả sân khấu được scale vào khung. Người soạn
+   *   truyện không cần biết khung to bao nhiêu.
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {PanelDef} pn  {bg, chars:[{id, anim, x, y?, face?, scale?}], bubbles:[{who, text}], caption?}
+   * @param {UiRect} F  khung ngoài, px màn hình
+   * @param {number} t  giây (hoạt ảnh)
+   * @param {number} [appear=1]  0..1 tiến độ hiệu ứng xuất hiện (nhân vật nảy vào lần lượt)
+   * @param {{reveal?:number[], speaking?:string|null, beats?:ComicBeat[]}} [state]  trạng thái hiện chữ; thiếu = hiện hết
+   * @example
+   *   var panels = OG.Journeys.getComic('home', OG.Journeys.get('home').intro);
+   *   OG.Story.drawComicPanel(ctx, panels[0], { x: 24, y: 66, w: 912, h: 402 }, OG.time, 1);
+   */
   function drawComicPanel(ctx, pn, F, t, appear, state) {
     if (!pn) return;
     appear = appear == null ? 1 : appear;
@@ -501,14 +604,31 @@
     ui().drawFrame(ctx, F.x, F.y, F.w, F.h, '#ffffff', 18, { gloss: false, lineWidth: 5 });
     var IN = { x: F.x + 7, y: F.y + 7, w: F.w - 14, h: F.h - 14 };
     // Co giãn ĐỀU (không méo nhân vật): phủ kín khung, canh đáy (giữ mặt sàn), cắt bớt bầu trời.
+    // Lấy max của hai tỉ lệ = kiểu "cover"; lấy min sẽ là "contain" (thừa viền trống hai bên).
     var s = Math.max(IN.w / OG.W, IN.h / OG.H);
     var visW = IN.w / s, visH = IN.h / s, ox = (OG.W - visW) / 2, oy = OG.H - visH;
-    var heads = {};
+    /** @type {PanelView} */
+    var view = { s: s, visW: visW, visH: visH, ox: ox, oy: oy };
     ctx.save();
     U.roundRectPath(ctx, IN.x, IN.y, IN.w, IN.h, 13); ctx.clip();
     ctx.save();
+    // Từ đây vẽ bằng toạ độ SÂN KHẤU: dời gốc về góc khung → scale → lùi phần bị cắt (ox, oy).
     ctx.translate(IN.x, IN.y); ctx.scale(s, s); ctx.translate(-ox, -oy);
-    var bg = pn.bg;
+    drawPanelBackground(ctx, pn.bg, t);
+    var heads = drawPanelChars(ctx, pn, IN, view, t, appear, speaking);
+    ctx.restore();
+    // Chữ vẽ ở toạ độ MÀN HÌNH (sau restore) để cỡ chữ không bị scale theo khung.
+    drawPanelText(ctx, beats, reveal, heads, IN, speaking);
+    ctx.restore();
+  }
+
+  /**
+   * Vẽ nền khung truyện (toạ độ sân khấu 960×540). bg: hàm vẽ | 'color:#hex' | tên theme | {theme, camX}.
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {any} bg  PanelDef.bg
+   * @param {number} t  giây
+   */
+  function drawPanelBackground(ctx, bg, t) {
     ui().guard(ctx, 'nền truyện', function () {
       if (typeof bg === 'function') bg(ctx, 0, 0, OG.W, OG.H, t);
       else if (typeof bg === 'string' && bg.indexOf('color:') === 0) { ctx.fillStyle = bg.slice(6); ctx.fillRect(0, 0, OG.W, OG.H); }
@@ -522,28 +642,59 @@
         ctx.restore();
       }
     });
-    // Nhân vật: x 0..1 theo bề ngang khung; chân ở y (0..1 theo chiều cao khung, mặc định mặt sàn).
+  }
+
+  /**
+   * Vẽ nhân vật của khung (toạ độ sân khấu) và trả vị trí ĐỈNH ĐẦU từng nhân vật ở toạ độ MÀN HÌNH (để đặt bong bóng).
+   * Nhân vật: x 0..1 theo bề ngang phần nhìn thấy; chân ở y (0..1 theo chiều cao, mặc định mặt sàn).
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {PanelDef} pn
+   * @param {UiRect} IN  vùng trong của khung, px màn hình
+   * @param {PanelView} view
+   * @param {number} t
+   * @param {number} appear  0..1
+   * @param {string|null} speaking  charId đang nói
+   * @returns {Object<string, {x:number, y:number}>} charId → điểm đầu đuôi bong bóng
+   */
+  function drawPanelChars(ctx, pn, IN, view, t, appear, speaking) {
+    var s = view.s, ox = view.ox, oy = view.oy;
+    /** @type {Object<string, {x:number, y:number}>} */
+    var heads = {};
     (pn.chars || []).forEach(function (c, ci) {
       if (!c || !c.id) return;
       var info = charInfo(c.id);
+      // Mỗi nhân vật trễ 0,12 nhịp so với người trước → nảy vào lần lượt, không đồng loạt.
       var pop = ui().easeOutBack(U.clamp(appear * 1.3 - ci * 0.12, 0, 1));
       var sc = (c.scale || 1.8) * (0.7 + 0.3 * pop);
-      var cx = ox + (c.x == null ? 0.5 : c.x) * visW, cy = c.y == null ? OG.FLOOR_Y : oy + c.y * visH;
+      var cx = ox + (c.x == null ? 0.5 : c.x) * view.visW, cy = c.y == null ? OG.FLOOR_Y : oy + c.y * view.visH;
       var anim = c.anim || 'idle';
       if (speaking === c.id && anim === 'idle') anim = 'talk';
       ctx.save();
       ctx.translate(cx, cy);
-      if (speaking === c.id) ctx.translate(0, -Math.abs(Math.sin(t * 9)) * 3);
+      if (speaking === c.id) ctx.translate(0, -Math.abs(Math.sin(t * 9)) * 3); // người đang nói nhún nhẹ
       drawChar(ctx, c.id, anim, t + ci * 0.37, { face: c.face || 1, scale: sc, w: info.w, h: info.h, time: t });
       ctx.restore();
+      // Đổi toạ độ sân khấu → màn hình: màn hình = IN + (sân khấu − lệch cắt) × s.
       heads[c.id] = { x: IN.x + (cx - ox) * s, y: IN.y + (cy - info.h * sc - 10 - oy) * s };
     });
-    ctx.restore();
-    // Lời dẫn + bong bóng (toạ độ màn hình, giới hạn trong khung)
+    return heads;
+  }
+
+  /**
+   * Vẽ lời dẫn + bong bóng thoại (toạ độ màn hình, giới hạn trong khung), xếp tránh đè nhau.
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {ComicBeat[]} beats
+   * @param {number[]} reveal  số ký tự đang hiện của từng nhịp
+   * @param {Object<string, {x:number, y:number}>} heads  từ drawPanelChars
+   * @param {UiRect} IN
+   * @param {string|null} speaking
+   */
+  function drawPanelText(ctx, beats, reveal, heads, IN, speaking) {
     var placed = [], narrTop = IN.y + 10;
     beats.forEach(function (b, bi) {
       var rv = reveal[bi] | 0;
       if (rv <= 0) return;
+      // Lời dẫn: hộp vàng ở đáy khung, không đuôi.
       if (b.kind === 'caption') {
         var mc = ui().measureBubble(ctx, b.text, { maxW: Math.min(720, IN.w - 40), size: 20 });
         ui().drawBubble(ctx, IN.x + IN.w / 2, 0, b.text, { tail: 'none', boxX: IN.x + (IN.w - mc.w) / 2, boxY: IN.y + IN.h - mc.h - 10,
@@ -552,7 +703,7 @@
       }
       var h = heads[b.who];
       var name = b.who && b.who !== 'narrator' ? charName(b.who) : null;
-      if (!h) { // người kể chuyện / nhân vật không có trong khung: hộp vàng phía trên
+      if (!h) { // người kể chuyện / nhân vật không có trong khung: hộp vàng phía trên, xếp chồng từ trên xuống
         var mn = ui().measureBubble(ctx, b.text, { maxW: Math.min(640, IN.w - 40), size: 20, name: name });
         var box0 = ui().drawBubble(ctx, 0, 0, b.text, { tail: 'none', boxX: IN.x + (IN.w - mn.w) / 2, boxY: narrTop + (name ? 12 : 0),
           maxW: Math.min(640, IN.w - 40), size: 20, bg: '#fff3c4', name: name, reveal: rv, bounds: IN });
@@ -560,10 +711,13 @@
         placed.push(box0);
         return;
       }
+      /** @type {any} */
       var opts = { maxW: 330, size: 20, name: name, reveal: rv, bounds: IN, nameColor: speaking === b.who ? '#ed713c' : '#8a94a8' };
       var m = ui().measureBubble(ctx, b.text, opts);
       var bx = h.x - m.w / 2, by = h.y - 16 - m.h;
-      // Tránh đè bong bóng trước: đẩy ngang nếu chồng ít, nếu không thì đẩy lên trên
+      // 💡 Khái niệm: bố trí tham lam (greedy layout) — so hộp mới với từng hộp đã đặt bằng phép giao AABB
+      //   (có lề 8/14 px); chồng thì đẩy sang phía người nói nếu còn chỗ, hết chỗ thì đẩy lên trên.
+      //   Không tối ưu toàn cục nhưng đủ tốt với 2–4 bong bóng mỗi khung.
       for (var k = 0; k < placed.length; k++) {
         var p = placed[k];
         if (bx < p.x + p.w + 8 && bx + m.w + 8 > p.x && by < p.y + p.h + 14 && by + m.h + 14 > p.y) {
@@ -573,10 +727,10 @@
           else by = p.y - m.h - 24;
         }
       }
+      // Không cho bong bóng nhân vật đè lên các hộp lời kể ở trên cùng.
       opts.boxX = bx; opts.boxY = Math.max(by, narrTop + (name ? 14 : 0));
       placed.push(ui().drawBubble(ctx, h.x, h.y, b.text, opts));
     });
-    ctx.restore();
   }
 
   // ===========================================================================
@@ -595,12 +749,21 @@
   var POLA = { pad: 12, bottom: 46, r: 22 }; // viền trắng polaroid: lề 3 cạnh + dải dưới (chứa dòng ghi công)
   var ZOOM_BOX = { x: 24, y: 20, w: 912, h: 452 };
 
-  // Khung ảnh polaroid: viền trắng dày, bo góc lớn, bóng mềm, hơi nghiêng cho dễ thương.
-  // P = {x, y, w, h} khung ngoài; e = entry OG.Photos; rec = {img, state}.
+  /**
+   * Vẽ khung ảnh polaroid: viền trắng dày, bo góc lớn, bóng mềm, hơi nghiêng cho dễ thương.
+   * Ảnh chưa tải xong → vẽ shimmer; frame sau tự thấy ảnh (vòng lặp vẽ lại mỗi frame, không cần callback).
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {any} P  khung ngoài {x, y, w, h}, px màn hình (UiRect; caller dựng dần nên để any)
+   * @param {PhotoEntry} e  entry OG.Photos
+   * @param {PhotoRecord} rec  {img, state}
+   * @param {number} [tilt=0]  góc nghiêng, radian
+   * @returns {UiRect} vùng ẢNH bên trong (để hit-test chạm phóng to)
+   */
   function drawPolaroid(ctx, P, e, rec, tilt) {
     ctx.save();
     ctx.translate(P.x + P.w / 2, P.y + P.h / 2); ctx.rotate(tilt || 0); ctx.translate(-P.x - P.w / 2, -P.y - P.h / 2);
-    // bóng mềm (shadowBlur) rồi mới vẽ khung trắng có viền mực
+    // bóng mềm (shadowBlur) rồi mới vẽ khung trắng có viền mực.
+    // ⚠️ Bẫy: shadow* áp cho MỌI lệnh vẽ sau đó → bọc trong save/restore riêng, nếu không ảnh và chữ cũng bị đổ bóng mờ.
     ctx.save();
     ctx.shadowColor = 'rgba(23,35,61,0.38)'; ctx.shadowBlur = 18; ctx.shadowOffsetY = 8;
     ctx.fillStyle = '#ffffff';
@@ -616,6 +779,7 @@
     U.roundRectPath(ctx, ix, iy, iw, ih, 14); ctx.stroke();
     // dòng ghi công trong dải trắng phía dưới (cắt ngắn tên tác giả cho vừa)
     ctx.fillStyle = '#4a5670'; ctx.font = ui().font(13, '600'); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    // Giấy phép bắt buộc ghi công → không được bỏ dòng này; tràn thì cắt tên tác giả ngắn dần (bước 3 ký tự).
     var line = OG.Photos.creditLine(e, 28);
     for (var n = 24; ctx.measureText(line).width > iw && n > 6; n -= 3) line = OG.Photos.creditLine(e, n);
     ctx.fillText(line, P.x + P.w / 2, P.y + P.h - POLA.bottom / 2);
@@ -677,13 +841,17 @@
       this.t += dt;
       ui().fx.update(dt);
       if (!this.c) { if (this.t > 0.1) this.close(); return; }
+      // 💡 Khái niệm: trạng thái con (sub-state) trong scene — khi zoom = true, scene chỉ xử lý input của chế độ
+      //   phóng to rồi return sớm; các nhánh bên dưới coi như không tồn tại (giống một FSM lồng nhau).
       // Đang phóng to: mọi cú chạm / phím chỉ đóng chế độ phóng to (không đóng thẻ).
       if (this.zoom) {
         this.zoomT += dt;
         if (this.zoomT > 0.12 && (tapped() || backPressed() || ui().advancePressed() || I().pressed('down'))) { this.zoom = false; }
         return;
       }
+      // Khoá input 0,35 giây đầu: cú chạm/phím vừa nhặt trang sách không được đóng luôn thẻ vừa mở (hợp đồng STORY.md 6.5).
       if (this.t < 0.35) return;
+      // Hit-test theo rect lưu ở frame vẽ TRƯỚC (draw chạy sau update) — chấp nhận lệch 1 frame, mắt không thấy.
       if (tapped() && this.speakBtn && ui().hit(this.speakBtn, pt().x, pt().y)) { ui().speak(this.c.title + '. ' + this.c.fact); return; }
       if (this.canZoom() && ((tapped() && ui().hit(this.photoRect, pt().x, pt().y)) || I().pressed('down'))) {
         this.zoom = true; this.zoomT = 0;
@@ -703,6 +871,8 @@
       ui().fx.draw(ctx);
     },
     // Hiệu ứng lật thẻ khi mở: co giãn ngang từ 0 → 1 quanh tâm thẻ.
+    // 💡 Khái niệm: "giả 3D" bằng 2D — scale trục x từ ~0 lên 1 trông như tấm thẻ xoay quanh trục dọc;
+    //   Math.max(0.02, k) tránh scale 0 (ma trận suy biến, một số trình duyệt bỏ không vẽ).
     flip: function (ctx, cy) {
       var k = ui().easeOutBack(Math.min(1, this.t / 0.42));
       ctx.translate(OG.W / 2, cy);
@@ -867,6 +1037,93 @@
   //   Esc / nút "Để sau": đóng, cổng vẫn khoá (onClose).
   // ===========================================================================
   var QF = { x: 30, y: 14, w: 900, h: 512 };
+
+  /**
+   * Vẽ một ô đáp án của câu đố: nảy vào lần lượt, rung khi sai, phóng to + tia sáng khi đúng.
+   * 💡 Khái niệm: trạng thái hiển thị suy ra từ dữ liệu (right/bad/sel) thay vì lưu "màu hiện tại" của ô —
+   *   chỉ cần đổi self.wrong / self.passed / self.sel là frame sau ô tự vẽ đúng.
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {any} self  scene quiz (đọc passed, wrong, sel, t, shakeT)
+   * @param {QuizDef} q
+   * @param {number} i  chỉ số đáp án
+   * @param {UiRect} R  vị trí ô, px màn hình (trước khi scale)
+   * @param {{primary:string}} pal  bảng màu hành trình
+   */
+  function drawQuizChoice(ctx, self, q, i, R, pal) {
+    var n = q.choices.length, opt = q.choices[i];
+    var right = self.passed && i === q.answer, bad = self.wrong[i], sel = i === self.sel && !self.passed;
+    // Ô thứ i trễ 0,25 nhịp so với ô trước → hiệu ứng nảy lần lượt từ trái sang phải.
+    var pop = ui().easeOutBack(U.clamp(self.t * 3 - i * 0.25, 0, 1));
+    ctx.save();
+    var sx = ui().shake(self.shakeT[i], 0.45, 12);
+    var sc = (sel ? 1.04 + Math.sin(OG.time * 5) * 0.015 : 1) * (0.6 + 0.4 * pop) * (right ? 1.06 : 1);
+    // Scale quanh tâm ô rồi dời gốc về góc trên-trái ô → phần vẽ bên dưới dùng toạ độ CỤC BỘ (0..R.w, 0..R.h).
+    ctx.translate(R.x + R.w / 2 + sx, R.y + R.h / 2);
+    ctx.scale(sc, sc);
+    ctx.translate(-R.w / 2, -R.h / 2);
+    ctx.globalAlpha = bad ? 0.5 : self.passed && !right ? 0.45 : 1;
+    if (right) ui().drawRays(ctx, R.w / 2, R.h / 2, 190, OG.time, 'rgba(255,214,90,0.5)', 12);
+    ui().drawFrame(ctx, 0, 0, R.w, R.h, right ? '#c9f2d4' : bad ? '#e3e7ee' : sel ? '#fff1c1' : '#ffffff', 20, { lineWidth: sel || right ? 5 : 4, border: right ? '#2b8c4f' : sel ? pal.primary : INK });
+    OG.Learn.drawIcon(ctx, opt.drawIcon || opt.icon, R.w / 2, 82, 116, OG.time);
+    ctx.fillStyle = INK; ctx.font = ui().font(n === 2 ? 23 : 21); ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ui().wrap(ctx, opt.text, R.w - 24).slice(0, 2).forEach(function (l, li) { ctx.fillText(l, R.w / 2, 150 + li * 26); });
+    // Số thứ tự (khớp phím tắt 1–3)
+    ctx.fillStyle = sel ? pal.primary : '#52b9df'; ctx.strokeStyle = INK; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(10, 10, 19, 0, TAU); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#ffffff'; ctx.font = ui().font(19); ctx.textBaseline = 'middle';
+    ctx.fillText(String(i + 1), 10, 11);
+    if (bad) { // gạch chéo đỏ
+      ctx.strokeStyle = '#e5484d'; ctx.lineWidth = 9; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(R.w * 0.25, R.h * 0.22); ctx.lineTo(R.w * 0.75, R.h * 0.72);
+      ctx.moveTo(R.w * 0.75, R.h * 0.22); ctx.lineTo(R.w * 0.25, R.h * 0.72); ctx.stroke();
+    }
+    if (right) { // dấu tích xanh
+      ctx.fillStyle = '#3fbf6f'; ctx.strokeStyle = INK; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(R.w - 12, 12, 24, 0, TAU); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 6; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.beginPath(); ctx.moveTo(R.w - 24, 12); ctx.lineTo(R.w - 15, 21); ctx.lineTo(R.w + 1, 3); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /**
+   * Vẽ dòng dưới của câu đố: gợi ý (sai) / lời giải thích + nút "Đi tiếp" (đúng) / hướng dẫn (chưa chọn).
+   * Ghi self.nextBtn (rect nút "Đi tiếp" hoặc null).
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {any} self  scene quiz
+   * @param {UiRect} F  khung câu đố
+   * @param {{charId:string, name:string}} g  người dẫn đường
+   */
+  function drawQuizFooter(ctx, self, F, g) {
+    var by = F.y + F.h - 112;
+    self.nextBtn = null;
+    if (self.msg) {
+      var text = (self.passed ? (self.firstTry ? '🎉 ' : '👍 ') : '💡 ') + self.msg + (self.unlocked ? '\n📒 Mở khoá thẻ: ' + self.unlocked.title : '');
+      if (OG.Sprites.drawPortrait) {
+        var passed = self.passed;
+        ui().guard(ctx, 'chân dung gợi ý', function () {
+          OG.Sprites.drawPortrait(ctx, g.charId, F.x + 58, by + 54, 70, { t: OG.time, state: passed ? 'victory' : 'think', bg: passed ? '#e2f8e8' : '#ffffff' });
+        });
+      }
+      // Lời giải thích dài (+ dòng "Mở khoá thẻ") có thể tới 3–4 dòng → thu nhỏ chữ cho vừa,
+      // và kẹp bong bóng trong khung câu đố (bounds) để không tràn qua viền dưới.
+      var bOpts = {
+        tail: 'none', anchor: 'left', maxW: self.passed ? F.w - 360 : F.w - 140, size: 20,
+        bg: self.passed ? '#e2f8e8' : '#fff9e0', reveal: Math.floor(self.msgT * 70),
+        bounds: { x: F.x, y: F.y, w: F.w, h: F.h - 4 } };
+      if (ui().measureBubble(ctx, text, bOpts).h > F.y + F.h - by - 24) bOpts.size = 17;
+      ui().drawBubble(ctx, F.x + 102, by + 14, text, bOpts);
+      if (self.passed) {
+        self.nextBtn = { x: F.x + F.w - 214, y: F.y + F.h - 84, w: 192, h: 62 };
+        ui().drawButton(ctx, self.nextBtn, 'Đi tiếp ▶', { color: '#3fbf6f', shadow: '#2b8c4f', size: 24, pulse: self.t > 0.4 });
+      }
+    } else {
+      ctx.save();
+      ctx.fillStyle = 'rgba(23,35,61,0.65)'; ctx.font = ui().font(18); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(isTouch() ? '👆 Chạm vào đáp án em chọn nhé!' : '⬅ ➡ chọn đáp án, rồi nhấn Enter  ·  Esc: để sau', OG.W / 2, F.y + F.h - 50);
+      ctx.restore();
+    }
+  }
   var quiz = {
     drawBelow: true,
     enter: function (params) {
@@ -962,74 +1219,16 @@
       ui().drawBubble(ctx, F.x + 128, F.y + 82, q.question, {
         tail: 'none', anchor: 'left', maxW: F.w - 170, minW: 300, size: 27, name: g.name, nameColor: pal.primary,
         reveal: Math.floor(this.t * 60) });
-      // Các lựa chọn
+      // Các lựa chọn: lưu rect từng ô vào this.rects để update() hit-test (cùng rect với lúc vẽ).
       var n = q.choices.length, cw = n === 2 ? 290 : 250, gap = n === 2 ? 50 : 30, ch = 214;
       var x0 = OG.W / 2 - (n * cw + (n - 1) * gap) / 2, cy = F.y + 172;
       this.rects = [];
       for (var i = 0; i < n; i++) {
-        var R = { x: x0 + i * (cw + gap), y: cy, w: cw, h: ch }, opt = q.choices[i];
+        var R = { x: x0 + i * (cw + gap), y: cy, w: cw, h: ch };
         this.rects.push(R);
-        var right = this.passed && i === q.answer, bad = this.wrong[i], sel = i === this.sel && !this.passed;
-        var pop = ui().easeOutBack(U.clamp(this.t * 3 - i * 0.25, 0, 1));
-        ctx.save();
-        var sx = ui().shake(this.shakeT[i], 0.45, 12);
-        var sc = (sel ? 1.04 + Math.sin(OG.time * 5) * 0.015 : 1) * (0.6 + 0.4 * pop) * (right ? 1.06 : 1);
-        ctx.translate(R.x + R.w / 2 + sx, R.y + R.h / 2);
-        ctx.scale(sc, sc);
-        ctx.translate(-R.w / 2, -R.h / 2);
-        ctx.globalAlpha = bad ? 0.5 : this.passed && !right ? 0.45 : 1;
-        if (right) ui().drawRays(ctx, R.w / 2, R.h / 2, 190, OG.time, 'rgba(255,214,90,0.5)', 12);
-        ui().drawFrame(ctx, 0, 0, R.w, R.h, right ? '#c9f2d4' : bad ? '#e3e7ee' : sel ? '#fff1c1' : '#ffffff', 20, { lineWidth: sel || right ? 5 : 4, border: right ? '#2b8c4f' : sel ? pal.primary : INK });
-        OG.Learn.drawIcon(ctx, opt.drawIcon || opt.icon, R.w / 2, 82, 116, OG.time);
-        ctx.fillStyle = INK; ctx.font = ui().font(n === 2 ? 23 : 21); ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-        ui().wrap(ctx, opt.text, R.w - 24).slice(0, 2).forEach(function (l, li) { ctx.fillText(l, R.w / 2, 150 + li * 26); });
-        // Số thứ tự
-        ctx.fillStyle = sel ? pal.primary : '#52b9df'; ctx.strokeStyle = INK; ctx.lineWidth = 2.5;
-        ctx.beginPath(); ctx.arc(10, 10, 19, 0, TAU); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = '#ffffff'; ctx.font = ui().font(19); ctx.textBaseline = 'middle';
-        ctx.fillText(String(i + 1), 10, 11);
-        if (bad) { // gạch chéo đỏ
-          ctx.strokeStyle = '#e5484d'; ctx.lineWidth = 9; ctx.lineCap = 'round';
-          ctx.beginPath(); ctx.moveTo(R.w * 0.25, R.h * 0.22); ctx.lineTo(R.w * 0.75, R.h * 0.72);
-          ctx.moveTo(R.w * 0.75, R.h * 0.22); ctx.lineTo(R.w * 0.25, R.h * 0.72); ctx.stroke();
-        }
-        if (right) { // dấu tích xanh
-          ctx.fillStyle = '#3fbf6f'; ctx.strokeStyle = INK; ctx.lineWidth = 3;
-          ctx.beginPath(); ctx.arc(R.w - 12, 12, 24, 0, TAU); ctx.fill(); ctx.stroke();
-          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 6; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-          ctx.beginPath(); ctx.moveTo(R.w - 24, 12); ctx.lineTo(R.w - 15, 21); ctx.lineTo(R.w + 1, 3); ctx.stroke();
-        }
-        ctx.restore();
+        drawQuizChoice(ctx, this, q, i, R, pal);
       }
-      // Dòng dưới: gợi ý / giải thích / hướng dẫn
-      var by = F.y + F.h - 112;
-      this.nextBtn = null;
-      if (this.msg) {
-        var text = (this.passed ? (this.firstTry ? '🎉 ' : '👍 ') : '💡 ') + this.msg + (this.unlocked ? '\n📒 Mở khoá thẻ: ' + this.unlocked.title : '');
-        if (OG.Sprites.drawPortrait) {
-          var passed = this.passed;
-          ui().guard(ctx, 'chân dung gợi ý', function () {
-            OG.Sprites.drawPortrait(ctx, g.charId, F.x + 58, by + 54, 70, { t: OG.time, state: passed ? 'victory' : 'think', bg: passed ? '#e2f8e8' : '#ffffff' });
-          });
-        }
-        // Lời giải thích dài (+ dòng "Mở khoá thẻ") có thể tới 3–4 dòng → thu nhỏ chữ cho vừa,
-        // và kẹp bong bóng trong khung câu đố (bounds) để không tràn qua viền dưới.
-        var bOpts = {
-          tail: 'none', anchor: 'left', maxW: this.passed ? F.w - 360 : F.w - 140, size: 20,
-          bg: this.passed ? '#e2f8e8' : '#fff9e0', reveal: Math.floor(this.msgT * 70),
-          bounds: { x: F.x, y: F.y, w: F.w, h: F.h - 4 } };
-        if (ui().measureBubble(ctx, text, bOpts).h > F.y + F.h - by - 24) bOpts.size = 17;
-        ui().drawBubble(ctx, F.x + 102, by + 14, text, bOpts);
-        if (this.passed) {
-          this.nextBtn = { x: F.x + F.w - 214, y: F.y + F.h - 84, w: 192, h: 62 };
-          ui().drawButton(ctx, this.nextBtn, 'Đi tiếp ▶', { color: '#3fbf6f', shadow: '#2b8c4f', size: 24, pulse: this.t > 0.4 });
-        }
-      } else {
-        ctx.save();
-        ctx.fillStyle = 'rgba(23,35,61,0.65)'; ctx.font = ui().font(18); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText(isTouch() ? '👆 Chạm vào đáp án em chọn nhé!' : '⬅ ➡ chọn đáp án, rồi nhấn Enter  ·  Esc: để sau', OG.W / 2, F.y + F.h - 50);
-        ctx.restore();
-      }
+      drawQuizFooter(ctx, this, F, g);
       ctx.restore();
       ui().fx.draw(ctx);
     }
@@ -1040,8 +1239,66 @@
   //   Thẻ chia theo khu (thẻ chưa có = bóng mờ "?"). ←/→/↑/↓ chọn, Enter mở thẻ đã có (push card),
   //   Esc / nút ↩ = về back. Chạm: tab khu, thẻ (mở luôn). Thẻ có ảnh thật (OG.Photos) → ảnh làm thumbnail.
   // ===========================================================================
+  /**
+   * Vẽ hàng tab khu của Sổ tay (mỗi tab: tên khu + số thẻ đã có). Ghi self.tabRects để update() hit-test.
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {any} self  scene notebook (đọc groups, list)
+   * @param {number} gi  chỉ số khu đang chọn
+   * @param {{primary:string}} pal
+   */
+  function drawNotebookTabs(ctx, self, gi, pal) {
+    // Bề rộng tab chia đều theo số khu, tối đa 176 px; cả hàng căn giữa màn hình.
+    var m = self.groups.length, tw = Math.min(176, (NB.w - 70 - (m - 1) * 8) / m), tx0 = OG.W / 2 - (m * tw + (m - 1) * 8) / 2;
+    self.tabRects = [];
+    for (var g = 0; g < m; g++) {
+      var G = self.groups[g], R = { x: tx0 + g * (tw + 8), y: 92, w: tw, h: 50 }, on = g === gi;
+      self.tabRects.push(R);
+      var have = 0;
+      G.items.forEach(function (ix) { if (this.list[ix].unlocked) have++; }, self);
+      ctx.save();
+      ctx.fillStyle = on ? pal.primary : '#ffffff'; ctx.strokeStyle = INK; ctx.lineWidth = on ? 3.5 : 2.5;
+      U.roundRectPath(ctx, R.x, R.y + (on ? 0 : 4), R.w, R.h - (on ? 0 : 4), 14); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = on ? '#ffffff' : INK; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      var full = have === G.items.length;
+      var label = (G.area.emoji || '📍') + ' ' + G.area.name;
+      ctx.font = ui().font(tw < 130 ? 14 : 16);
+      if (ctx.measureText(label).width > R.w - 12) label = G.area.emoji || G.area.name;
+      ctx.fillText(label, R.x + R.w / 2, R.y + 18 + (on ? 0 : 2));
+      ctx.font = ui().font(12); ctx.globalAlpha = 0.85;
+      ctx.fillText((full ? '✅ ' : '') + have + '/' + G.items.length, R.x + R.w / 2, R.y + 37 + (on ? 0 : 2));
+      ctx.restore();
+    }
+  }
+
+  /**
+   * Vẽ thanh thông tin dưới đáy Sổ tay: tên thẻ đang chọn, hoặc gợi ý NƠI tìm thẻ chưa có (OG.Learn.whereIs).
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {{card: CardDef, unlocked: boolean}} cur  ô đang chọn
+   * @param {string} jid
+   */
+  function drawNotebookInfo(ctx, cur, jid) {
+    var info;
+    if (cur.unlocked) info = '⭐ ' + cur.card.title + (isTouch() ? ' — chạm để xem' : ' — nhấn Enter để xem');
+    else {
+      var w = OG.Learn.whereIs(jid, cur.card.id);
+      info = !w ? '🔎 Thẻ bí mật! Hãy khám phá thêm nhé!'
+        : w.kind === 'quiz' ? '❓ Trả lời đúng câu đố' + (w.levelName ? ' ở màn “' + w.levelName + '”' : '') + ' để mở thẻ này!'
+          : w.kind === 'guide' ? '💬 Trò chuyện với người dẫn đường ở màn “' + w.levelName + '” nhé!'
+            : '🔎 Tìm trang sách ở màn “' + w.levelName + '” nhé!';
+    }
+    ctx.save();
+    ctx.fillStyle = cur.unlocked ? '#e2f8e8' : '#fff3c4'; ctx.strokeStyle = INK; ctx.lineWidth = 2.5;
+    U.roundRectPath(ctx, 120, 482, OG.W - 240, 38, 19); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = INK; ctx.font = ui().font(17); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    var shown = info;
+    while (ctx.measureText(shown).width > OG.W - 270 && shown.length > 10) shown = shown.slice(0, -2);
+    ctx.fillText(shown === info ? info : shown + '…', OG.W / 2, 502);
+    ctx.restore();
+  }
+
   var NB = { x: 12, y: 8, w: 936, h: 524 };
   var NB_BACK = { x: 30, y: 22, w: 66, h: 56 };
+  // Lưới thẻ: COLS cột × ROWS hàng nhìn thấy; ô CW×CH px, khe GX/GY px; GRID_Y = mép trên lưới (px màn hình).
   var COLS = 5, CW = 158, CH = 148, GX = 18, GY = 16, GRID_Y = 160, ROWS = 2;
   var notebook = {
     enter: function (params) {
@@ -1060,6 +1317,8 @@
       if (c.total && c.have === c.total) ui().fx.confetti(OG.W / 2, 120, 60);
     },
     // Gom thẻ theo khu: this.groups = [{area, items:[index trong list]}], this.list = [{card, unlocked, g}]
+    // Một mảng phẳng `list` (←/→ duyệt hết mọi thẻ) + chỉ mục theo nhóm `groups` (tab, ↑/↓ theo hàng trong khu).
+    // Thẻ không thuộc khu nào gom vào nhóm "Khác" để không thẻ nào bị ẩn mất.
     build: function () {
       var jid = this.jid, j = J().get(jid) || { areas: [] }, list = [], groups = [];
       var used = {};
@@ -1078,13 +1337,14 @@
       }
       this.list = list; this.groups = groups;
     },
+    // resume() chạy khi scene 'card' pop về: dựng lại danh sách vì trạng thái mở khoá có thể vừa đổi.
     resume: function () { hideChrome(); this.build(); },
     goBack: function () { OG.Scenes.go(this.p.back || 'journeyMap', this.p.backParams || { journeyId: this.jid }); },
     open: function (i) {
       var it = this.list[i];
       if (!it) return;
       if (it.unlocked) OG.Learn.openCard(this.jid, it.card.id, { from: 'notebook' });
-      else { this.shakeI = i; this.shakeT = 0; }
+      else { this.shakeI = i; this.shakeT = 0; } // thẻ khoá: lắc nhẹ thay vì báo lỗi (phản hồi thân thiện cho bé)
     },
     // Di chuyển lên/xuống theo hàng trong khu; ra khỏi khu thì sang khu trước/sau (giữ cột).
     moveRow: function (d) {
@@ -1154,27 +1414,10 @@
       }
       var cur = this.list[this.sel] || this.list[0], gi = cur.g, grp = this.groups[gi];
       // Tab khu
-      var m = this.groups.length, tw = Math.min(176, (NB.w - 70 - (m - 1) * 8) / m), tx0 = OG.W / 2 - (m * tw + (m - 1) * 8) / 2;
-      this.tabRects = [];
-      for (var g = 0; g < m; g++) {
-        var G = this.groups[g], R = { x: tx0 + g * (tw + 8), y: 92, w: tw, h: 50 }, on = g === gi;
-        this.tabRects.push(R);
-        var have = 0;
-        G.items.forEach(function (ix) { if (this.list[ix].unlocked) have++; }, this);
-        ctx.save();
-        ctx.fillStyle = on ? pal.primary : '#ffffff'; ctx.strokeStyle = INK; ctx.lineWidth = on ? 3.5 : 2.5;
-        U.roundRectPath(ctx, R.x, R.y + (on ? 0 : 4), R.w, R.h - (on ? 0 : 4), 14); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = on ? '#ffffff' : INK; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        var full = have === G.items.length;
-        var label = (G.area.emoji || '📍') + ' ' + G.area.name;
-        ctx.font = ui().font(tw < 130 ? 14 : 16);
-        if (ctx.measureText(label).width > R.w - 12) label = G.area.emoji || G.area.name;
-        ctx.fillText(label, R.x + R.w / 2, R.y + 18 + (on ? 0 : 2));
-        ctx.font = ui().font(12); ctx.globalAlpha = 0.85;
-        ctx.fillText((full ? '✅ ' : '') + have + '/' + G.items.length, R.x + R.w / 2, R.y + 37 + (on ? 0 : 2));
-        ctx.restore();
-      }
+      drawNotebookTabs(ctx, this, gi, pal);
       // Lưới thẻ của khu đang chọn
+      // 💡 Khái niệm: cuộn theo lựa chọn ("scroll into view") — chỉ đổi this.scroll khi hàng đang chọn ra khỏi
+      //   cửa sổ ROWS hàng, rồi kẹp vào [0, tổng hàng − ROWS]. Chỉ vẽ các ô nằm trong cửa sổ (culling đơn giản).
       var pos = grp.items.indexOf(this.sel), row = Math.floor(pos / COLS);
       if (row < this.scroll) this.scroll = row;
       if (row >= this.scroll + ROWS) this.scroll = row - ROWS + 1;
@@ -1185,7 +1428,7 @@
       for (var k = this.scroll * COLS; k < Math.min(grp.items.length, (this.scroll + ROWS) * COLS); k++) {
         var idx = grp.items[k], it = this.list[idx], kk = k - this.scroll * COLS;
         var r = { x: x0 + (kk % COLS) * (CW + GX), y: GRID_Y + Math.floor(kk / COLS) * (CH + GY), w: CW, h: CH };
-        this.rects[idx] = r;
+        this.rects[idx] = r; // đánh chỉ số theo vị trí trong this.list (mảng thưa) → update() biết chạm vào thẻ nào
         this.drawCard(ctx, it, r, idx === this.sel, pal, idx === this.shakeI ? this.shakeT : null, k);
       }
       // mũi tên cuộn
@@ -1195,23 +1438,7 @@
       if (this.scroll + ROWS < totalRows) ctx.fillText('▼', OG.W / 2, GRID_Y + ROWS * (CH + GY) - 6);
       ctx.restore();
       // Thanh thông tin dưới
-      var info;
-      if (cur.unlocked) info = '⭐ ' + cur.card.title + (isTouch() ? ' — chạm để xem' : ' — nhấn Enter để xem');
-      else {
-        var w = OG.Learn.whereIs(jid, cur.card.id);
-        info = !w ? '🔎 Thẻ bí mật! Hãy khám phá thêm nhé!'
-          : w.kind === 'quiz' ? '❓ Trả lời đúng câu đố' + (w.levelName ? ' ở màn “' + w.levelName + '”' : '') + ' để mở thẻ này!'
-            : w.kind === 'guide' ? '💬 Trò chuyện với người dẫn đường ở màn “' + w.levelName + '” nhé!'
-              : '🔎 Tìm trang sách ở màn “' + w.levelName + '” nhé!';
-      }
-      ctx.save();
-      ctx.fillStyle = cur.unlocked ? '#e2f8e8' : '#fff3c4'; ctx.strokeStyle = INK; ctx.lineWidth = 2.5;
-      U.roundRectPath(ctx, 120, 482, OG.W - 240, 38, 19); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = INK; ctx.font = ui().font(17); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      var shown = info;
-      while (ctx.measureText(shown).width > OG.W - 270 && shown.length > 10) shown = shown.slice(0, -2);
-      ctx.fillText(shown === info ? info : shown + '…', OG.W / 2, 502);
-      ctx.restore();
+      drawNotebookInfo(ctx, cur, jid);
       ui().fx.draw(ctx);
     },
     drawCard: function (ctx, it, r, sel, pal, shakeT, k) {
@@ -1251,6 +1478,8 @@
         // bóng mờ của hình
         ctx.save();
         ctx.globalAlpha *= 0.16;
+        // ctx.filter (CSS filter trên canvas) biến hình thành bóng đen tuyền — kiểu "Đoán xem ai đây?".
+        // Trình duyệt không hỗ trợ filter thì bỏ qua lặng lẽ: vẫn thấy hình mờ 16%, chấp nhận được.
         ctx.filter = 'brightness(0)';
         OG.Learn.drawCardIcon(ctx, it.card, r.w / 2, 60, 86, 0);
         ctx.restore();
@@ -1276,6 +1505,8 @@
       ui().fx.clear();
       ui().fx.confetti(OG.W / 2, OG.H * 0.55, 90, 3);
       // Kết quả lượt chơi hành trình (bảng xếp hạng dùng chung với chiến dịch cổ điển).
+      // Truyền lại params.result khi quay về từ 'leaderboard' → giữ ĐÚNG object cũ, OG.Social nhận ra đã lưu điểm
+      // (khoá theo type|score|charId|date) và không tạo mục trùng.
       var result = this.result = (params && params.result) || OG.Game.buildResult('victory');
       result.journeyId = jid;
       result.levelName = (j.emoji ? j.emoji + ' ' : '') + (j.title || '');
@@ -1305,7 +1536,8 @@
     update: function (dt) {
       this.t += dt;
       ui().fx.update(dt);
-      if (this.t > this.next && this.t < 12) { // pháo hoa lác đác
+      // Pháo hoa lác đác trong 12 giây đầu, mỗi phát cách nhau ngẫu nhiên 0,7–1,3 giây (hẹn giờ bằng mốc this.next).
+      if (this.t > this.next && this.t < 12) {
         this.next = this.t + 0.7 + Math.random() * 0.6;
         ui().fx.firework(120 + Math.random() * (OG.W - 240), 70 + Math.random() * 160, 22);
       }
@@ -1324,7 +1556,8 @@
     }
   };
 
-  // Đăng ký ngay lúc load.
+  // Đăng ký ngay lúc load (OG.Scenes.register ghi đè nếu trùng tên). Module tính năng đăng ký SAU có thể thay
+  // một scene ở đây — vd src/world/journey-map.js thay 'journeyMap' trong init().
   OG.Scenes.register('journeySelect', journeySelect);
   OG.Scenes.register('journeyMap', journeyMap);
   OG.Scenes.register('comic', comic);
@@ -1333,6 +1566,7 @@
   OG.Scenes.register('notebook', notebook);
   OG.Scenes.register('journeyEnd', journeyEnd);
 
+  // Ghi đè stub rỗng trong story.js bằng bản vẽ thật (story.js nạp trước file này).
   OG.Story.drawComicPanel = drawComicPanel;
-  OG.Story._beatsOf = beatsOf;
+  OG.Story._beatsOf = beatsOf; // chỉ cho test
 })();

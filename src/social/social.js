@@ -1,8 +1,33 @@
-/* OG.Social — tên người chơi, thẻ thành tích (ảnh canvas), chia sẻ, khối kết quả trên panel gameover/victory.
- * Chủ sở hữu: agent Social (src/social/). Phần bảng xếp hạng + adapter backend + scene 'leaderboard'
- * nằm ở src/social/leaderboard.js (load SAU file này).
+// @ts-check
+/* ============================================================================
+ * OG.Social — TÊN NGƯỜI CHƠI, THẺ THÀNH TÍCH (canvas → PNG), CHIA SẺ (Web Share API), KHỐI KẾT QUẢ
+ * ----------------------------------------------------------------------------
+ * Vai trò:      Phần "mạng xã hội" sau mỗi lượt chơi: đặt tên, lưu điểm lên bảng xếp hạng, vẽ "thẻ thành tích"
+ *               1200×630 bằng Canvas, xuất ra PNG để tải về hoặc chia sẻ. mountResult() được panel gameover /
+ *               victory (src/ui/menus.js) và scene journeyEnd (src/story/scenes.js) gọi để chèn khối kết quả.
+ * Khái niệm:    Web Share API (navigator.share + canShare files) · chuỗi dự phòng (progressive enhancement):
+ *               share → clipboard → execCommand · user activation (thao tác người dùng còn "hiệu lực") ·
+ *               canvas → PNG (toDataURL / toBlob, dataURL → Blob) · cache kết quả vẽ theo khoá · tải file bằng
+ *               <a download> + object URL · làm sạch dữ liệu nhập (tên) · khử trùng lặp (idempotent submit) ·
+ *               lập trình phòng thủ khi module khác có thể chỉ là stub
+ * Bài học:      docs/learn/07-ve-canvas-procedural-cache.md (vẽ thẻ, cache) · docs/learn/06-event-bus-observer.md
+ *               (nghe game:over/victory để tự lưu) · docs/learn/11-luu-tru-migrate.md (Save.playerName)
+ * Phụ thuộc:    LOAD: không (chỉ tạo OG.Social). CHẠY (đều tuỳ chọn, có dự phòng): OG.util (escapeHtml,
+ *               formatTime, roundRectPath), OG.Save (data, commit), OG.Events, OG.DOM (toast, button), OG.Palette,
+ *               OG.Data (getCharacter, getLevel, levels), OG.Progress.getRecord, OG.Sprites.drawCharacter,
+ *               OG.Game.buildResult, OG.Scenes, OG.canvas, OG.FONT. Phần leaderboard (submitScore, getLeaderboard,
+ *               renameEntry, initLeaderboard) do src/social/leaderboard.js gắn thêm — file đó nạp SAU file này.
+ * Event:        phát: 'social:share' {method, ok}, 'social:nameChange' {name}, 'ui:click' (nút dự phòng)
+ *               · nghe: 'game:start', 'level:complete', 'game:over', 'game:victory', 'save:reset'
+ * API công khai: OG.Social.init, mountResult, getPlayerName/setPlayerName, share, captureCanvas, downloadScreenshot,
+ *               createCard, drawCard, cardDataURL, cardBlob, downloadCard, shareText, copyText, lastShareMethod,
+ *               submitResult, getSubmission, entryFromResult, runStars, maxStars, renderList, cleanName,
+ *               formatScore, formatDate, NAME_MAX, CARD_W, CARD_H
+ * Đọc tiếp:     src/social/leaderboard.js (bảng xếp hạng + adapter backend) → docs/leaderboard-worker.example.js
+ *               (máy chủ mẫu cho bảng online)
+ * Kiểm tra kiểu: bật @ts-check; OG.Social được ép kiểu any vì là object dựng dần qua 2 file (social.js + leaderboard.js).
  *
- * HỢP ĐỒNG (docs/ARCHITECTURE.md mục 8.6):
+ * Hợp đồng (docs/ARCHITECTURE.md mục 8.6):
  *   init()                                 — nghe event, đăng ký scene 'leaderboard' (qua initLeaderboard()).
  *   mountResult(panelEl, result)           — chèn ô nhập tên, nút lưu điểm, chia sẻ, tải ảnh, top 5 vào panel.
  *   getPlayerName() / setPlayerName(name)  — Save.playerName (tối đa 16 ký tự, đã làm sạch).
@@ -15,17 +40,46 @@
  *   shareText(result) / copyText(text) -> Promise<bool> / lastShareMethod
  *   submitResult(result, name) -> rank|-1    — lưu (hoặc đổi tên) điểm của một RunResult, không trùng lặp.
  *   runStars(result) -> int                  — tổng sao kiếm được trong lượt chơi.
- * Event mới: 'social:share' {method, ok}, 'social:nameChange' {name}, 'social:onlineSubmit' (xem leaderboard.js). */
+ * Event mới: 'social:share' {method, ok}, 'social:nameChange' {name}, 'social:onlineSubmit' (xem leaderboard.js).
+ * ========================================================================== */
+
+/**
+ * @typedef {Object} RunResult  kết quả một lượt chơi (OG.Game.buildResult) — chỉ liệt kê field module này đọc
+ * @property {'gameover'|'victory'|string} type
+ * @property {number} score
+ * @property {string} charId
+ * @property {string|null} [skinId]
+ * @property {string|null} [levelId]
+ * @property {string} [levelName]
+ * @property {string[]|number} levelsCompleted  mảng levelId đã qua (hoặc số lượng)
+ * @property {number} time        thời gian chơi, giây
+ * @property {string} date        ISO 8601 — cùng với type/score/charId tạo khoá chống lưu trùng
+ * @property {number} [stars]     có sẵn thì dùng luôn, không thì tự tính (runStars)
+ * @property {boolean} [isNewBest]
+ * @property {{bosses?:number, stomps?:number}} [stats]
+ * @property {string} [journeyId]
+ */
+/**
+ * @typedef {Object} SubmissionRecord  đã lưu kết quả nào lên bảng (khoá = resultKey)
+ * @property {string} entryId  id mục trên bảng xếp hạng (để đổi tên sau)
+ * @property {number} rank     hạng (1-based) hoặc -1 nếu không vào top
+ * @property {string} name
+ */
 (function () {
   'use strict';
   var OG = window.OG;
+  /** @type {any} OG.Social dựng dần: file này + leaderboard.js cùng gắn field */
   var S = (OG.Social = OG.Social || {});
 
-  var NAME_MAX = 16;
+  var NAME_MAX = 16;                 // số ký tự (code point) tối đa của tên người chơi
+  // 1200×630 = tỉ lệ ~1.91:1 chuẩn ảnh xem trước (Open Graph) của Facebook/Zalo/Twitter → không bị cắt khi chia sẻ.
   var CARD_W = 1200, CARD_H = 630;
+  var REVOKE_URL_MS = 5000;          // ms chờ trước khi thu hồi object URL của file tải về
 
   // ---------------------------------------------------------------------------
   // Tiện ích phòng thủ (module khác có thể vẫn là stub)
+  // 💡 Khái niệm: lập trình phòng thủ — mọi lời gọi sang module khác đều kiểm tra tồn tại + bọc try/catch.
+  //   Social là tính năng "phụ": lỗi ở đây KHÔNG được làm hỏng màn hình kết quả của trò chơi.
   // ---------------------------------------------------------------------------
   function esc(s) {
     if (OG.util && typeof OG.util.escapeHtml === 'function') return OG.util.escapeHtml(s);
@@ -41,6 +95,7 @@
     try { if (OG.DOM && OG.DOM.toast) OG.DOM.toast(text, sec); } catch (e) { /* bỏ qua */ }
   }
   function pal(key, fb) { return (OG.Palette && OG.Palette[key]) || fb; }
+  // Mọi phần tử DOM tạm (link tải, textarea copy) gắn vào #gameShell — quy ước ARCHITECTURE mục 9.
   function shell() { return document.getElementById('gameShell') || document.body; }
 
   function charInfo(id) {
@@ -59,11 +114,22 @@
     sec = Math.max(0, Math.floor(sec || 0));
     return Math.floor(sec / 60) + ':' + ('0' + (sec % 60)).slice(-2);
   }
+  /**
+   * Định dạng điểm kiểu Việt Nam: 12345 → '12.345'.
+   * @param {number} n
+   * @returns {string}
+   */
   function formatScore(n) {
     n = Math.max(0, Math.round(+n || 0));
     // Ngăn cách hàng nghìn bằng dấu chấm (kiểu Việt Nam) — không phụ thuộc Intl.
+    // Regex: \B = vị trí giữa 2 chữ số, (?=(\d{3})+(?!\d)) = phía sau còn bội số của 3 chữ số tới hết chuỗi.
     return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   }
+  /**
+   * Định dạng ngày dd/mm/yyyy (giờ địa phương). Chuỗi hỏng → ngày hôm nay.
+   * @param {string} [iso]
+   * @returns {string}
+   */
   function formatDate(iso) {
     var d = new Date(iso || Date.now());
     if (isNaN(d.getTime())) d = new Date();
@@ -72,7 +138,13 @@
   S.formatScore = formatScore;
   S.formatDate = formatDate;
 
-  // Làm sạch tên: bỏ ký tự điều khiển, gộp khoảng trắng, cắt theo code point.
+  /**
+   * Làm sạch tên: bỏ ký tự điều khiển / ký tự vô hình / ký tự đảo chiều chữ, gộp khoảng trắng, cắt theo code point.
+   * ⚠️ Bẫy: cắt bằng s.slice(0, 16) đếm theo đơn vị UTF-16 → có thể cắt đôi emoji (cặp surrogate) thành ký tự
+   *   lỗi "�". Array.from tách theo code point nên an toàn hơn.
+   * @param {any} name
+   * @returns {string} tối đa NAME_MAX ký tự, có thể rỗng
+   */
   function cleanName(name) {
     var s = String(name == null ? '' : name)
       .replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e]/g, '')
@@ -87,10 +159,16 @@
   // ---------------------------------------------------------------------------
   // Tên người chơi
   // ---------------------------------------------------------------------------
+  /** @returns {string} tên đã lưu ('' nếu chưa đặt hoặc Save chưa sẵn sàng) */
   S.getPlayerName = function () {
     var d = saveData();
     return d && typeof d.playerName === 'string' ? d.playerName : '';
   };
+  /**
+   * Làm sạch rồi lưu tên người chơi vào Save.playerName; phát 'social:nameChange' nếu tên đổi.
+   * @param {string} name
+   * @returns {string} tên sau khi làm sạch (có thể '')
+   */
   S.setPlayerName = function (name) {
     var clean = cleanName(name);
     var d = saveData();
@@ -105,9 +183,18 @@
 
   // ---------------------------------------------------------------------------
   // Theo dõi sao trong lượt chơi (RunResult không có trường stars)
+  // 💡 Khái niệm: observer — module tự nghe 'level:complete' để ghi sao từng màn, không bắt OG.Game phải
+  //   thêm field mới vào RunResult (giảm phụ thuộc giữa hai module).
   // ---------------------------------------------------------------------------
-  var runLevelStars = {}; // levelId -> stars trong lượt hiện tại
+  /** @type {Object<string, number>} levelId → số sao đạt được trong lượt hiện tại */
+  var runLevelStars = {};
 
+  /**
+   * Tính tổng sao kiếm được trong một lượt chơi.
+   * Ưu tiên: result.stars → sao ghi nhận trong lượt (event) → sao tốt nhất đã lưu → 1 sao/màn.
+   * @param {RunResult|null} result
+   * @returns {number}
+   */
   S.runStars = function (result) {
     if (!result) return 0;
     if (typeof result.stars === 'number') return result.stars | 0;
@@ -125,14 +212,19 @@
     }
     return total;
   };
+  /** @returns {number} số sao tối đa của chiến dịch (3 sao × số màn) */
   S.maxStars = function () { return levelCount() * 3; };
 
   // ---------------------------------------------------------------------------
   // Chuyển RunResult -> entry leaderboard; lưu không trùng lặp
   // ---------------------------------------------------------------------------
-  var submitted = {}; // resultKey -> {entryId, rank, name}
+  /** @type {Object<string, SubmissionRecord>} resultKey → bản ghi đã lưu */
+  var submitted = {};
+  /** @type {RunResult|null} kết quả gần nhất (để nút chia sẻ/tải ảnh dùng khi không truyền result) */
   var lastResult = null;
 
+  // 💡 Khái niệm: khoá định danh (identity key) cho một kết quả — RunResult không có id, nên ghép các field
+  //   gần như duy nhất. Nhờ đó gọi submitResult nhiều lần (tự lưu + bấm nút) vẫn chỉ tạo MỘT mục (idempotent).
   function resultKey(r) {
     return [r.type, r.score | 0, r.charId, r.date].join('|');
   }
@@ -140,8 +232,14 @@
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   }
 
+  /**
+   * Chuyển RunResult thành entry bảng xếp hạng (id ngẫu nhiên mới; levelsCompleted đổi thành SỐ màn).
+   * @param {RunResult} result
+   * @param {string} name
+   * @returns {Object} entry {id, name, score, charId, skinId, levelId, levelName, levelsCompleted, stars, time, date, type}
+   */
   S.entryFromResult = function (result, name) {
-    var r = result || {};
+    var r = /** @type {RunResult} */ (result || {});
     var lv = levelInfo(r.levelId);
     return {
       id: randomId(),
@@ -159,7 +257,15 @@
     };
   };
 
-  // Lưu điểm của result với tên cho trước. Gọi lại với tên khác sẽ ĐỔI TÊN mục đã lưu (không tạo mục mới).
+  /**
+   * Lưu điểm của result với tên cho trước. Gọi lại với tên khác sẽ ĐỔI TÊN mục đã lưu (không tạo mục mới).
+   * Điểm 0 hoặc thiếu tên (và chưa có tên đã lưu) → không lưu.
+   * @param {RunResult} result
+   * @param {string} [name]  thiếu thì dùng tên người chơi đã lưu
+   * @returns {number} hạng 1-based, hoặc -1 (không lưu / không vào top 10)
+   * @example
+   *   var rank = OG.Social.submitResult(OG.Game.buildResult('victory'), 'Bé Na');
+   */
   S.submitResult = function (result, name) {
     if (!result || (result.score | 0) <= 0) return -1;
     var clean = cleanName(name) || S.getPlayerName();
@@ -179,12 +285,17 @@
     submitted[key] = { entryId: entry.id, rank: rank, name: clean };
     return rank;
   };
+  /**
+   * @param {RunResult|null} result
+   * @returns {SubmissionRecord|null} bản ghi nếu kết quả này đã được lưu trong phiên
+   */
   S.getSubmission = function (result) { return result ? submitted[resultKey(result)] || null : null; };
 
   // ---------------------------------------------------------------------------
   // Thẻ thành tích (canvas 1200×630, tỉ lệ ảnh xem trước mạng xã hội)
   // ---------------------------------------------------------------------------
-  var FONT = '"Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif';
+  // Dùng lại font chung của game (OG.FONT); chuỗi dự phòng giống hệt, chỉ dùng khi module chạy riêng lẻ.
+  var FONT = OG.FONT || '"Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif';
 
   function roundRect(ctx, x, y, w, h, r) {
     if (OG.util && OG.util.roundRectPath) { OG.util.roundRectPath(ctx, x, y, w, h, r); return; }
@@ -222,7 +333,7 @@
     ctx.stroke();
     ctx.restore();
   }
-  // Viết chữ, tự thu nhỏ cỡ chữ để vừa maxW.
+  // Viết chữ, tự thu nhỏ cỡ chữ (bước 2 px, tối thiểu 12 px) để vừa maxW. Trả cỡ chữ cuối cùng.
   function fitText(ctx, text, x, y, maxW, size, weight) {
     var s = size;
     ctx.font = (weight || '900') + ' ' + s + 'px ' + FONT;
@@ -234,7 +345,7 @@
     return s;
   }
 
-  // Vẽ nhân vật bằng OG.Sprites; nếu lỗi thì vẽ hình mèo đơn giản.
+  // Vẽ nhân vật bằng OG.Sprites (gốc ở chân: footX, footY); nếu lỗi thì vẽ hình mèo đơn giản.
   function drawHero(ctx, charId, anim, skinId, footX, footY, scale) {
     var ch = charInfo(charId);
     ctx.save();
@@ -250,11 +361,13 @@
         ctx.restore();
         ok = true;
       } catch (e) {
+        // ⚠️ Bẫy: lỗi giữa chừng → save() bên trong chưa được restore(); restore bù để ngăn xếp trạng thái cân bằng.
         try { ctx.restore(); } catch (e2) { /* bỏ qua */ }
         ok = false;
       }
     }
     if (!ok) {
+      // Hình dự phòng: thân bo tròn + đầu + mõm + 2 mắt, theo màu của nhân vật.
       var c = ch.colors || {};
       var w = ch.w || 34, h = ch.h || 52;
       fillRound(ctx, -w / 2, -h * 0.62, w, h * 0.62, 12, c.body || pal('oggyBody', '#2877d5'));
@@ -268,9 +381,15 @@
     ctx.restore();
   }
 
-  // Vẽ thẻ thành tích lên ctx kích thước CARD_W×CARD_H.
+  /**
+   * Vẽ thẻ thành tích lên ctx kích thước CARD_W×CARD_H (px). Bố cục: nhân vật bên trái, bảng thông tin bên phải.
+   * 💡 Khái niệm: ảnh chia sẻ là vẽ procedural — không cần file ảnh mẫu; đổi tên/điểm là vẽ lại trong vài ms.
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {RunResult} result
+   * @param {string} name  tên in trên thẻ ('' = "Người chơi bí ẩn")
+   */
   function drawCard(ctx, result, name) {
-    var r = result || {};
+    var r = /** @type {RunResult} */ (result || {});
     var W = CARD_W, H = CARD_H;
     var ink = pal('ink', '#17233d');
     var victory = r.type === 'victory';
@@ -287,7 +406,7 @@
     g.addColorStop(1, pal('skyBottom', '#e8f6c7'));
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
-    // Mây
+    // Mây: mỗi đám = 3 hình tròn chồng nhau; dữ liệu [x, y, tỉ lệ]
     ctx.fillStyle = '#ffffffb0';
     [[120, 90, 1], [420, 60, 0.8], [1050, 110, 1.1]].forEach(function (c) {
       var x = c[0], y = c[1], k = c[2];
@@ -312,7 +431,7 @@
     ctx.fillStyle = '#00000014';
     for (var i = 0; i < W; i += 80) ctx.fillRect(i, floorY + 30, 44, 10);
 
-    // Nhân vật
+    // Nhân vật: phóng sao cho cao ~250 px (tối đa ×4,6)
     var hh = ch.h || 52;
     var scale = Math.min(4.6, 250 / hh);
     drawHero(ctx, ch.id, victory ? 'victory' : 'idle', r.skinId, 250, floorY + 4, scale);
@@ -337,7 +456,7 @@
     ctx.stroke();
 
     var cx = px + pw / 2;
-    // Tiêu đề game
+    // Tiêu đề game (vẽ 2 lần lệch 3 px: lớp vàng phía sau làm bóng chữ)
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
     ctx.font = '900 50px ' + FONT;
@@ -367,7 +486,7 @@
     ctx.fillStyle = '#8a6a48';
     ctx.fillText('ĐIỂM', cx, py + 296);
 
-    // Sao: vẽ 3 sao lớn theo tỉ lệ sao/tối đa + số cụ thể
+    // Sao: vẽ 3 sao lớn theo tỉ lệ sao/tối đa + số cụ thể (có ít nhất 1 sao thì sáng ít nhất 1 ngôi)
     var ratio = maxStars ? stars / maxStars : 0;
     var bigFilled = stars <= 0 ? 0 : Math.max(1, Math.round(ratio * 3));
     for (var s = 0; s < 3; s++) drawStar(ctx, cx - 150 + s * 56, py + 340, 24, s < bigFilled);
@@ -377,7 +496,7 @@
     ctx.fillStyle = ink;
     ctx.fillText(stars + ' / ' + maxStars + ' sao', cx + 20, py + 342);
 
-    // Ô thống kê
+    // Ô thống kê: 4 ô chia đều bề rộng bảng (lề 30 px, khe 12 px)
     var cells = [
       ['Màn đã qua', done + '/' + levelCount()],
       ['Thời gian', formatTime(r.time)],
@@ -397,7 +516,7 @@
       ctx.fillText(cells[k][1], x0 + cw / 2, y0 + 47);
     }
 
-    // Kỷ lục mới
+    // Kỷ lục mới (nhãn nghiêng ở góc trên-trái)
     if (r.isNewBest && (r.score | 0) > 0) {
       ctx.save();
       ctx.translate(92, 66);
@@ -422,9 +541,22 @@
 
   S.CARD_W = CARD_W;
   S.CARD_H = CARD_H;
+  /**
+   * Vẽ thẻ thành tích lên ctx có sẵn (kích thước CARD_W×CARD_H).
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {RunResult} result
+   * @param {string} [name]  thiếu (null/undefined) thì dùng tên người chơi đã lưu
+   */
   S.drawCard = function (ctx, result, name) { drawCard(ctx, result, name == null ? S.getPlayerName() : name); };
 
-  // Tạo canvas thẻ thành tích (không gắn vào DOM).
+  /**
+   * Tạo canvas thẻ thành tích (KHÔNG gắn vào DOM — canvas ngoài màn hình vẫn vẽ và xuất ảnh được).
+   * @param {RunResult} [result]  thiếu thì dùng kết quả gần nhất
+   * @param {{name?:string}} [opts]
+   * @returns {HTMLCanvasElement} 1200×630 px
+   * @example
+   *   document.body.appendChild(OG.Social.createCard(OG.Game.buildResult('victory')));
+   */
   S.createCard = function (result, opts) {
     opts = opts || {};
     var c = document.createElement('canvas');
@@ -440,7 +572,17 @@
     return c;
   };
 
+  // 💡 Khái niệm: cache theo khoá — toDataURL của ảnh 1200×630 tốn hàng chục ms; chỉ vẽ + mã hoá lại khi
+  //   kết quả (resultKey) hoặc tên người chơi đổi. Blob được suy ra từ đúng dataURL đang cache.
+  /** @type {{key:string|null, name:string|null, dataURL:string|null, blob:Blob|null}} */
   var cardCache = { key: null, name: null, dataURL: null, blob: null };
+  /**
+   * Xuất thẻ thành tích ra PNG dạng data URL ('data:image/png;base64,...'), có cache.
+   * 💡 Khái niệm: canvas → PNG — canvas.toDataURL('image/png') mã hoá điểm ảnh thành chuỗi base64 dùng được
+   *   ngay làm src của <img> hay href để tải về.
+   * @param {RunResult} [result]
+   * @returns {string|null} null nếu trình duyệt chặn (vd canvas bị "taint" bởi ảnh khác nguồn)
+   */
   S.cardDataURL = function (result) {
     result = result || lastResult || fallbackResult();
     var key = resultKey(result), name = S.getPlayerName();
@@ -451,6 +593,9 @@
     return url;
   };
   // Chuyển dataURL sang Blob ĐỒNG BỘ (giữ "user activation" cho navigator.share).
+  // ⚠️ Bẫy: navigator.share chỉ chạy khi được gọi "ngay" trong xử lý cú bấm của người dùng. canvas.toBlob là
+  //   BẤT ĐỒNG BỘ (callback) → tới lúc có blob, trình duyệt đã coi như hết thao tác người dùng và chặn share.
+  //   Giải mã base64 thủ công (atob → Uint8Array → Blob) giữ mọi thứ trong cùng một lượt xử lý.
   function dataURLToBlob(url) {
     try {
       var parts = url.split(',');
@@ -461,6 +606,11 @@
       return new Blob([arr], { type: mime });
     } catch (e) { return null; }
   }
+  /**
+   * Lấy thẻ thành tích dưới dạng Blob PNG (đồng bộ, có cache) — để đính kèm khi chia sẻ.
+   * @param {RunResult} [result]
+   * @returns {Blob|null}
+   */
   S.cardBlob = function (result) {
     var url = S.cardDataURL(result);
     if (!url) return null;
@@ -473,6 +623,8 @@
   // ---------------------------------------------------------------------------
   // Tải file
   // ---------------------------------------------------------------------------
+  // 💡 Khái niệm: tải file không cần máy chủ — tạo <a href=... download="tên.png">, gọi click() bằng code,
+  //   rồi gỡ phần tử. Trình duyệt hiểu thuộc tính download là "lưu về máy" thay vì mở link.
   function clickDownload(href, filename) {
     var a = document.createElement('a');
     a.href = href;
@@ -483,11 +635,19 @@
     a.click();
     setTimeout(function () { if (a.parentNode) a.parentNode.removeChild(a); }, 0);
   }
+  // Dấu thời gian cho tên file: yyyymmdd-hhmmss (giờ địa phương).
   function stamp() {
     var d = new Date();
     return d.getFullYear() + ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2) + '-' +
       ('0' + d.getHours()).slice(-2) + ('0' + d.getMinutes()).slice(-2) + ('0' + d.getSeconds()).slice(-2);
   }
+  /**
+   * Tải canvas về máy dạng PNG. Ưu tiên toBlob + object URL (không phải giữ chuỗi base64 khổng lồ trong bộ nhớ),
+   * thiếu thì dùng toDataURL.
+   * @param {HTMLCanvasElement} canvas
+   * @param {string} filename
+   * @returns {boolean} false nếu trình duyệt chặn
+   */
   function downloadCanvas(canvas, filename) {
     try {
       if (canvas.toBlob && window.URL && URL.createObjectURL) {
@@ -495,7 +655,9 @@
           if (!blob) { clickDownload(canvas.toDataURL('image/png'), filename); return; }
           var u = URL.createObjectURL(blob);
           clickDownload(u, filename);
-          setTimeout(function () { URL.revokeObjectURL(u); }, 5000);
+          // ⚠️ Bẫy: object URL giữ blob trong bộ nhớ tới khi revoke; revoke NGAY thì có trình duyệt chưa kịp
+          //   bắt đầu tải → chờ vài giây rồi mới thu hồi.
+          setTimeout(function () { URL.revokeObjectURL(u); }, REVOKE_URL_MS);
         }, 'image/png');
       } else {
         clickDownload(canvas.toDataURL('image/png'), filename);
@@ -507,17 +669,32 @@
     }
   }
 
+  /**
+   * Chụp canvas game (#game) thành PNG data URL.
+   * @returns {string|null}
+   */
   S.captureCanvas = function () {
     try {
       var c = OG.canvas || document.getElementById('game');
       return c ? c.toDataURL('image/png') : null;
     } catch (e) { return null; }
   };
+  /**
+   * Tải ảnh chụp canvas game về máy.
+   * @param {string} [filename]  mặc định 'oggy-adventure-<yyyymmdd-hhmmss>.png'
+   * @returns {boolean}
+   */
   S.downloadScreenshot = function (filename) {
     var c = OG.canvas || document.getElementById('game');
     if (!c) return false;
     return downloadCanvas(c, filename || ('oggy-adventure-' + stamp() + '.png'));
   };
+  /**
+   * Tải thẻ thành tích về máy.
+   * @param {RunResult} [result]
+   * @param {string} [filename]  mặc định 'oggy-thanh-tich-<yyyymmdd-hhmmss>.png'
+   * @returns {boolean}
+   */
   S.downloadCard = function (result, filename) {
     var c = S.createCard(result || lastResult || fallbackResult());
     return downloadCanvas(c, filename || ('oggy-thanh-tich-' + stamp() + '.png'));
@@ -526,6 +703,7 @@
   // ---------------------------------------------------------------------------
   // Chia sẻ
   // ---------------------------------------------------------------------------
+  // Chỉ kèm link khi game chạy trên web thật (http/https); mở bằng file:// thì link vô nghĩa với người nhận.
   function shareUrl() {
     try {
       var p = window.location.protocol;
@@ -533,6 +711,11 @@
     } catch (e) { /* bỏ qua */ }
     return '';
   }
+  /**
+   * Soạn câu chia sẻ (khác nhau cho thắng / thua), kèm link game nếu chạy trên web.
+   * @param {RunResult} [result]
+   * @returns {string}
+   */
   S.shareText = function (result) {
     var r = result || lastResult || fallbackResult();
     var ch = charInfo(r.charId);
@@ -549,11 +732,13 @@
     return url ? text + ' ' + url : text;
   };
 
-  // Copy văn bản: clipboard API → textarea + execCommand.
+  // Copy văn bản kiểu cũ: textarea ẩn + select() + document.execCommand('copy').
+  // execCommand đã lỗi thời nhưng vẫn chạy ở trình duyệt cũ / trang không an toàn (http, file://)
+  // nơi Clipboard API bị tắt — nên giữ làm phương án cuối.
   function execCopy(text) {
     var ta = document.createElement('textarea');
     ta.value = text;
-    ta.setAttribute('readonly', '');
+    ta.setAttribute('readonly', ''); // readonly: không bật bàn phím ảo trên điện thoại
     ta.style.position = 'absolute';
     ta.style.left = '-9999px';
     ta.style.top = '0';
@@ -562,12 +747,17 @@
     var ok = false;
     try {
       ta.select();
-      ta.setSelectionRange(0, text.length);
+      ta.setSelectionRange(0, text.length); // iOS Safari cần chọn vùng tường minh
       ok = document.execCommand('copy');
     } catch (e) { ok = false; }
     root.removeChild(ta);
     return ok;
   }
+  /**
+   * Sao chép văn bản vào clipboard: Clipboard API (cần secure context) → execCommand. Ghi S.lastShareMethod.
+   * @param {string} text
+   * @returns {Promise<boolean>} true nếu sao chép được
+   */
   S.copyText = function (text) {
     text = String(text || '');
     var nav = window.navigator;
@@ -588,6 +778,17 @@
 
   S.lastShareMethod = null; // 'share' | 'clipboard' | 'execCommand' | 'cancel' | null
 
+  /**
+   * Chia sẻ kết quả. Phát 'social:share' {method, ok} khi xong.
+   * 💡 Khái niệm: progressive enhancement (nâng cấp dần) — dùng tính năng xịn nhất trình duyệt có:
+   *   1) Web Share API (bảng chia sẻ của hệ điều hành, kèm ảnh nếu canShare({files}) cho phép)
+   *   2) Clipboard API → 3) textarea + execCommand. Không có gì → báo thất bại, nút "Tải ảnh" vẫn còn.
+   * ⚠️ Bẫy: phải gọi trực tiếp trong handler của cú bấm (user activation); gọi sau setTimeout/await dài sẽ bị chặn.
+   * @param {RunResult} [result]
+   * @returns {Promise<boolean>} true nếu đã chia sẻ hoặc đã sao chép
+   * @example
+   *   button.onclick = function () { OG.Social.share().then(function (ok) { console.log(ok, OG.Social.lastShareMethod); }); };
+   */
   S.share = function (result) {
     var r = result || lastResult || fallbackResult();
     var text = S.shareText(r);
@@ -600,6 +801,7 @@
 
     if (!nav || typeof nav.share !== 'function') return fallback();
 
+    /** @type {{title:string, text:string, files?:File[]}} */
     var data = { title: 'Oggy Adventure', text: text };
     // Kèm ảnh thẻ thành tích nếu trình duyệt cho phép chia sẻ file.
     try {
@@ -627,6 +829,7 @@
   // ---------------------------------------------------------------------------
   // Khối kết quả trên panel gameover/victory
   // ---------------------------------------------------------------------------
+  /** @returns {RunResult} kết quả dựng tạm khi không ai truyền result (vd gọi share() từ console) */
   function fallbackResult() {
     try {
       if (OG.Game && typeof OG.Game.buildResult === 'function') return OG.Game.buildResult('gameover');
@@ -640,6 +843,7 @@
     if (html != null) e.innerHTML = html;
     return e;
   }
+  // Tạo nút: ưu tiên OG.DOM.button (đồng bộ giao diện + 'ui:click'), thiếu thì tự dựng <button>.
   function makeBtn(label, cls, onClick, id) {
     var b;
     if (OG.DOM && typeof OG.DOM.button === 'function') {
@@ -654,7 +858,14 @@
     return b;
   }
 
-  // Danh sách top N (HTML) — dùng chung cho mountResult và scene leaderboard.
+  /**
+   * Dựng HTML danh sách xếp hạng (dùng chung cho mountResult và scene leaderboard). Mọi chuỗi đều được escape.
+   * ⚠️ Bẫy: tên người chơi (và dữ liệu từ máy chủ online) là dữ liệu NGOÀI — ghép thẳng vào innerHTML mà
+   *   không esc() là lỗ hổng XSS (tên kiểu "<img onerror=...>" sẽ chạy script).
+   * @param {Object[]} entries  entry đã sanitize, đã sắp xếp
+   * @param {{highlightId?:string, emptyText?:string, compact?:boolean}} [opts]  compact = chỉ hạng, tên, điểm
+   * @returns {string} HTML
+   */
   S.renderList = function (entries, opts) {
     opts = opts || {};
     if (!entries || !entries.length) {
@@ -678,6 +889,17 @@
     return html + '</ol>';
   };
 
+  /**
+   * Chèn khối kết quả (ảnh xem trước thẻ, ô nhập tên + LƯU ĐIỂM, nút chia sẻ / tải ảnh / bảng xếp hạng, top 5)
+   * vào panel kết quả, ngay TRƯỚC hàng nút có sẵn. Gọi lại trên cùng panel sẽ thay khối cũ.
+   * Đã có tên người chơi → tự lưu điểm luôn (không cần bấm).
+   * @param {HTMLElement} panelEl  panel do OG.DOM.panel tạo
+   * @param {RunResult} [result]
+   * @returns {HTMLElement|null} khối đã chèn
+   * @example
+   *   var panel = OG.DOM.panel({ title: 'CHIẾN THẮNG!' });
+   *   OG.Social.mountResult(panel, OG.Game.buildResult('victory'));
+   */
   S.mountResult = function (panelEl, result) {
     if (!panelEl || typeof panelEl.appendChild !== 'function') return null;
     var r = result || fallbackResult();
@@ -694,7 +916,9 @@
     preview.setAttribute('role', 'button');
     preview.setAttribute('tabindex', '0');
     preview.setAttribute('aria-label', 'Xem thẻ thành tích');
+    /** @type {HTMLCanvasElement|null} */
     var cardCanvas = null;
+    // Vẽ lại vào CÙNG một canvas (tạo lần đầu) khi tên đổi — CSS co canvas 1200×630 về khung xem trước.
     function redrawPreview() {
       try {
         if (!cardCanvas) {
@@ -712,6 +936,7 @@
     redrawPreview();
     var togglePreview = function () { preview.classList.toggle('social-preview-big'); };
     preview.addEventListener('click', togglePreview);
+    // role="button" trên <div> thì phải tự hỗ trợ Space/Enter (nút thật có sẵn) — khả năng tiếp cận bàn phím.
     preview.addEventListener('keydown', function (e) {
       if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); togglePreview(); }
     });
@@ -739,7 +964,7 @@
     form.appendChild(saveBtn);
 
     var status = el('div', 'social-status');
-    status.setAttribute('aria-live', 'polite');
+    status.setAttribute('aria-live', 'polite'); // trình đọc màn hình đọc lại khi trạng thái đổi
     var listBox = el('div', 'social-top');
 
     function refreshList() {
@@ -775,9 +1000,11 @@
       redrawPreview();
       try { input.blur(); } catch (e) { /* bỏ qua */ }
     }
+    // Dùng <form> + submit: Enter trên bàn phím (kể cả nút "Xong" của bàn phím ảo) tự kích hoạt lưu.
     form.addEventListener('submit', function (e) { e.preventDefault(); doSave(); });
     input.addEventListener('keydown', function (e) {
       // Không để Enter/Esc lọt ra panel (Enter sẽ bấm nút chính của panel).
+      // ⚠️ Bẫy: thiếu stopPropagation thì gõ phím "e", "p"... trong ô tên cũng bị OG.Input hiểu là phím điều khiển.
       e.stopPropagation();
       if (e.key === 'Escape') input.blur();
     });
@@ -800,6 +1027,7 @@
     // Nút chia sẻ / tải ảnh / bảng xếp hạng
     var actions = el('div', 'social-actions');
     actions.appendChild(makeBtn('📤 CHIA SẺ', 'secondary social-share', function () {
+      // Gọi share() ngay trong handler click → còn user activation cho navigator.share.
       S.share(r).then(function (ok) {
         var m = S.lastShareMethod;
         if (ok && m === 'share') toast('Đã chia sẻ! 🎉');
@@ -813,6 +1041,7 @@
     }, 'socialDownload'));
     if (OG.Scenes && OG.Scenes.has && OG.Scenes.has('leaderboard')) {
       actions.appendChild(makeBtn('🏆 BẢNG XẾP HẠNG', 'secondary social-open-board', function () {
+        // back + backParams.result: từ bảng xếp hạng quay về đúng màn kết quả này (khối kết quả dựng lại, không lưu trùng).
         var back = (OG.Scenes.current && OG.Scenes.current()) || 'menu';
         var sub = S.getSubmission(r);
         OG.Scenes.go('leaderboard', { back: back, backParams: { result: r }, highlightId: sub && sub.entryId });
@@ -837,7 +1066,12 @@
   // Khởi tạo
   // ---------------------------------------------------------------------------
   var inited = false;
+  /**
+   * Đăng ký các listener (sao từng màn, tự lưu điểm khi kết thúc lượt, dọn dẹp khi xoá save) và
+   * khởi tạo bảng xếp hạng (scene 'leaderboard', backend online nếu có cấu hình). Gọi nhiều lần vẫn an toàn.
+   */
   S.init = function () {
+    // Cờ inited: init() lỡ bị gọi 2 lần sẽ đăng ký listener 2 lần → mỗi lượt lưu điểm 2 lần (xem bài 06).
     if (inited) return;
     inited = true;
     if (OG.Events && OG.Events.on) {
@@ -854,6 +1088,7 @@
       };
       OG.Events.on('game:over', autoSubmit);
       OG.Events.on('game:victory', autoSubmit);
+      // Xoá save → quên mọi trạng thái tạm trong bộ nhớ, nếu không sẽ "đổi tên" một mục đã không còn tồn tại.
       OG.Events.on('save:reset', function () {
         submitted = {};
         runLevelStars = {};

@@ -1,61 +1,118 @@
-/* OG.Menus — menu chính, chọn nhân vật & skin, cài đặt, tạm dừng, màn kết quả.
- * Chủ sở hữu: agent Menus & Shop (src/ui/). HUD nằm ở src/ui/hud.js, cửa hàng ở src/ui/shop.js.
+// @ts-check
+/* ============================================================================
+ * OG.Menus — MENU bằng DOM overlay: menu chính, chọn chế độ, sổ tay, nhân vật & skin, cài đặt, tạm dừng, kết quả
+ * ----------------------------------------------------------------------------
+ * Vai trò:      Đăng ký các scene giao diện; mỗi scene khi enter() dựng một panel HTML trong #overlay (lớp DOM
+ *               nằm đè lên canvas) qua OG.DOM.panel, còn draw() chỉ vẽ nền canvas phía sau. Main gọi
+ *               OG.Menus.init() sau OG.Quests.init(). Bộ tiện ích OG.Menus.ui được shop.js dùng lại.
+ * Khái niệm:    DOM overlay vs canvas UI · event delegation (uỷ quyền sự kiện: 1 listener cho cả panel, nút
+ *               khai báo bằng data-act) · quản lý focus & điều hướng bàn phím theo không gian (spatial
+ *               navigation) · keydown ở pha capture · ARIA (role="slider", aria-label) cho trình đọc màn hình ·
+ *               scene stack: pause được push, settings push chồng lên pause (drawBelow) · xác nhận 2 bước ·
+ *               particle đơn giản (confetti)
+ * Bài học:      docs/learn/05-state-machine-scene.md (go/push/pop, drawBelow, resume) ·
+ *               docs/learn/03-input.md (bàn phím/cảm ứng, consume) · docs/learn/06-event-bus-observer.md
+ * Phụ thuộc:    lúc CHẠY: OG.DOM (panel, overlay, hidePanel, toast...), OG.Scenes, OG.Input, OG.Save, OG.Data,
+ *               OG.Sprites.drawCharacter (canvas xem trước), OG.Game, OG.Shop, OG.Quests, OG.Progress,
+ *               OG.Journeys, OG.Learn, OG.Difficulty, OG.Audio, OG.Social, OG.Photos (đều tuỳ chọn qua U.call).
+ *               Không đọc module nào lúc LOAD ngoài OG.util.
+ * Event:        phát: 'ui:click' {id}, 'char:select', 'skin:equip', 'game:pause' ·
+ *               nghe: 'coins:change' (cập nhật số xu trên panel), 'char:unlock', 'quest:complete' (dự phòng)
+ * API công khai: OG.Menus.init(), OG.Menus.ui.* (open, close, focusIn, moveFocus, questLine, previewHtml,
+ *               drawPreviews, charStats, statBars, fmt, esc...) — xem JSDoc từng hàm
+ * Đọc tiếp:     src/core/dom.js (OG.DOM.panel tạo panel) → src/ui/shop.js (scene dùng lại OG.Menus.ui)
+ *               → src/ui/hud.js (phần HUD) → src/core/scenes.js (push/pop, drawBelow)
+ * Kiểm tra kiểu: có @ts-check; OG.Menus / OG.Menus.ui ép kiểu any vì nhiều file cùng gắn field vào
+ *               (hud.js, shop.js đọc). Vài chỗ ép kiểu Element → HTMLElement có comment ngay tại chỗ.
  *
- * HỢP ĐỒNG (docs/ARCHITECTURE.md mục 8.5):
- *   OG.Menus.init() — đăng ký scene: menu, charselect, settings, pause, gameover, victory.
+ * 💡 Khái niệm — vì sao menu dùng DOM còn bản đồ (src/world/world.js) dùng canvas?
+ *   DOM cho sẵn: chữ sắc nét & tự xuống dòng, cuộn nội dung dài, focus/Tab, trình đọc màn hình, ô nhập tên,
+ *   link mở tab mới — những thứ menu cần mà canvas phải tự viết lại. Canvas cho tự do hình ảnh và hoạt ảnh
+ *   gắn với game. Quy tắc dự án: màn nhiều chữ/nút → DOM; màn "trong thế giới game" → canvas.
+ *
+ * Hợp đồng (docs/ARCHITECTURE.md mục 8.5):
+ *   OG.Menus.init() — đăng ký scene: menu, modeSelect, notebookHub, charselect, settings, pause, gameover, victory.
  *   OG.Menus.updateHud(hud) / OG.Menus.drawHud(ctx, hud) — xem hud.js.
- *
- * Giao diện dùng lớp DOM #overlay (qua OG.DOM.panel) giống MVP. Mọi panel của module này có class
- * .ui-panel và được điều khiển bằng:
- *   - Chuột / cảm ứng: bấm trực tiếp (nút tối thiểu 44px).
+ * Mọi panel của module có class .ui-panel và điều khiển được bằng:
+ *   - Chuột / cảm ứng: bấm trực tiếp (nút tối thiểu 44px — CSS trong src/ui/ui.css).
  *   - Bàn phím: mũi tên hoặc WASD di chuyển focus (điều hướng theo không gian), Enter/Space chọn,
  *     Esc quay lại (scene tự xử lý qua OG.Input 'back').
- * Tiện ích dùng chung cho shop.js được đặt ở OG.Menus.ui (nội bộ của module UI). */
+ * Tiện ích dùng chung cho shop.js được đặt ở OG.Menus.ui (nội bộ của module UI).
+ * ========================================================================== */
 (function () {
   'use strict';
   var OG = window.OG;
   var U = OG.util;
 
-  var Menus = (OG.Menus = OG.Menus || {});
-  var UI = (Menus.ui = Menus.ui || {});
+  var Menus = /** @type {any} */ (OG.Menus = OG.Menus || {}); // hud.js gắn thêm hàm vào cùng object
+  var UI = /** @type {any} */ (Menus.ui = Menus.ui || {}); // bộ tiện ích, shop.js dùng lại
 
   // ======================================================================
   // Tiện ích chung
   // ======================================================================
+  /**
+   * Thoát ký tự HTML (& < > " ') để chèn chữ an toàn vào chuỗi innerHTML.
+   * ⚠️ Bẫy: mọi chữ lấy từ dữ liệu (tên nhân vật, tên màn, tên người chơi) đều phải qua UI.esc trước khi ghép
+   *   vào HTML; quên một chỗ là mở đường cho chèn mã (XSS).
+   * @param {*} s
+   * @returns {string}
+   */
   UI.esc = function (s) { return U.escapeHtml(s); };
   // Link nhỏ tới trang ghi công ảnh chụp (docs/credits.html). Giấy phép CC BY / CC BY-SA yêu cầu ghi công
   // ở nơi người xem tìm được → đặt ở Cài đặt và Sổ tay khám phá. Mở tab mới để không mất tiến độ đang chơi.
   // Chỉ hiện khi đã có ít nhất một ảnh được đăng ký (OG.Photos).
+  /** @returns {string} HTML đoạn link, hoặc '' khi chưa có ảnh nào */
   UI.photoCreditsLink = function () {
     var P = OG.Photos, n = 0;
     if (P) P.journeys().forEach(function (j) { n += P.entries(j).length; });
     if (!n) return '';
     return '<p class="ui-credits-link small"><a href="docs/credits.html" target="_blank" rel="noopener">📷 Ghi công ảnh chụp (' + n + ' ảnh)</a></p>';
   };
+  // Các getter nhỏ dưới đây đều "phòng thủ": module nguồn thiếu thì trả giá trị mặc định thay vì ném lỗi,
+  // để menu vẫn mở được khi một module tính năng bị lỗi lúc load.
+  /** @returns {Object|null} OG.Save.data hoặc null */
   UI.save = function () { return (OG.Save && OG.Save.data) || null; };
+  /** @returns {number} số xu hiện có */
   UI.coins = function () { return OG.Save && OG.Save.getCoins ? OG.Save.getCoins() : 0; };
+  /**
+   * Định dạng số kiểu Việt Nam (dấu chấm ngăn hàng nghìn).
+   * @param {number|string} n
+   * @returns {string}
+   * @example
+   *   OG.Menus.ui.fmt(1234567); // "1.234.567"
+   */
   UI.fmt = function (n) {
     n = Math.round(+n || 0);
     return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   };
+  /**
+   * Hiện thông báo ngắn (qua OG.DOM.toast).
+   * @param {string} text
+   * @param {number} [sec]  giây hiển thị
+   */
   UI.toast = function (text, sec) { U.call('DOM', 'toast', text, sec); };
+  /** @param {string} id @returns {string} tên hiển thị của nhân vật */
   UI.charName = function (id) {
     var ch = OG.Data && OG.Data.characters && OG.Data.characters[id];
     return ch ? ch.name : (id || 'Oggy');
   };
+  /** @param {string} id @returns {string} tên hiển thị của màn */
   UI.levelName = function (id) {
     var l = OG.Data && OG.Data.getLevel ? OG.Data.getLevel(id) : null;
     return l ? l.name : (id || '');
   };
+  /** @param {string} id @returns {boolean} nhân vật đã mở khoá chưa */
   UI.isUnlockedChar = function (id) {
     var s = UI.save();
     return !!(s && s.unlockedChars && s.unlockedChars.indexOf(id) >= 0);
   };
+  /** @param {string} charId @returns {string} id skin đang mặc (mặc định '<charId>_default') */
   UI.equippedSkin = function (charId) {
     var s = UI.save();
     var id = s && s.equippedSkins ? s.equippedSkins[charId] : null;
     return id || (charId + '_default');
   };
+  /** @param {string} skinId @returns {boolean} đã sở hữu skin chưa */
   UI.ownsSkin = function (skinId) {
     var s = UI.save();
     if (!s) return false;
@@ -63,13 +120,18 @@
     if (sk && !sk.price) return true; // skin miễn phí luôn có
     return (s.ownedSkins || []).indexOf(skinId) >= 0;
   };
-  // Ẩn HUD và nút cảm ứng khi ở menu.
+  /** Ẩn HUD và nút cảm ứng khi ở menu (không có gì để điều khiển nhân vật). */
   UI.hideGameUi = function () {
     U.call('DOM', 'setHudVisible', false);
     U.call('DOM', 'setControlsVisible', false);
   };
-  // Nền tiêu đề dùng chung cho các scene menu.
+  /**
+   * Vẽ nền tiêu đề dùng chung cho các scene menu (nằm SAU panel DOM). Thiếu hàm nền thì tô gradient trời.
+   * @param {CanvasRenderingContext2D} ctx
+   */
   UI.drawBackdrop = function (ctx) {
+    // ⚠️ Bẫy: nếu hàm vẽ nền ném lỗi giữa chừng, restore() trong try bị bỏ qua → catch phải restore để
+    //   save/restore vẫn cân bằng (không thì transform/alpha rò sang các frame sau).
     try {
       if (typeof OG.drawTitleBackdrop === 'function') { ctx.save(); OG.drawTitleBackdrop(ctx); ctx.restore(); return; }
     } catch (e) { ctx.restore(); }
@@ -77,6 +139,10 @@
     g.addColorStop(0, OG.Palette.skyTop); g.addColorStop(1, OG.Palette.skyBottom);
     ctx.fillStyle = g; ctx.fillRect(0, 0, OG.W, OG.H);
   };
+  /**
+   * Vẽ lại cảnh màn chơi cuối cùng làm nền cho màn kết quả (dự phòng: nền tiêu đề).
+   * @param {CanvasRenderingContext2D} ctx
+   */
   UI.drawLastPlay = function (ctx) {
     try {
       if (typeof OG.drawLastPlayScene === 'function') { ctx.save(); OG.drawLastPlayScene(ctx); ctx.restore(); return; }
@@ -87,12 +153,28 @@
   // ======================================================================
   // Panel + uỷ quyền sự kiện click (data-act)
   // ======================================================================
+  /** @type {HTMLElement|null} panel đang mở (chỉ có MỘT panel tại một thời điểm) */
   UI.panel = null;
+  /** @type {Object<string, Function>} tên data-act → hàm xử lý của panel đang mở */
   UI.handlers = {};
+  /** @type {HTMLCanvasElement[]} canvas xem trước nhân vật trong panel (vẽ lại mỗi frame ở scene.draw) */
   UI.previews = [];
 
-  // Mở panel. opts: {title, html, small, className, handlers:{act: fn(arg, el, e)}, focus: selector}
-  // Phần tử có [data-act] sẽ gọi handlers[act](data-arg). [data-primary] là nút mặc định cho Enter.
+  /**
+   * Mở một panel DOM (thay panel cũ) và nối nút bấm với handler qua thuộc tính data-act.
+   * Phần tử có [data-act] sẽ gọi handlers[act](data-arg, el, event). [data-primary] là nút mặc định cho Enter.
+   * Mỗi cú bấm phát 'ui:click' {id: data-id || data-act}.
+   * @param {{title?: string, html?: string, small?: string, buttons?: Array, className?: string,
+   *          handlers?: Object<string, function(string, Element, Event): void>, focus?: string}} opts
+   *   focus = CSS selector phần tử nhận focus sau khi mở (dùng khi vẽ lại panel để giữ vị trí)
+   * @returns {HTMLElement} phần tử panel
+   * @example
+   *   OG.Menus.ui.open({
+   *     title: 'XIN CHÀO',
+   *     html: '<button type="button" data-act="hi" data-arg="oggy" data-primary>Chào</button>',
+   *     handlers: { hi: function (who) { OG.Menus.ui.toast('Chào ' + who); } }
+   *   });
+   */
   UI.open = function (opts) {
     opts = opts || {};
     UI.previews = [];
@@ -102,6 +184,9 @@
     });
     UI.panel = p;
     UI.handlers = opts.handlers || {};
+    // 💡 Khái niệm: event delegation (uỷ quyền sự kiện) — chỉ MỘT listener 'click' trên cả panel; closest('[data-act]')
+    //   tìm nút được bấm (kể cả khi bấm trúng <span>/<canvas> con bên trong nút). Panel vẽ lại bằng innerHTML
+    //   bao nhiêu lần cũng không phải gắn listener cho từng nút, và không rò listener cũ.
     p.addEventListener('click', function (e) {
       var el = e.target && e.target.closest ? e.target.closest('[data-act]') : null;
       if (!el || !p.contains(el)) return;
@@ -118,22 +203,31 @@
     return p;
   };
 
+  /** Đóng panel của module (nếu panel đang hiện đúng là của mình) và xoá handler, canvas xem trước. */
   UI.close = function () {
+    // Chỉ ẩn khi panel CỦA MÌNH còn trong overlay — scene kế tiếp có thể đã mở panel riêng trước khi exit() này chạy.
     if (UI.panel && OG.DOM.overlay && OG.DOM.overlay.contains(UI.panel)) OG.DOM.hidePanel();
     UI.panel = null;
     UI.handlers = {};
     UI.previews = [];
   };
 
-  // Panel đang hiển thị có phải của module UI không.
+  /** @returns {boolean} panel đang hiển thị có phải của module UI không */
   UI.isMine = function () {
     return !!(UI.panel && OG.DOM.isPanelOpen() && document.body.contains(UI.panel));
   };
 
+  /**
+   * Liệt kê phần tử nhận focus được trong panel (bỏ qua nút disabled, tabindex=-1, đang ẩn).
+   * @param {Element} [root]  mặc định: panel đang mở
+   * @returns {HTMLElement[]}
+   */
   UI.focusables = function (root) {
     root = root || UI.panel;
     if (!root) return [];
-    var list = root.querySelectorAll('button, [tabindex="0"], input, select, textarea, a[href]');
+    // Ép kiểu: querySelectorAll trả Element chung; ở đây toàn phần tử HTML (có .disabled, .offsetParent).
+    var list = /** @type {NodeListOf<HTMLButtonElement>} */ (root.querySelectorAll('button, [tabindex="0"], input, select, textarea, a[href]'));
+    /** @type {HTMLElement[]} */
     var out = [];
     for (var i = 0; i < list.length; i++) {
       var el = list[i];
@@ -144,13 +238,26 @@
     return out;
   };
 
+  /**
+   * Đặt focus vào phần tử và cuộn vừa đủ để nó lộ ra trong panel.
+   * @param {HTMLElement} el
+   */
   UI.focusEl = function (el) {
     if (!el) return;
+    // preventScroll: tự cuộn bằng scrollIntoView 'nearest' (ít giật hơn kiểu cuộn mặc định của focus()).
+    // try/catch vì trình duyệt cũ không nhận object tuỳ chọn.
     try { el.focus({ preventScroll: true }); } catch (e) { el.focus(); }
     if (el.scrollIntoView) { try { el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e2) { /* bỏ qua */ } }
   };
 
-  // Đặt focus ban đầu. Có selector (vẽ lại panel) thì cuộn tới phần tử; không thì giữ panel ở đầu.
+  /**
+   * Đặt focus ban đầu cho panel. Có selector (vẽ lại panel) thì focus + cuộn tới phần tử đó; không thì focus
+   * nút [data-primary] (hoặc phần tử đầu tiên) nhưng giữ panel cuộn ở đầu để thấy tiêu đề.
+   * 💡 Khái niệm: luôn có một phần tử được focus khi panel mở → người dùng bàn phím bấm Enter là chạy ngay,
+   *   không phải bấm Tab mò từ đầu trang (accessibility bàn phím).
+   * @param {HTMLElement} p
+   * @param {string} [sel]  CSS selector, vd '[data-fk="tab-skin"]'
+   */
   UI.focusIn = function (p, sel) {
     var target = sel && p.querySelector(sel);
     var el = target || p.querySelector('[data-primary]') || UI.focusables(p)[0];
@@ -160,22 +267,38 @@
   };
 
   // Loại nhiệm vụ (tra từ OG.Quests) để biết có nên hiện tiến độ dạng "x/y" không.
+  // Cache theo màn: HUD gọi rất thường, getForLevel dựng lại cả danh sách nhiệm vụ mỗi lần.
   var questTypeCache = {};
+  /**
+   * Tra loại nhiệm vụ (vd 'stomp_n') của một nhiệm vụ màn.
+   * @param {string} levelId
+   * @param {string} questId
+   * @returns {string|null} null nếu OG.Quests chưa sẵn sàng / không tìm thấy
+   */
   UI.questType = function (levelId, questId) {
     var key = String(levelId);
     if (!questTypeCache[key]) {
       var map = {};
       var list = U.call('Quests', 'getForLevel', levelId);
       if (Array.isArray(list)) list.forEach(function (q) { if (q && q.id) map[q.id] = q.type; });
+      // ⚠️ Bẫy: KHÔNG cache kết quả rỗng. Lúc khởi động OG.Quests có thể chưa có save → trả [];
+      //   cache lại thì màn đó mãi mãi không hiện tiến độ "x/y".
       if (!Array.isArray(list) || !list.length) return null; // chưa sẵn sàng: không cache
       questTypeCache[key] = map;
     }
     return questTypeCache[key][questId] || null;
   };
   var COUNTABLE = { collect_all: 1, stomp_n: 1, coins_n: 1, pizza_n: 1, boss_n: 1, complete_n: 1 };
-  // HTML một dòng nhiệm vụ: biểu tượng trạng thái + chữ + tiến độ (chỉ với loại đếm được).
+  /**
+   * Dựng HTML một dòng nhiệm vụ <li>: biểu tượng trạng thái (✅ / ❌ / ◻️) + chữ + tiến độ "x/y"
+   * (chỉ với loại đếm được). Dùng ở HUD và màn tạm dừng.
+   * @param {{id: string, text: string, done: boolean, failed?: boolean, progress?: number, target?: number}} q
+   * @param {string} levelId
+   * @returns {string} HTML (chữ đã escape)
+   */
   UI.questLine = function (q, levelId) {
     var type = UI.questType(levelId, q.id);
+    // Chưa biết loại (Quests chưa sẵn sàng) thì đoán theo id: nhiệm vụ thời gian không hiện "x/y".
     var countable = type ? !!COUNTABLE[type] : !/time/i.test(q.id || '');
     var prog = !q.done && !q.failed && countable && q.target > 1
       ? ' <small>' + (q.progress | 0) + '/' + q.target + '</small>' : '';
@@ -183,7 +306,19 @@
     return '<li class="' + (q.done ? 'is-done' : q.failed ? 'is-failed' : '') + '">' + icon + UI.esc(q.text || '') + prog + '</li>';
   };
 
-  // Điều hướng focus theo hướng (left/right/up/down) dựa trên vị trí trên màn hình.
+  var FOCUS_ALIGNED_W = 0.5;  // hệ số phạt lệch ngang khi cùng hàng/cột (điều hướng focus)
+  var FOCUS_OFFAXIS_W = 2.5;  // hệ số phạt lệch ngang khi không thẳng hàng
+
+  /**
+   * Chuyển focus sang phần tử gần nhất theo hướng mũi tên, dựa trên VỊ TRÍ THẬT trên màn hình
+   * (getBoundingClientRect), không theo thứ tự trong HTML.
+   * 💡 Khái niệm: spatial navigation — lưới thẻ nhân vật / nút chế độ xếp theo CSS grid, thứ tự Tab không khớp
+   *   với "bên phải / bên dưới" mà mắt nhìn. Điểm = khoảng cách theo hướng chính + khoảng lệch ngang × hệ số
+   *   (0.5 nếu cùng hàng/cột, 2.5 nếu không) → ưu tiên phần tử thẳng hàng. Không có ai theo hướng đó thì
+   *   đi vòng theo thứ tự DOM, nên mũi tên không bao giờ "kẹt".
+   * 🧪 Thử: đổi FOCUS_OFFAXIS_W 2.5 → 0.5 rồi dùng ↓ trong màn Chọn nhân vật: focus hay nhảy chéo sang cột bên cạnh.
+   * @param {'left'|'right'|'up'|'down'} dir
+   */
   UI.moveFocus = function (dir) {
     var els = UI.focusables();
     if (!els.length) return;
@@ -203,12 +338,12 @@
       else if (dir === 'left') { main = -dx; side = Math.abs(dy); }
       else if (dir === 'down') { main = dy; side = Math.abs(dx); }
       else { main = -dy; side = Math.abs(dx); }
-      if (main <= 4) continue;
+      if (main <= 4) continue; // phải thực sự nằm phía trước theo hướng bấm (> 4 px CSS)
       // Ưu tiên phần tử thẳng hàng (cùng hàng / cùng cột).
       var aligned = (dir === 'left' || dir === 'right')
         ? (r.top < r0.bottom && r.bottom > r0.top)
         : (r.left < r0.right && r.right > r0.left);
-      var score = main + side * (aligned ? 0.5 : 2.5);
+      var score = main + side * (aligned ? FOCUS_ALIGNED_W : FOCUS_OFFAXIS_W);
       if (score < bestScore) { bestScore = score; best = el; }
     }
     if (!best) {
@@ -226,11 +361,18 @@
 
   // Bàn phím cho panel: chạy ở pha capture để Enter kích hoạt đúng nút đang focus
   // (thay vì luôn bấm nút primary như OG.DOM mặc định).
+  // 💡 Khái niệm: pha capture — sự kiện DOM đi từ window XUỐNG phần tử (capture) rồi nổi NGƯỢC lên (bubble).
+  //   addEventListener(..., true) nghe ở pha capture nên chạy TRƯỚC listener của OG.DOM/OG.Input, và
+  //   stopPropagation() chặn họ xử lý lại cùng phím đó.
+  // ⚠️ Bẫy: vì chặn Enter/Space ở đây, nếu phím đầu tiên người chơi bấm trong menu là Enter thì OG.Input không
+  //   thấy phím đó → không phát 'input:firstGesture' (xem src/ui/INTEGRATION.md mục 3).
   function onKeyDown(e) {
     if (!UI.isMine()) return;
-    var p = UI.panel, ae = document.activeElement;
+    // Ép kiểu HTMLInputElement để đọc .type / .isContentEditable (activeElement có thể là bất kỳ phần tử nào).
+    var p = UI.panel, ae = /** @type {HTMLInputElement} */ (document.activeElement);
     var inPanel = !!(ae && ae !== p && p.contains(ae));
     var tag = ae && ae.tagName;
+    // Đang gõ chữ trong ô nhập (vd tên người chơi) → không cướp phím mũi tên/Space/WASD của ô đó.
     var typing = inPanel && (tag === 'TEXTAREA' || ae.isContentEditable ||
       (tag === 'INPUT' && !/^(button|checkbox|radio|range|submit)$/i.test(ae.type || '')));
     var code = e.code;
@@ -239,7 +381,7 @@
       if (typing) return; // để module Social tự xử lý ô nhập tên
       e.preventDefault();
       e.stopPropagation();
-      if (e.repeat) return;
+      if (e.repeat) return; // giữ Enter không "bấm" liên tục (vd mua 5 món một lúc)
       var target = inPanel ? ae : (p.querySelector('[data-primary]') || UI.focusables(p)[0]);
       if (target && typeof target.click === 'function') target.click();
       return;
@@ -263,6 +405,16 @@
   // Xem trước nhân vật (canvas nhỏ trong panel)
   // ======================================================================
   // <canvas data-preview="charId" data-skin="skinId" data-anim="idle" data-face="1">
+  /**
+   * Dựng HTML một <canvas> xem trước nhân vật. Canvas thật được UI.open thu thập và vẽ mỗi frame.
+   * Kích thước pixel gấp đôi kích thước CSS → nét trên màn hình mật độ cao (Retina, điện thoại).
+   * @param {string} charId
+   * @param {string|null} [skinId]
+   * @param {number} [size=84]  px CSS (vuông)
+   * @param {string} [anim='idle']  tên hoạt ảnh: 'idle' | 'run' | 'victory' | ...
+   * @param {string} [extraClass]
+   * @returns {string} HTML
+   */
   UI.previewHtml = function (charId, skinId, size, anim, extraClass) {
     size = size || 84;
     return '<canvas class="ui-preview ' + (extraClass || '') + '" width="' + (size * 2) + '" height="' + (size * 2) +
@@ -280,6 +432,11 @@
     c.beginPath(); c.arc(-w * 0.14, -h * 0.75, 4, 0, 7); c.arc(w * 0.14, -h * 0.75, 4, 0, 7); c.fill();
   }
 
+  /**
+   * Vẽ một khung hình nhân vật vào canvas xem trước (đọc tham số từ data-* của canvas).
+   * @param {HTMLCanvasElement} cv
+   * @param {number} t  giây (OG.time) — điều khiển hoạt ảnh
+   */
   UI.drawPreview = function (cv, t) {
     var c = cv.getContext && cv.getContext('2d');
     if (!c) return;
@@ -289,8 +446,11 @@
     var face = +(cv.getAttribute('data-face') || 1) || 1;
     var ch = OG.Data.getCharacter(charId);
     var W = cv.width, H = cv.height;
+    // setTransform(1,0,0,1,0,0) = đặt lại ma trận về "không biến đổi" trước khi xoá, phòng frame trước lỗi
+    // giữa chừng để lại transform. Sau đó gốc toạ độ dời tới CHÂN nhân vật (giữa, 90% chiều cao).
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.clearRect(0, 0, W, H);
+    // tỉ lệ thu phóng để nhân vật (kể cả tai, đuôi) vừa khung theo cả hai chiều
     var s = Math.min(W / (ch.w * 1.9), (H * 0.8) / (ch.h * 1.25));
     c.save();
     // bóng dưới chân
@@ -310,11 +470,20 @@
     c.restore();
   };
 
+  /**
+   * Vẽ lại mọi canvas xem trước của panel đang mở. Gọi trong scene.draw để nhân vật trong menu "sống" (thở, chạy).
+   * @param {number} t  giây (OG.time)
+   */
   UI.drawPreviews = function (t) {
     for (var i = 0; i < UI.previews.length; i++) UI.drawPreview(UI.previews[i], t);
   };
 
-  // Chỉ số nhân vật đã tính đặc tính (perk) từ OG.Shop.
+  /**
+   * Tính chỉ số hiển thị của nhân vật = chỉ số gốc × modifiers của đặc tính (perk) từ OG.Shop.
+   * @param {string} charId
+   * @returns {{speed: number, jump: number, lives: number, shield: number, perk: Object}}
+   *   speed px/giây, jump px/giây (vận tốc nhảy ban đầu), lives mạng khởi đầu
+   */
   UI.charStats = function (charId) {
     var ch = OG.Data.getCharacter(charId);
     var perk = U.call('Shop', 'getCharPerk', charId) || {};
@@ -328,10 +497,17 @@
     };
   };
 
+  // Thanh chỉ số: quy giá trị về 0..1 trong khoảng [min, max]; tối thiểu 8% để thanh không biến mất hẳn.
   function bar(label, value, min, max, text) {
     var pct = U.clamp((value - min) / (max - min), 0.08, 1) * 100;
     return '<div class="ui-stat"><span>' + label + '</span><i><b style="width:' + pct.toFixed(0) + '%"></b></i><em>' + text + '</em></div>';
   }
+  /**
+   * Dựng HTML 3 thanh chỉ số (Tốc độ, Sức bật, Sức bền) của nhân vật.
+   * Khoảng so sánh cố định (tốc độ 200–300 px/giây, sức bật 520–680) để các nhân vật so được với nhau.
+   * @param {string} charId
+   * @returns {string} HTML
+   */
   UI.statBars = function (charId) {
     var s = UI.charStats(charId);
     return bar('Tốc độ', s.speed, 200, 300, s.speed) +
@@ -342,6 +518,9 @@
   // ======================================================================
   // Scene: menu chính
   // ======================================================================
+  // Mẫu chung của MỌI scene menu trong file: enter() dựng HTML + UI.open(handlers), exit() UI.close(),
+  // update() chỉ bắt Esc (nếu cần), draw() chỉ vẽ nền canvas phía sau panel.
+  // Scene được tạo bằng hàm "factory" (menuScene()...) để mỗi scene có biến riêng trong closure.
   function menuScene() {
     return {
       enter: function () {
@@ -350,6 +529,7 @@
         var charId = s.selectedChar || 'oggy';
         var stars = U.call('Progress', 'totalStars') || 0;
         var maxStars = U.call('Progress', 'maxStars') || 0;
+        // Chỉ hiện nút khi scene đích đã đăng ký: module tính năng thiếu/lỗi thì menu tự gọn lại, không có nút chết.
         var hasLb = OG.Scenes.has('leaderboard');
         var hasJourney = OG.Scenes.has('journeySelect');
         // v2: PHIÊU LƯU HỌC TẬP là nút chính (to nhất, Enter); chiến dịch cổ điển là nút phụ.
@@ -366,6 +546,7 @@
           (hasJourney ? '<div class="ui-menu-main"><button type="button" class="ui-btn-hero" data-act="journey" data-id="journey" data-primary>' +
             '<span class="ui-btn-ico" aria-hidden="true">📖</span><span>PHIÊU LƯU HỌC TẬP<small>Vừa chơi vừa học</small></span></button></div>' : '') +
           '<div class="ui-menu-main">' +
+            // aria-label: nút chỉ có hình + chữ nhỏ → đặt nhãn rõ nghĩa cho trình đọc màn hình.
             '<button type="button" class="ui-hero-chip secondary" data-act="chars" data-id="menu_char" aria-label="Đổi nhân vật">' +
               UI.previewHtml(charId, UI.equippedSkin(charId), 52, 'idle') +
               '<span><small>Nhân vật</small><b>' + UI.esc(UI.charName(charId)) + '</b></span></button>' +
@@ -458,6 +639,8 @@
       },
       exit: function () { UI.close(); },
       update: function () {
+        // ⚠️ Bẫy: Esc bật CẢ 'back' lẫn 'pause' (KEYMAP trong input.js). Phải consume cả hai, nếu không scene
+        //   vừa chuyển tới mà nghe 'pause' sẽ xử lý lại đúng cú nhấn Esc này trong cùng frame.
         if (OG.Input.pressed('back')) { OG.Input.consume('back'); OG.Input.consume('pause'); OG.Scenes.go(S.back); }
       },
       draw: function (ctx) { UI.drawBackdrop(ctx); }
@@ -513,6 +696,29 @@
   // Scene: chọn nhân vật & skin
   // ======================================================================
   function charSelectScene() {
+    // Hàm con của S.render: HTML lưới thẻ nhân vật. Cả thẻ là MỘT <button> → bấm chỗ nào trên thẻ cũng được,
+    // Tab/Enter dùng được ngay, trình đọc màn hình đọc cả tên lẫn trạng thái trong thẻ.
+    function charCardsHtml(s) {
+      var ids = (OG.Data.playable || ['oggy']).slice();
+      return ids.map(function (id) {
+        var ch = OG.Data.getCharacter(id);
+        var unlocked = UI.isUnlockedChar(id);
+        var selected = s.selectedChar === id;
+        var viewing = S.view === id;
+        var st = UI.charStats(id);
+        var status = selected ? '<span class="ui-tag ui-tag-ok">✔ Đang chọn</span>'
+          : unlocked ? '<span class="ui-tag">Bấm để chọn</span>'
+          : '<span class="ui-tag ui-tag-lock">' + S.lockText(ch) + '</span>';
+        return '<button type="button" class="ui-card ui-char' + (selected ? ' is-selected' : '') + (viewing ? ' is-viewing' : '') +
+          (unlocked ? '' : ' is-locked') + '" data-act="pick" data-arg="' + UI.esc(id) + '" data-fk="char-' + UI.esc(id) + '" data-id="char_' + UI.esc(id) + '">' +
+          UI.previewHtml(id, UI.equippedSkin(id), 76, selected ? 'run' : 'idle', unlocked ? '' : 'is-locked') +
+          '<b class="ui-card-name">' + UI.esc(ch.name) + '</b>' +
+          (st.perk && st.perk.label ? '<span class="ui-perk">' + UI.esc(st.perk.label) + '</span>' : '') +
+          '<div class="ui-stats-bars">' + UI.statBars(id) + '</div>' +
+          status + '</button>';
+      }).join('');
+    }
+
     var S = {
       back: 'menu', view: 'oggy', pending: null,
 
@@ -525,7 +731,7 @@
         S.render('[data-fk="char-' + S.view + '"]');
       },
 
-      // Mô tả điều kiện mở khoá.
+      // Mô tả điều kiện mở khoá — nói rõ CÁCH mở (bao nhiêu xu / qua màn nào), không chỉ "đang khoá".
       lockText: function (ch) {
         var u = ch.unlock || { type: 'free' };
         if (u.type === 'coins') return '🔒 ' + UI.fmt(u.cost) + ' 🪙';
@@ -533,26 +739,11 @@
         return '🔒 Chưa mở';
       },
 
+      // Dựng lại toàn bộ panel sau mỗi thao tác; focusSel giữ focus ở thẻ/nút vừa bấm (data-fk).
+      // S.view = nhân vật đang XEM chi tiết (có thể đang khoá), khác save.selectedChar = nhân vật đang CHƠI.
       render: function (focusSel) {
         var s = UI.save() || {};
-        var ids = (OG.Data.playable || ['oggy']).slice();
-        var cards = ids.map(function (id) {
-          var ch = OG.Data.getCharacter(id);
-          var unlocked = UI.isUnlockedChar(id);
-          var selected = s.selectedChar === id;
-          var viewing = S.view === id;
-          var st = UI.charStats(id);
-          var status = selected ? '<span class="ui-tag ui-tag-ok">✔ Đang chọn</span>'
-            : unlocked ? '<span class="ui-tag">Bấm để chọn</span>'
-            : '<span class="ui-tag ui-tag-lock">' + S.lockText(ch) + '</span>';
-          return '<button type="button" class="ui-card ui-char' + (selected ? ' is-selected' : '') + (viewing ? ' is-viewing' : '') +
-            (unlocked ? '' : ' is-locked') + '" data-act="pick" data-arg="' + UI.esc(id) + '" data-fk="char-' + UI.esc(id) + '" data-id="char_' + UI.esc(id) + '">' +
-            UI.previewHtml(id, UI.equippedSkin(id), 76, selected ? 'run' : 'idle', unlocked ? '' : 'is-locked') +
-            '<b class="ui-card-name">' + UI.esc(ch.name) + '</b>' +
-            (st.perk && st.perk.label ? '<span class="ui-perk">' + UI.esc(st.perk.label) + '</span>' : '') +
-            '<div class="ui-stats-bars">' + UI.statBars(id) + '</div>' +
-            status + '</button>';
-        }).join('');
+        var cards = charCardsHtml(s);
 
         // Chi tiết nhân vật đang xem + skin.
         var vch = OG.Data.getCharacter(S.view);
@@ -682,7 +873,98 @@
   // ======================================================================
   // Scene: cài đặt (go từ menu, hoặc push từ pause với params.overlay)
   // ======================================================================
+  // 💡 Khái niệm: cùng một scene, hai cách vào. Từ menu: go('settings') thay hẳn scene. Từ pause:
+  //   push('settings', {overlay:true}) đặt CHỒNG lên stack [level, pause, settings]; drawBelow:true để màn chơi
+  //   vẫn hiện phía sau, và "Xong" gọi pop() để quay lại đúng pause (pause.resume() vẽ lại panel của nó).
   function settingsScene() {
+    // Hai hàm con của S.render (tách cho ngắn, thứ tự gọi giữ nguyên: dựng HTML trước, rồi mới tạo handlers).
+    // Dựng HTML panel cài đặt từ save hiện tại — chỉ ĐỌC trạng thái, không ghi gì.
+    function buildSettingsHtml() {
+      var st = (UI.save() || {}).settings || {};
+      var touch = st.touchControls || 'auto';
+      var seg = function (val, label) {
+        return '<button type="button" class="' + (touch === val ? 'is-on' : 'secondary') + '" data-act="touch" data-arg="' + val +
+          '" data-fk="touch-' + val + '" data-id="touch_' + val + '">' + label + '</button>';
+      };
+      // v2: chế độ chơi (OG.Difficulty) và "chạm nửa phải màn hình để nhảy" (settings.tapJump, đọc ở OG.Input).
+      var tap = st.tapJump || 'auto';
+      var tapSeg = function (val, label) {
+        return '<button type="button" class="' + (tap === val ? 'is-on' : 'secondary') + '" data-act="tapjump" data-arg="' + val +
+          '" data-fk="tap-' + val + '" data-id="tap_' + val + '">' + label + '</button>';
+      };
+      var diffRow = function () {
+        var D = OG.Difficulty;
+        if (!D) return '';
+        var m = D.mode();
+        return '<div class="ui-setting"><span class="ui-setting-label">🎮 Chế độ chơi</span><div class="ui-seg">' +
+          D.list().map(function (k) {
+            return '<button type="button" class="' + (k === m ? 'is-on' : 'secondary') + '" data-act="diff" data-arg="' + UI.esc(k) +
+              '" data-fk="diff-' + UI.esc(k) + '" data-id="diff_' + UI.esc(k) + '">' + UI.esc(D.label(k)) + '</button>';
+          }).join('') + '</div></div>';
+      };
+      var muted = S.muted();
+      var html =
+        S.sliderHtml('music', '🎵 Nhạc nền') +
+        S.sliderHtml('sfx', '🔊 Hiệu ứng') +
+        '<div class="ui-setting"><span class="ui-setting-label">🔇 Tắt tiếng</span>' +
+          '<button type="button" class="' + (muted ? '' : 'secondary') + ' ui-toggle" data-act="mute" data-fk="mute" data-id="mute">' +
+          (muted ? 'Đang tắt' : 'Đang bật') + '</button></div>' +
+        diffRow() +
+        '<div class="ui-setting"><span class="ui-setting-label">📱 Nút cảm ứng</span>' +
+          '<div class="ui-seg">' + seg('auto', 'Tự động') + seg('on', 'Luôn hiện') + seg('off', 'Ẩn') + '</div></div>' +
+        '<div class="ui-setting"><span class="ui-setting-label" title="Chạm nửa phải màn hình để nhảy">👆 Chạm để nhảy</span>' +
+          '<div class="ui-seg">' + tapSeg('auto', 'Tự động') + tapSeg('on', 'Bật') + tapSeg('off', 'Tắt') + '</div></div>' +
+        '<details class="ui-help"><summary>🎮 Cách điều khiển</summary>' +
+          '<p>←/→ hoặc A/D: di chuyển · Space/W/↑: nhảy · E/J: tương tác<br>Esc/P: tạm dừng · Enter: chọn · Mũi tên: di chuyển giữa các nút<br>' +
+          'Câu đố: phím 1, 2, 3 để chọn nhanh · Điện thoại: chạm nửa phải màn hình để nhảy</p></details>' +
+        (S.overlay ? '' :
+          '<div class="ui-setting ui-danger-row"><span class="ui-setting-label">🗑️ Dữ liệu</span>' +
+          '<button type="button" class="ui-danger' + (S.confirmReset ? ' is-confirm' : '') + '" data-act="reset" data-fk="reset" data-id="reset">' +
+          (S.confirmReset ? 'Chắc chắn? Bấm lần nữa' : 'Xoá toàn bộ tiến độ') + '</button></div>') +
+        '<div class="actions"><button type="button" data-act="back" data-id="settings_back" data-primary>✔ XONG</button></div>' +
+        UI.photoCreditsLink();
+      return html;
+    }
+
+    // Bảng data-act → hàm xử lý. Mỗi handler đổi setting rồi render lại, trả focus về đúng nút vừa bấm.
+    function settingsHandlers() {
+      return {
+        vol: function (arg) {
+          var parts = String(arg).split(':');
+          S.setVol(parts[0], S.vol(parts[0]) + 0.1 * (+parts[1] || 0));
+        },
+        slideStep: function (ch, d) { S.setVol(ch, S.vol(ch) + 0.1 * d); },
+        mute: function () {
+          if (OG.Audio && typeof OG.Audio.mute === 'function') U.call('Audio', 'mute', !S.muted());
+          else OG.Save.setSetting('muted', !S.muted());
+          S.render('[data-fk="mute"]');
+        },
+        touch: function (val) {
+          OG.Save.setSetting('touchControls', val);
+          S.render('[data-fk="touch-' + val + '"]');
+        },
+        tapjump: function (val) {
+          OG.Save.setSetting('tapJump', val);
+          S.render('[data-fk="tap-' + val + '"]');
+        },
+        diff: function (val) {
+          if (OG.Difficulty) OG.Difficulty.set(val);
+          UI.toast(val === 'kid' ? '🧸 Chế độ Bé chơi: dễ và vui!' : '🔥 Chế độ Thử thách: cố lên nhé!', 1.8);
+          S.render('[data-fk="diff-' + val + '"]');
+        },
+        reset: function () {
+          // Xoá tiến độ là không hoàn tác → bắt buộc bấm 2 lần (lần 1 chỉ đổi chữ nút thành "Chắc chắn?").
+          if (!S.confirmReset) { S.confirmReset = true; S.render('[data-fk="reset"]'); return; }
+          S.confirmReset = false;
+          OG.Save.reset();
+          U.call('Progress', 'init');
+          UI.toast('Đã xoá toàn bộ dữ liệu.');
+          S.render('[data-fk="reset"]');
+        },
+        back: function () { S.leave(); }
+      };
+    }
+
     var S = {
       back: 'menu', overlay: false, confirmReset: false, drawBelow: true,
 
@@ -695,6 +977,7 @@
         S.render();
       },
 
+      // Âm lượng 0..1 của kênh 'music' | 'sfx': hỏi OG.Audio trước, thiếu thì đọc thẳng từ save.
       vol: function (ch) {
         var v = U.call('Audio', 'getVolume', ch);
         if (typeof v !== 'number') {
@@ -704,6 +987,8 @@
         return U.clamp(+v || 0, 0, 1);
       },
       setVol: function (ch, v) {
+        // Làm tròn về bội số 0.05 (×20 rồi chia 20): kéo thanh trượt không ra số lẻ kiểu 0.4371,
+        // và cộng 0.1 nhiều lần không tích luỹ sai số dấu phẩy động.
         v = Math.round(U.clamp(v, 0, 1) * 20) / 20;
         if (OG.Audio && typeof OG.Audio.setVolume === 'function') U.call('Audio', 'setVolume', ch, v);
         else OG.Save.setSetting(ch === 'music' ? 'musicVolume' : 'sfxVolume', v);
@@ -715,6 +1000,9 @@
         return !!((UI.save() || {}).settings || {}).muted;
       },
 
+      // Thanh trượt tự làm (không dùng <input type=range> vì khó tạo kiểu to, dễ chạm cho trẻ em).
+      // 💡 Khái niệm: ARIA — phần tử tự chế phải tự khai báo cho trình đọc màn hình: role="slider",
+      //   aria-valuemin/max/now, aria-label; tabindex="0" để Tab tới được. Kèm nút −/+ để không cần kéo.
       sliderHtml: function (ch, label) {
         var v = S.vol(ch);
         return '<div class="ui-setting"><span class="ui-setting-label">' + label + '</span>' +
@@ -726,6 +1014,7 @@
           '<em data-vol-label="' + ch + '">' + Math.round(v * 100) + '%</em></div></div>';
       },
 
+      // Cập nhật thanh trượt TẠI CHỖ (không render lại cả panel) — đang kéo mà dựng lại DOM sẽ mất pointer capture.
       updateSlider: function (ch) {
         if (!UI.panel) return;
         var v = S.vol(ch);
@@ -736,100 +1025,26 @@
       },
 
       render: function (focusSel) {
-        var st = (UI.save() || {}).settings || {};
-        var touch = st.touchControls || 'auto';
-        var seg = function (val, label) {
-          return '<button type="button" class="' + (touch === val ? 'is-on' : 'secondary') + '" data-act="touch" data-arg="' + val +
-            '" data-fk="touch-' + val + '" data-id="touch_' + val + '">' + label + '</button>';
-        };
-        // v2: chế độ chơi (OG.Difficulty) và "chạm nửa phải màn hình để nhảy" (settings.tapJump, đọc ở OG.Input).
-        var tap = st.tapJump || 'auto';
-        var tapSeg = function (val, label) {
-          return '<button type="button" class="' + (tap === val ? 'is-on' : 'secondary') + '" data-act="tapjump" data-arg="' + val +
-            '" data-fk="tap-' + val + '" data-id="tap_' + val + '">' + label + '</button>';
-        };
-        var diffRow = function () {
-          var D = OG.Difficulty;
-          if (!D) return '';
-          var m = D.mode();
-          return '<div class="ui-setting"><span class="ui-setting-label">🎮 Chế độ chơi</span><div class="ui-seg">' +
-            D.list().map(function (k) {
-              return '<button type="button" class="' + (k === m ? 'is-on' : 'secondary') + '" data-act="diff" data-arg="' + UI.esc(k) +
-                '" data-fk="diff-' + UI.esc(k) + '" data-id="diff_' + UI.esc(k) + '">' + UI.esc(D.label(k)) + '</button>';
-            }).join('') + '</div></div>';
-        };
-        var muted = S.muted();
-        var html =
-          S.sliderHtml('music', '🎵 Nhạc nền') +
-          S.sliderHtml('sfx', '🔊 Hiệu ứng') +
-          '<div class="ui-setting"><span class="ui-setting-label">🔇 Tắt tiếng</span>' +
-            '<button type="button" class="' + (muted ? '' : 'secondary') + ' ui-toggle" data-act="mute" data-fk="mute" data-id="mute">' +
-            (muted ? 'Đang tắt' : 'Đang bật') + '</button></div>' +
-          diffRow() +
-          '<div class="ui-setting"><span class="ui-setting-label">📱 Nút cảm ứng</span>' +
-            '<div class="ui-seg">' + seg('auto', 'Tự động') + seg('on', 'Luôn hiện') + seg('off', 'Ẩn') + '</div></div>' +
-          '<div class="ui-setting"><span class="ui-setting-label" title="Chạm nửa phải màn hình để nhảy">👆 Chạm để nhảy</span>' +
-            '<div class="ui-seg">' + tapSeg('auto', 'Tự động') + tapSeg('on', 'Bật') + tapSeg('off', 'Tắt') + '</div></div>' +
-          '<details class="ui-help"><summary>🎮 Cách điều khiển</summary>' +
-            '<p>←/→ hoặc A/D: di chuyển · Space/W/↑: nhảy · E/J: tương tác<br>Esc/P: tạm dừng · Enter: chọn · Mũi tên: di chuyển giữa các nút<br>' +
-            'Câu đố: phím 1, 2, 3 để chọn nhanh · Điện thoại: chạm nửa phải màn hình để nhảy</p></details>' +
-          (S.overlay ? '' :
-            '<div class="ui-setting ui-danger-row"><span class="ui-setting-label">🗑️ Dữ liệu</span>' +
-            '<button type="button" class="ui-danger' + (S.confirmReset ? ' is-confirm' : '') + '" data-act="reset" data-fk="reset" data-id="reset">' +
-            (S.confirmReset ? 'Chắc chắn? Bấm lần nữa' : 'Xoá toàn bộ tiến độ') + '</button></div>') +
-          '<div class="actions"><button type="button" data-act="back" data-id="settings_back" data-primary>✔ XONG</button></div>' +
-          UI.photoCreditsLink();
-
+        var html = buildSettingsHtml();
         UI.open({
           title: 'CÀI ĐẶT',
           className: 'ui-settings',
           html: html,
           focus: focusSel,
-          handlers: {
-            vol: function (arg) {
-              var parts = String(arg).split(':');
-              S.setVol(parts[0], S.vol(parts[0]) + 0.1 * (+parts[1] || 0));
-            },
-            slideStep: function (ch, d) { S.setVol(ch, S.vol(ch) + 0.1 * d); },
-            mute: function () {
-              if (OG.Audio && typeof OG.Audio.mute === 'function') U.call('Audio', 'mute', !S.muted());
-              else OG.Save.setSetting('muted', !S.muted());
-              S.render('[data-fk="mute"]');
-            },
-            touch: function (val) {
-              OG.Save.setSetting('touchControls', val);
-              S.render('[data-fk="touch-' + val + '"]');
-            },
-            tapjump: function (val) {
-              OG.Save.setSetting('tapJump', val);
-              S.render('[data-fk="tap-' + val + '"]');
-            },
-            diff: function (val) {
-              if (OG.Difficulty) OG.Difficulty.set(val);
-              UI.toast(val === 'kid' ? '🧸 Chế độ Bé chơi: dễ và vui!' : '🔥 Chế độ Thử thách: cố lên nhé!', 1.8);
-              S.render('[data-fk="diff-' + val + '"]');
-            },
-            reset: function () {
-              if (!S.confirmReset) { S.confirmReset = true; S.render('[data-fk="reset"]'); return; }
-              S.confirmReset = false;
-              OG.Save.reset();
-              U.call('Progress', 'init');
-              UI.toast('Đã xoá toàn bộ dữ liệu.');
-              S.render('[data-fk="reset"]');
-            },
-            back: function () { S.leave(); }
-          }
+          handlers: settingsHandlers()
         });
-        S.bindSliders();
+        S.bindSliders(); // gắn lại: UI.open vừa tạo phần tử thanh trượt MỚI
       },
 
-      // Kéo/chạm trên thanh trượt.
+      // Kéo/chạm trên thanh trượt: Pointer Events gộp chuột + cảm ứng + bút vào một API.
+      // setPointerCapture: kéo ngón tay ra ngoài thanh vẫn tiếp tục nhận pointermove cho tới khi nhấc lên.
       bindSliders: function () {
         if (!UI.panel) return;
         var list = UI.panel.querySelectorAll('[data-slider]');
         Array.prototype.forEach.call(list, function (sl) {
           var ch = sl.getAttribute('data-slider');
           var dragging = false;
+          // Vị trí ngón tay theo chiều ngang trong thanh (px CSS) → tỉ lệ 0..1.
           var apply = function (e) {
             var r = sl.getBoundingClientRect();
             if (r.width > 0) S.setVol(ch, (e.clientX - r.left) / r.width);
@@ -865,6 +1080,8 @@
   // ======================================================================
   // Scene: tạm dừng (push trên level/boss)
   // ======================================================================
+  // Pause được PUSH lên trên màn chơi: scene bên dưới không bị exit() nên giữ nguyên mọi trạng thái, chỉ ngừng
+  // update. drawBelow:true → màn chơi vẫn được vẽ (đứng yên) dưới lớp phủ mờ của pause.
   function pauseScene() {
     var S = {
       drawBelow: true, from: 'level',
@@ -937,6 +1154,8 @@
   // ======================================================================
   // Scene: kết quả (gameover / victory)
   // ======================================================================
+  // Pháo giấy: mỗi mảnh là một particle {x, y, vx, vy (px/giây), r góc xoay (radian), vr (radian/giây),
+  // w, h (px), c màu}. Sinh phía TRÊN màn hình (y âm) để rơi dần vào khung hình.
   function confettiBurst(list, n) {
     var colors = ['#ffc94a', '#f27a43', '#52c5ee', '#3fbf6f', '#f29bb8', '#ffffff'];
     for (var i = 0; i < n; i++) {
@@ -947,6 +1166,7 @@
     }
   }
 
+  // Một factory cho hai scene 'gameover' và 'victory' — chỉ khác chữ, màu và cách pháo giấy rơi.
   function resultScene(type) {
     var win = type === 'victory';
     var S = {
@@ -1003,8 +1223,11 @@
       update: function (dt) {
         for (var i = 0; i < S.confetti.length; i++) {
           var c = S.confetti[i];
+          // Tích phân Euler: vị trí += vận tốc × dt; vx dao động theo sin → giấy "đung đưa" như bị gió thổi.
           c.x += c.vx * dt; c.y += c.vy * dt; c.r += c.vr * dt;
           c.vx += Math.sin(OG.time * 2 + i) * 8 * dt;
+          // Rơi khỏi đáy: thắng thì tái dùng mảnh (rơi mãi), thua thì xoá (rơi một đợt rồi thôi).
+          // ⚠️ Bẫy: splice trong lúc duyệt xuôi phải i-- , nếu không phần tử kế tiếp dồn lên bị bỏ qua.
           if (c.y > OG.H + 20) { if (win) { c.y = -10; c.x = U.rand(0, OG.W); } else { S.confetti.splice(i, 1); i--; } }
         }
       },
@@ -1029,12 +1252,17 @@
   // init
   // ======================================================================
   var inited = false;
+  /**
+   * Gắn listener toàn cục (một lần) và đăng ký các scene giao diện. Gọi từ src/core/main.js.
+   * Gọi lại thì chỉ đăng ký lại scene (ghi đè), không gắn listener trùng.
+   */
   Menus.init = function () {
     if (!inited) {
       inited = true;
-      window.addEventListener('keydown', onKeyDown, true);
+      window.addEventListener('keydown', onKeyDown, true); // true = pha capture (xem onKeyDown)
 
-      // Cập nhật số xu trên panel đang mở.
+      // Cập nhật số xu trên panel đang mở. Mọi chỗ hiện xu đều có class .ui-coin-val nên một listener
+      // cập nhật được hết, panel nào cũng đúng mà không cần render lại.
       OG.Events.on('coins:change', function (e) {
         if (!UI.panel) return;
         var els = UI.panel.querySelectorAll('.ui-coin-val');

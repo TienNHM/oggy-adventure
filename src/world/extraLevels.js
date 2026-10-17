@@ -1,20 +1,39 @@
-/* Màn chơi bổ sung của bản đồ thế giới (Tầng hầm, Phòng tắm, Gác mái).
- * Chủ sở hữu: agent World & Quests (src/world/).
+// @ts-check
+/* ============================================================================
+ * OG.World.extraLevels — 3 MÀN PHỤ CỦA BẢN ĐỒ CỔ ĐIỂN (dữ liệu thuần)
+ * ----------------------------------------------------------------------------
+ * Vai trò:      Khai báo Tầng hầm, Phòng tắm, Gác mái rồi đăng ký vào OG.Data ngay lúc LOAD file.
+ *               Bản đồ 'worldmap' (world.js) tự vẽ thêm 3 nút này, nối vào màn chính theo `requires`.
+ * Khái niệm:    data-driven design (thêm màn = thêm dữ liệu, không sửa code engine) ·
+ *               registry (sổ đăng ký) idempotent theo id · nhánh rẽ trong đồ thị màn (graph)
+ * Bài học:      docs/learn/12-data-driven-man-cau-do-hanh-trinh.md
+ * Phụ thuộc:    OG.Data.registerLevel (đọc lúc LOAD → file phải nằm sau src/data/levels.js
+ *               và TRƯỚC src/core/main.js, để OG.Progress.init() thấy các màn mới)
+ * Event:        (không)
+ * API công khai: OG.World.extraLevels (mảng LevelDef), OG.World.registerExtraLevels()
+ * Đọc tiếp:     src/world/world.js (cách bản đồ biến `requires` thành cạnh của đồ thị)
+ * Định dạng:    LevelDef (src/types.d.ts, docs/ARCHITECTURE.md mục 7) + field mở rộng CHỈ World đọc:
+ *               zone = tên khu trong nhà · mapStyle = kiểu vẽ ô trên bản đồ · bonus: true = màn phụ.
  *
- * Định dạng: LevelDef chuẩn (docs/ARCHITECTURE.md mục 7) + vài field mở rộng chỉ World đọc:
- *   zone: tên khu vực trong nhà, mapStyle: kiểu vẽ ô trên bản đồ, bonus: true (màn phụ, không bắt buộc để thắng).
- * Mỗi màn có `requires` tường minh (rẽ nhánh từ màn chính) và `final: false` tường minh —
- * vì các màn này được thêm vào CUỐI OG.Data.levels, nếu không ghi final:false thì
- * OG.Progress.isFinal() sẽ coi màn cuối danh sách là màn chiến thắng.
- *
- * File này chỉ khai báo dữ liệu + gọi OG.Data.registerLevel lúc load (được phép theo hợp đồng),
- * KHÔNG đụng OG.Save. Phải load TRƯỚC src/core/main.js (để Progress.init thấy các màn này).
- * Vật lý tham chiếu: nhảy cao ~116px, bay ngang ~200px → bục cách nhau ≤ 70px theo chiều cao. */
+ * Hợp đồng:
+ *   - File KHÔNG đụng OG.Save; chỉ khai báo dữ liệu + gọi registerLevel (được phép lúc load).
+ *   - Mỗi màn ghi `requires` tường minh (rẽ nhánh từ màn chính) và `final: false` tường minh.
+ *     ⚠️ Bẫy: các màn này được nối vào CUỐI OG.Data.levels. Thiếu final:false thì OG.Progress.isFinal()
+ *     coi màn cuối danh sách là màn chiến thắng → thắng Gác mái là "phá đảo" thay vì thắng Hang ổ.
+ *   - Vật lý tham chiếu khi thiết kế bục: nhảy cao ~116 px, bay ngang ~200 px
+ *     → hai bục liên tiếp chênh nhau ≤ 70 px theo chiều cao để trẻ em nhảy tới dễ dàng.
+ * ========================================================================== */
 (function () {
   'use strict';
   var OG = window.OG;
-  var World = (OG.World = OG.World || {});
+  // Ép kiểu any: object namespace được các file khác gắn thêm field lúc chạy (world.js, journey-map.js).
+  var World = /** @type {any} */ (OG.World = OG.World || {});
 
+  // Toạ độ trong dữ liệu là toạ độ THẾ GIỚI (px), gốc góc trên-trái màn: platforms [x, y, w, h],
+  // pizzas/coins [x, y]. `map` là vị trí nút trên bản đồ (toạ độ màn hình 960×540).
+  // 🧪 Thử: đổi `requires: ['kitchen']` của basement thành ['garden'] → trên bản đồ, đường tới Tầng hầm
+  //   chuyển sang mọc từ Khu vườn và (với save mới) Tầng hầm chỉ mở sau khi qua Khu vườn.
+  /** @type {LevelDef[]} */
   var EXTRA_LEVELS = [
     {
       id: 'basement', name: 'Tầng hầm tối om', icon: '🕯️', theme: 'lair', music: 'lair',
@@ -108,7 +127,12 @@
 
   World.extraLevels = EXTRA_LEVELS;
 
-  // Đăng ký vào dữ liệu chung (idempotent: registerLevel ghi đè theo id).
+  /**
+   * Đăng ký 3 màn phụ vào OG.Data. Gọi lại nhiều lần vẫn an toàn.
+   * 💡 Khái niệm: idempotent (gọi 1 lần hay N lần cho cùng kết quả) — registerLevel GHI ĐÈ theo id,
+   *   nên không bao giờ sinh màn trùng dù file được nạp lại (vd khi test).
+   * @returns {boolean} false nếu OG.Data chưa sẵn sàng (sai thứ tự <script>)
+   */
   World.registerExtraLevels = function () {
     if (!OG.Data || typeof OG.Data.registerLevel !== 'function') return false;
     EXTRA_LEVELS.forEach(function (l) { OG.Data.registerLevel(l); });

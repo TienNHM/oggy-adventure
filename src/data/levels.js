@@ -1,4 +1,18 @@
-/* OG.Data.levels — dữ liệu màn chơi. Chủ sở hữu: agent Tích hợp.
+// @ts-check
+/* ============================================================================
+ * OG.Data.levels — DỮ LIỆU MÀN CHƠI CỔ ĐIỂN (v1) + TRA CỨU MÀN
+ * ----------------------------------------------------------------------------
+ * Vai trò:      Bảng LevelDef của chiến dịch cổ điển (kitchen → garden → roof → lair). Scene 'level' đọc
+ *               qua OG.Data.getLevel(id) — hàm này cũng tự tìm sang màn hành trình v2 (OG.Journeys).
+ * Khái niệm:    data-driven design (màn chơi là DỮ LIỆU: thêm màn không sửa engine) · level design bằng toạ độ ·
+ *               registry có ghi đè theo id · tra cứu "rơi" sang nguồn thứ hai (fallback lookup)
+ * Bài học:      docs/learn/12-data-driven-man-cau-do-hanh-trinh.md, docs/learn/04-vat-ly-va-cham-aabb.md (platforms)
+ * Phụ thuộc:    OG.Journeys.getLevel (đọc LÚC CHẠY, trong getLevel)
+ * Event:        phát: (không) · nghe: (không)
+ * API công khai: OG.Data.levels, getLevel(idOrIndex), levelIndex(id), registerLevel(level)
+ * Đọc tiếp:     src/game/level.js (biến LevelDef thành trạng thái màn) → src/core/journeys.js (màn hành trình)
+ *               → src/world/extraLevels.js (ví dụ module khác dùng registerLevel)
+ * Định dạng:    LevelDef (src/types.d.ts, docs/ARCHITECTURE.md mục 7). Toạ độ px thế giới, y hướng xuống, sàn y=480.
  *
  * Định dạng một màn (LevelDef):
  * {
@@ -25,12 +39,19 @@
  * guideSpots, checkpoints, comicTriggers...) — xem docs/STORY.md. Chúng do OG.Journeys biên dịch,
  * KHÔNG nằm trong Data.levels (Data.levelIndex trả -1).
  * Loại quest chuẩn: collect_all | no_damage | stomp_n | time_under | coins_n | boss_no_damage | complete
- */
+ *
+ * 💡 Khái niệm: level design bằng dữ liệu — bục cách nhau theo chiều cao ~60–90 px vì đỉnh nhảy ≈116 px
+ *   (JUMP_VELOCITY 590, GRAVITY 1500): đủ với tới, nhưng phải canh. Màn sau tốc độ gián tăng dần (75 → 111 px/giây)
+ *   tạo đường cong độ khó.
+ * 🧪 Thử: đổi goal của 'kitchen' từ 5 thành 1 — chỉ cần ăn 1 miếng pizza là cửa ra đã mở.
+ * ========================================================================== */
 (function () {
   'use strict';
   var OG = window.OG;
+  /** @type {any} namespace dựng dần từ nhiều file (characters.js, levels.js) */
   var Data = (OG.Data = OG.Data || {});
 
+  /** @type {LevelDef[]} thứ tự mảng = thứ tự chiến dịch (màn sau mở khi màn trước xong) */
   Data.levels = [
     {
       id: 'kitchen', name: 'Nhà bếp náo loạn', icon: '🍳', theme: 'kitchen', music: 'kitchen',
@@ -95,19 +116,36 @@
     }
   ];
 
-  // Tra cứu theo id hoặc chỉ số.
-  // Màn của hành trình v2 (OG.Journeys) không nằm trong Data.levels nhưng vẫn tra được theo id.
+  /**
+   * Tra cứu màn theo id hoặc chỉ số trong Data.levels.
+   * Màn của hành trình v2 (OG.Journeys) không nằm trong Data.levels nhưng vẫn tra được theo id.
+   * @param {string | number} idOrIndex
+   * @returns {LevelDef | null}
+   * @example
+   *   OG.Data.getLevel('kitchen').goal;   // 5
+   *   OG.Data.getLevel(0).id;             // 'kitchen'
+   */
   Data.getLevel = function (idOrIndex) {
     if (typeof idOrIndex === 'number') return Data.levels[idOrIndex] || null;
     for (var i = 0; i < Data.levels.length; i++) if (Data.levels[i].id === idOrIndex) return Data.levels[i];
     if (OG.Journeys && OG.Journeys.getLevel) return OG.Journeys.getLevel(idOrIndex);
     return null;
   };
+  /**
+   * Tìm chỉ số của màn cổ điển.
+   * @param {string} id
+   * @returns {number} -1 nếu không có (kể cả màn hành trình)
+   */
   Data.levelIndex = function (id) {
     for (var i = 0; i < Data.levels.length; i++) if (Data.levels[i].id === id) return i;
     return -1;
   };
-  // Thêm màn mới (vd: màn thưởng do module khác định nghĩa). Trả về level.
+  /**
+   * Thêm màn mới vào cuối chiến dịch, hoặc ghi đè màn cùng id (giữ nguyên vị trí).
+   * Dùng cho màn thưởng do module khác định nghĩa (vd src/world/extraLevels.js).
+   * @param {LevelDef} level
+   * @returns {LevelDef}
+   */
   Data.registerLevel = function (level) {
     var i = Data.levelIndex(level.id);
     if (i >= 0) Data.levels[i] = level; else Data.levels.push(level);
