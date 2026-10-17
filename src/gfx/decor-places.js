@@ -1,6 +1,22 @@
-/* OG.Decor — NHÀ CỬA & DANH THẮNG (decor dùng chung, không tiền tố).
- * Chủ sở hữu v2: agent cảnh nền. Load SAU src/gfx/decor.js (cần OG.Decor). Hợp đồng: docs/STORY.md mục 4.
- * Mọi decor: fn(ctx, x, y, scale, t, opts), x = tâm, y = mặt đất (chân). opts.flip lật ngang, opts.mood đổi nét mặt.
+// @ts-check
+/* ============================================================================
+ * OG.Decor (phần mở rộng) — DECOR NHÀ CỬA & DANH THẮNG
+ * ----------------------------------------------------------------------------
+ * Vai trò:      Lúc load, đăng ký thêm ~20 kind decor dùng chung (không tiền tố) vào OG.Scenery qua OG.Decor.define:
+ *               nhà, ống khói, đèn, thuyền, chùa, tháp, kim tự tháp... Hành trình (world, vietnam) và chủ đề gốc 'roof'
+ *               chỉ tham chiếu theo tên trong ThemeDef.decor.
+ * Khái niệm:    hàm vẽ có tham số tái sử dụng (một kind nhiều kiểu qua opts.style / opts.sail / opts.tiers) · registry ·
+ *               vẽ procedural · clip để tô hoa văn trong hình · vẽ 2 lần (clip rồi viền) · hoạt ảnh theo chu kỳ (wrap)
+ * Bài học:      docs/learn/07-ve-canvas-procedural-cache.md (chính) · docs/learn/12-data-driven-man-cau-do-hanh-trinh.md
+ * Phụ thuộc:    LÚC LOAD: OG.Decor (define, face, inkFill, outline, shade, rr, hash, wrap, heart, star, shadow, alpha, INK)
+ *               — load SAU src/gfx/decor.js.
+ * Event:        phát: (không) · nghe: (không)
+ * API công khai: các kind decor dưới đây (vẽ bằng OG.Scenery.drawDecor(ctx, kind, x, y, scale, t, opts));
+ *               tiện ích OG.Decor.heartSmoke(ctx, t, seed, color)
+ * Đọc tiếp:     src/gfx/decor-home.js (đồ vật trong nhà, gag) → src/journeys/world/theme.js (ThemeDef dùng nhiều danh thắng)
+ * ========================================================================== */
+/* Mọi decor: fn(ctx, x, y, scale, t, opts), x = tâm, y = mặt đất (chân). opts.flip lật ngang, opts.mood đổi nét mặt.
+ * Trong hàm define: o = opts, wx/wy = toạ độ thế giới của chân (hash(wx) cho biến thể riêng từng cái).
  * Danh sách: house, chimney, antenna, lamp, fence, bench, boat, lantern, pagoda, temple, tower, pyramid, sphinx,
  *            eiffel, torii, crate, bin, flag, stall, windmill. */
 (function () {
@@ -11,10 +27,19 @@
   var TAU = Math.PI * 2, INK = D.INK;
   var def = D.define, face = D.face, inkFill = D.inkFill, outline = D.outline, shade = D.shade, rr = D.rr, hash = D.hash, wrap = D.wrap;
 
-  // Khói hình trái tim bay lên từ (0,0) (dùng cho ống khói).
+  /**
+   * Vẽ 3 cụm khói hình trái tim bay lên từ gốc (0, 0) hiện tại (dùng cho ống khói).
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {number} t      giây
+   * @param {number} seed   0..1, lệch pha giữa các ống khói (thường là hash(wx))
+   * @param {string} [color='#ffd0dc']
+   */
   function heartSmoke(ctx, t, seed, color) {
     for (var i = 0; i < 3; i++) {
+      // k = tuổi cụm khói 0..1; i/3 rải đều 3 cụm trong chu kỳ để lúc nào cũng có khói đang bay
       var k = wrap(t * 0.32 + i / 3 + seed, 1);
+      // 💡 Khái niệm: đường cong độ mờ (alpha envelope) — hiện nhanh trong 15% đầu đời, rồi mờ dần đều tới lúc biến mất.
+      // Nếu alpha nhảy thẳng 0 → 1 thì khói "bật" ra ở miệng ống rất giả.
       var a = k < 0.15 ? k / 0.15 : 1 - (k - 0.15) / 0.85;
       ctx.save();
       ctx.globalAlpha *= Math.max(0, a) * 0.9;
@@ -31,7 +56,8 @@
   // Ngôi nhà nhỏ: cửa sổ là mắt, cửa ra vào là miệng. opts: color, roof, chimney(bool), w.
   def('house', function (ctx, t, o, wx) {
     var c = o.color || ['#ffd98a', '#9fd8ff', '#ffb3c7', '#b8e6a0'][Math.floor(hash(wx) * 4)], rf = o.roof || '#e5674b', w = o.w || 110;
-    var hw = w / 2, hh = 80;
+    var hw = w / 2, hh = 80; // hw = nửa bề ngang, hh = chiều cao thân nhà (px ở scale 1)
+    // thứ tự: bóng → khói + ống khói (sau mái) → thân → mái → cửa sổ "mắt" → cửa "miệng" → má hồng
     D.shadow(ctx, hw + 10);
     if (o.chimney !== false) {
       ctx.save(); ctx.translate(hw * 0.5, -hh - 52); heartSmoke(ctx, t, hash(wx)); ctx.restore();
@@ -95,13 +121,15 @@
   // Hàng rào gỗ (rộng 120). opts.color, opts.flowers.
   def('fence', function (ctx, t, o, wx) {
     var c = o.color || '#fff6df';
+    /** @type {Array<[number, string]>} [x px, màu hoa] */
+    var flowerSpots = [[-40, '#ff8fb1'], [14, '#ffd23f'], [44, '#b58cff']];
     rr(ctx, -62, -36, 124, 8, 3); inkFill(ctx, c, 2); rr(ctx, -62, -18, 124, 8, 3); inkFill(ctx, c, 2);
     for (var i = 0; i < 5; i++) {
       var px = -54 + i * 27;
       ctx.beginPath(); ctx.moveTo(px - 8, 0); ctx.lineTo(px - 8, -42); ctx.lineTo(px, -52); ctx.lineTo(px + 8, -42); ctx.lineTo(px + 8, 0); ctx.closePath(); inkFill(ctx, c, 2);
     }
     if (o.flowers !== false) {
-      [[-40, '#ff8fb1'], [14, '#ffd23f'], [44, '#b58cff']].forEach(function (f, i) {
+      flowerSpots.forEach(function (f, i) {
         var sw = Math.sin(t * 2.5 + i + wx * 0.01) * 2;
         ctx.strokeStyle = '#3f9a45'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(f[0], 0); ctx.lineTo(f[0] + sw, -24); ctx.stroke();
         ctx.beginPath(); ctx.arc(f[0] + sw, -27, 5, 0, TAU); inkFill(ctx, f[1], 1.4);
@@ -157,6 +185,9 @@
   // Đèn lồng (Hội An / Trung thu). y = mặt đất -> đứng trên cột; y < 440 -> treo dây lên trên. opts.color, opts.pole.
   def('lantern', function (ctx, t, o, wx, wy) {
     var c = o.color || ['#ff5a5a', '#ffb347', '#ffd23f', '#ff7eb6', '#7fd08a'][Math.floor(hash(wx) * 5)];
+    // Tự chọn kiểu theo vị trí đặt: y < 440 (lơ lửng giữa không trung) thì treo dây; trên mặt đất thì cắm cột.
+    // ⚠️ Bẫy: wy là y THẾ GIỚI truyền vào drawDecor; vẽ đèn trong ô biểu tượng/thẻ (toạ độ nhỏ, vd y = 60) sẽ tự thành
+    // kiểu treo — muốn có cột thì truyền opts.pole: true.
     var hang = o.pole === false || o.hang || (o.pole !== true && wy < 440);
     if (!hang) { rr(ctx, -3, -84, 6, 84, 3); inkFill(ctx, '#8a5a3a', 1.6); ctx.translate(0, -84); }
     else { ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -60); ctx.stroke(); }
@@ -173,10 +204,12 @@
   });
 
   // Chùa nhiều tầng mái cong. opts.tiers (2..5), opts.color tường, opts.roof.
+  // 🧪 Thử: trong ThemeDef đặt { kind: 'pagoda', opts: { tiers: 5 } } — cùng một hàm vẽ ra chùa 5 tầng, không cần code mới.
   def('pagoda', function (ctx, t, o) {
     var tiers = o.tiers || 3, wall = o.color || '#ffe6b3', roof = o.roof || '#d9473b';
     D.shadow(ctx, 70);
     rr(ctx, -64, -14, 128, 14, 4); inkFill(ctx, '#c8b49a', 2.5);
+    // y = "con trỏ" độ cao: mỗi tầng vẽ thân + mái rồi dời y lên trên; tầng sau hẹp hơn 18 px → dáng tháp thuôn.
     var y = -14;
     for (var i = 0; i < tiers; i++) {
       var w = 96 - i * 18, h = 36 - i * 3;
@@ -214,6 +247,7 @@
     rr(ctx, -78, -84, 156, 70, 4); inkFill(ctx, '#ffe6b3', 2.5);
     for (var c2 = 0; c2 < 4; c2++) { rr(ctx, -72 + c2 * 44, -84, 12, 70, 3); inkFill(ctx, red, 2); }
     ctx.beginPath(); ctx.moveTo(-14, -14); ctx.lineTo(-14, -48); ctx.quadraticCurveTo(0, -58, 14, -48); ctx.lineTo(14, -14); ctx.closePath(); inkFill(ctx, '#8a3a2a', 2);
+    // Hàm con vẽ một tầng mái cong theo (độ cao y, nửa bề ngang hw) — gọi 2 lần với kích thước khác nhau.
     function roofTier(y, hw) {
       ctx.beginPath(); ctx.moveTo(-hw - 14, y - 16); ctx.quadraticCurveTo(-hw, y + 2, -hw + 14, y); ctx.lineTo(hw - 14, y); ctx.quadraticCurveTo(hw, y + 2, hw + 14, y - 16);
       ctx.quadraticCurveTo(hw - 14, y - 12, hw - 26, y - 26); ctx.lineTo(-hw + 26, y - 26); ctx.quadraticCurveTo(-hw + 14, y - 12, -hw - 14, y - 16); ctx.closePath();
@@ -243,6 +277,7 @@
       ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(beam) * 160, Math.sin(beam) * 30 - 18); ctx.lineTo(Math.cos(beam) * 160, Math.sin(beam) * 30 + 18); ctx.closePath(); ctx.fill();
       ctx.restore();
       ctx.beginPath(); ctx.moveTo(-30, 0); ctx.lineTo(-20, -150); ctx.lineTo(20, -150); ctx.lineTo(30, 0); ctx.closePath(); inkFill(ctx, c, 2.5);
+      // sọc đỏ: clip theo thân tháp (path vừa vẽ) để sọc chữ nhật tự cắt vừa hình thang, rồi vẽ lại viền đè lên
       ctx.save(); ctx.clip(); ctx.fillStyle = '#e5484d'; ctx.fillRect(-40, -50, 80, 24); ctx.fillRect(-40, -110, 80, 24); ctx.restore();
       ctx.beginPath(); ctx.moveTo(-30, 0); ctx.lineTo(-20, -150); ctx.lineTo(20, -150); ctx.lineTo(30, 0); ctx.closePath(); outline(ctx, 2.5);
       rr(ctx, -16, -182, 32, 32, 4); inkFill(ctx, '#fff1a8', 2.5);
@@ -274,7 +309,7 @@
 
   // Kim tự tháp (mặt cười tươi, đá xếp lớp). opts.color.
   def('pyramid', function (ctx, t, o) {
-    var c = o.color || '#f0c46a', s2 = 120;
+    var c = o.color || '#f0c46a', s2 = 120; // s2 = nửa bề ngang đáy = chiều cao, px
     D.shadow(ctx, s2 + 10);
     ctx.beginPath(); ctx.moveTo(-s2, 0); ctx.lineTo(-6, -s2 + 4); ctx.quadraticCurveTo(0, -s2 - 4, 6, -s2 + 4); ctx.lineTo(s2, 0); ctx.closePath(); inkFill(ctx, c, 3);
     ctx.fillStyle = shade(c, -0.15); ctx.beginPath(); ctx.moveTo(4, -s2 + 6); ctx.lineTo(s2 - 2, -1); ctx.lineTo(30, -1); ctx.closePath(); ctx.fill();
@@ -354,6 +389,7 @@
   // Thùng rác có mặt — nắp thỉnh thoảng hé, gián con thò mắt nhìn trộm.
   def('bin', function (ctx, t, o, wx) {
     var c = o.color || '#7fb8a8', ph = hash(wx) * 9;
+    // chu kỳ 6 s: trong 4..5.4 s nắp hé lên tối đa 12 px (cung sin) và gián con thò mắt ra
     var k = wrap(t + ph, 6), lift = k > 4 && k < 5.4 ? Math.sin((k - 4) / 1.4 * Math.PI) * 12 : 0;
     ctx.beginPath(); ctx.moveTo(-22, -52); ctx.lineTo(-18, 0); ctx.lineTo(18, 0); ctx.lineTo(22, -52); ctx.closePath(); inkFill(ctx, c, 2.5);
     ctx.strokeStyle = shade(c, -0.25); ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-8, -46); ctx.lineTo(-7, -6); ctx.moveTo(8, -46); ctx.lineTo(7, -6); ctx.stroke();
@@ -374,7 +410,9 @@
     rr(ctx, -3, -110, 6, 110, 3); inkFill(ctx, '#c8d4e2', 1.6);
     ctx.beginPath(); ctx.arc(0, -112, 5, 0, TAU); inkFill(ctx, '#ffd23f', 1.5);
     var cols = o.colors || [o.color || '#e5484d'];
-    var fw = 60, fh = 40;
+    var fw = 60, fh = 40; // kích thước lá cờ, px
+    // Path lá cờ gợn sóng: biên độ sin nhân (x / fw) → sát cán đứng yên, càng ra đuôi càng bay mạnh.
+    // Gọi 2 lần: lần 1 làm vùng clip cho các sọc màu, lần 2 để viền.
     function pathFlag() {
       ctx.beginPath(); ctx.moveTo(3, -106);
       for (var x = 0; x <= fw; x += 6) ctx.lineTo(3 + x, -106 + Math.sin(x / 12 - t * 6) * 3 * (x / fw));
@@ -400,6 +438,7 @@
     ctx.beginPath(); ctx.moveTo(-66, -110); ctx.lineTo(66, -110); ctx.lineTo(60, -136); ctx.lineTo(-60, -136); ctx.closePath(); outline(ctx, 2.5);
     ctx.beginPath(); for (var j = 0; j < 8; j++) { ctx.moveTo(-66 + j * 16.5 + 16.5, -110); ctx.arc(-66 + j * 16.5 + 8.25, -110, 8.25, 0, Math.PI); }
     inkFill(ctx, c, 2);
+    /** @type {Array<[string, number]>} [màu, x px] */
     var fruits = [['#ff5a5a', -36], ['#ffd23f', -12], ['#7fd08a', 12], ['#ff9a3c', 36]];
     fruits.forEach(function (f, k) { ctx.beginPath(); ctx.arc(f[1], -58, 9, 0, TAU); inkFill(ctx, f[0], 1.6); if (k === 1) face(ctx, f[1], -59, 0.4, 'happy'); });
     face(ctx, 0, -24, 0.9, o.mood || 'smile', t);
@@ -413,6 +452,8 @@
     ctx.beginPath(); ctx.moveTo(-28, -118); ctx.quadraticCurveTo(0, -156, 28, -118); ctx.closePath(); inkFill(ctx, o.roof || '#d9663b', 2.5);
     ctx.beginPath(); ctx.moveTo(-10, 0); ctx.lineTo(-10, -24); ctx.arc(0, -24, 10, Math.PI, 0); ctx.lineTo(10, 0); ctx.closePath(); inkFill(ctx, '#8a5a3a', 2);
     face(ctx, 0, -66, 0.9, o.mood || 'happy', t);
+    // cánh quạt: dời gốc về trục, xoay theo t; trong vòng lặp mỗi cánh xoay thêm 90° (phép xoay cộng dồn)
+    // nên cả 4 cánh dùng chung đúng một đoạn lệnh vẽ.
     ctx.save(); ctx.translate(0, -112); ctx.rotate(t * 0.8);
     for (var i = 0; i < 4; i++) { ctx.rotate(TAU / 4); rr(ctx, -6, -84, 20, 74, 3); inkFill(ctx, '#ffffff', 2); ctx.strokeStyle = '#c8b49a'; ctx.lineWidth = 1.5; ctx.beginPath(); for (var y = -78; y < -14; y += 12) { ctx.moveTo(-6, y); ctx.lineTo(14, y); } ctx.stroke(); }
     ctx.beginPath(); ctx.arc(0, 0, 7, 0, TAU); inkFill(ctx, '#8a5a3a', 2);

@@ -1,6 +1,21 @@
-/* OG.Decor — ĐỒ VẬT TRONG NHÀ, GAG NỀN và KHOA HỌC (decor dùng chung, không tiền tố).
- * Chủ sở hữu v2: agent cảnh nền. Load SAU src/gfx/decor.js (cần OG.Decor). Hợp đồng: docs/STORY.md mục 4.
- * Mọi decor: fn(ctx, x, y, scale, t, opts), x = tâm, y = mặt đất (chân).
+// @ts-check
+/* ============================================================================
+ * OG.Decor (phần mở rộng) — DECOR ĐỒ VẬT TRONG NHÀ, GAG NỀN & KHOA HỌC
+ * ----------------------------------------------------------------------------
+ * Vai trò:      Lúc load, đăng ký thêm ~30 kind decor dùng chung (không tiền tố) vào OG.Scenery qua OG.Decor.define.
+ *               ThemeDef của hành trình (vd src/journeys/home/theme.js) và chủ đề gốc 'kitchen' chỉ gọi theo tên.
+ * Khái niệm:    hàm vẽ có tham số tái sử dụng (vẽ quanh chân, opts đổi màu/mood) · registry · vẽ procedural ·
+ *               hoạt ảnh theo chu kỳ thời gian (wrap(t, chu kỳ) → kịch bản nhỏ nhiều pha, như state machine không lưu trạng thái) ·
+ *               biến thể ổn định bằng hash(vị trí) · tái dùng decor khác (pepper → salt, gagCat → bush)
+ * Bài học:      docs/learn/07-ve-canvas-procedural-cache.md (chính) · docs/learn/12-data-driven-man-cau-do-hanh-trinh.md
+ * Phụ thuộc:    LÚC LOAD: OG.Decor (define, face, inkFill, outline, shade, rr, hash, wrap, INK) — load SAU src/gfx/decor.js.
+ *               LÚC CHẠY: OG.Scenery.drawDecor (decor gọi decor khác), OG.font
+ * Event:        phát: (không) · nghe: (không)
+ * API công khai: các kind decor dưới đây (vẽ bằng OG.Scenery.drawDecor(ctx, kind, x, y, scale, t, opts));
+ *               tiện ích OG.Decor.steam(ctx, t, seed), OG.Decor.babyRoach(ctx, t, mood, runK)
+ * Đọc tiếp:     src/gfx/decor-places.js (nhà cửa, danh thắng — cùng cách viết) → src/journeys/home/theme.js (nơi dùng)
+ * ========================================================================== */
+/* Mọi decor: fn(ctx, x, y, scale, t, opts), x = tâm, y = mặt đất (chân). Trong hàm define: o = opts, wx = x thế giới.
  * Trong nhà: fridge, teapot, salt, pepper, stove, plant, clock, cake, toaster, cup, sofa, tv, rug
  * Gag nền:   gagBob (Bob ngủ gật, bong bóng mũi), gagRoach (gián con lén ăn bánh rồi chuồn), gagCat (mèo lén nhìn)
  * Khoa học:  rocket, beaker, microscope, atom, dinoEgg, satellite, fossil, magnet */
@@ -12,11 +27,17 @@
   var TAU = Math.PI * 2, INK = D.INK;
   var def = D.define, face = D.face, inkFill = D.inkFill, outline = D.outline, shade = D.shade, rr = D.rr, hash = D.hash, wrap = D.wrap;
 
-  // Hơi nước xoăn bay lên từ (0,0).
+  /**
+   * Vẽ 2 làn hơi nước xoăn bay lên từ gốc (0, 0) hiện tại, mờ dần theo độ cao.
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {number} t     giây
+   * @param {number} seed  0..1, lệch pha để các ấm/cốc không bốc hơi cùng nhịp (thường là hash(wx))
+   */
   function steam(ctx, t, seed) {
     ctx.save();
     ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 3; ctx.lineCap = 'round';
     for (var i = 0; i < 2; i++) {
+      // k = "tuổi" làn hơi 0..1: k tăng → bay cao hơn (−k × 30 px) và mờ hơn (alpha = 1 − k)
       var k = wrap(t * 0.6 + i * 0.5 + seed, 1);
       ctx.globalAlpha = 1 - k;
       ctx.beginPath();
@@ -34,11 +55,14 @@
   // Tủ lạnh: thỉnh thoảng cửa hé, ánh sáng lọt ra. opts.color.
   def('fridge', function (ctx, t, o, wx) {
     var c = o.color || '#e8f6ff', k = wrap(t * 0.5 + hash(wx) * 5, 7);
+    // 💡 Khái niệm: hoạt ảnh theo chu kỳ — k chạy 0..7 rồi lặp; chỉ trong khoảng 5.6..6.6 cửa mới hé
+    // (sin của nửa chu kỳ: mở dần rồi đóng lại). Không lưu biến trạng thái nào, chỉ cần t.
     var open = k > 5.6 && k < 6.6 ? Math.sin((k - 5.6) * Math.PI) : 0;
     D.shadow(ctx, 40);
     rr(ctx, -36, -150, 72, 150, 14); inkFill(ctx, c, 3);
     if (open > 0.05) { ctx.fillStyle = 'rgba(255,248,190,0.9)'; rr(ctx, -30, -142, 60, 72, 8); ctx.fill(); }
     ctx.strokeStyle = INK; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-36, -64); ctx.lineTo(36, -64); ctx.stroke();
+    // cửa ngăn đá xoay quanh bản lề trái: dời gốc về bản lề rồi co bề ngang (giả phối cảnh khi cửa mở)
     ctx.save(); ctx.translate(-36, 0); ctx.scale(1 - open * 0.55, 1);
     rr(ctx, 0, -150, 72, 86, 14); inkFill(ctx, c, 3);
     rr(ctx, 58, -132, 7, 34, 3); inkFill(ctx, '#b8c8d8', 1.5);
@@ -78,6 +102,8 @@
     face(ctx, 0, -24, 0.7, pep ? (o.mood || 'wink') : (o.mood || 'smile'), pep ? null : t);
     if (pep) { ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(-6, -24, 1, 0, TAU); ctx.fill(); }
   });
+  // Lọ tiêu = lọ muối với opts.pepper: tái dùng decor khác qua registry, gốc (0,0) vì đã translate/scale sẵn.
+  // flip: false — phép lật (nếu có) đã áp ở lớp ngoài, áp lần nữa sẽ lật ngược trở lại.
   def('pepper', function (ctx, t, o) {
     OG.Scenery.drawDecor(ctx, 'salt', 0, 0, 1, t, Object.assign({}, o, { pepper: true, flip: false }));
   });
@@ -143,6 +169,7 @@
 
   // Máy nướng bánh: bánh mì bật lên định kỳ.
   def('toaster', function (ctx, t, o, wx) {
+    // chu kỳ 4 nhịp: 0.6 nhịp đầu bánh bật lên (cung sin, cao tối đa 30 px) rồi rơi về, phần còn lại nằm yên
     var k = wrap(t * 0.5 + hash(wx) * 4, 4), pop = k < 0.6 ? Math.sin(k / 0.6 * Math.PI) * 30 : 0;
     [-9, 9].forEach(function (x) {
       rr(ctx, x - 7, -46 - pop, 14, 22, 5); inkFill(ctx, '#e8b56a', 2);
@@ -181,7 +208,7 @@
     ctx.strokeStyle = INK; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, -66); ctx.lineTo(-16, -90); ctx.moveTo(0, -66); ctx.lineTo(18, -88); ctx.stroke();
     rr(ctx, -6, -14, 12, 14, 3); inkFill(ctx, '#3b3f58', 1.5);
     rr(ctx, -40, -68, 80, 56, 12); inkFill(ctx, c, 2.5);
-    var hue = Math.floor(wrap(t * 30, 360));
+    var hue = Math.floor(wrap(t * 30, 360)); // màn hình đổi màu cầu vồng: hue HSL quay 30 độ/giây
     rr(ctx, -32, -60, 52, 40, 8); ctx.fillStyle = 'hsl(' + hue + ',70%,75%)'; ctx.fill(); outline(ctx, 2);
     face(ctx, -6, -42, 0.7, 'grin', t);
     ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.arc(30, -50, 3.5, 0, TAU); ctx.arc(30, -36, 3.5, 0, TAU); ctx.fill();
@@ -200,8 +227,8 @@
 
   // Bob (chó bun nâu) ngủ gật: bong bóng mũi phồng xẹp, chữ Z bay; thỉnh thoảng giật mình mở 1 mắt.
   def('gagBob', function (ctx, t, o, wx) {
-    var ph = hash(wx) * 10, cyc = wrap(t + ph, 12), peek = cyc > 10.6 && cyc < 11.6;
-    var breath = Math.sin(t * 1.6) * 0.04;
+    var ph = hash(wx) * 10, cyc = wrap(t + ph, 12), peek = cyc > 10.6 && cyc < 11.6; // chu kỳ 12 s, hé mắt 1 s
+    var breath = Math.sin(t * 1.6) * 0.04; // thở = squash & stretch nhẹ (rộng ra thì thấp xuống)
     var brown = o.color || '#b7814f', light = shade(brown, 0.35);
     D.shadow(ctx, 44);
     ctx.save(); ctx.scale(1 + breath, 1 - breath);
@@ -237,7 +264,7 @@
       ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(4 + b * 0.6, 3, b * 0.25, 0, TAU); ctx.fill();
     }
     ctx.restore();
-    // chữ Z bay lên
+    // chữ Z bay lên: alpha = sin(k·π) → hiện dần rồi mờ dần; cỡ chữ lớn dần theo k
     ctx.fillStyle = INK; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     for (var i = 0; i < 3; i++) {
       var k = wrap(t * 0.35 + i / 3, 1);
@@ -249,6 +276,13 @@
   });
 
   // Gián con lén ăn bánh: rón rén vào, gặm, giật mình "!", ôm vụn bánh chạy mất. Chu kỳ ~14 giây.
+  /**
+   * Vẽ một con gián con dễ thương, gốc = chân, mặt hướng sang phải (+x).
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {number} t  giây (nhịp chân)
+   * @param {string} mood  'look' (đảo mắt) | 'eat' | 'scared' | khác = cười
+   * @param {boolean} [runK]  true = đang chạy (chân đạp nhanh hơn)
+   */
   function babyRoach(ctx, t, mood, runK) {
     var leg = Math.sin(t * (runK ? 30 : 12)) * 3;
     ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.lineCap = 'round';
@@ -268,6 +302,9 @@
   D.babyRoach = babyRoach;
   def('gagRoach', function (ctx, t, o, wx) {
     var cyc = wrap(t + hash(wx) * 14, 14);
+    // 💡 Khái niệm: kịch bản nhiều pha dựa trên thời gian — cyc (0..14 giây) quyết định pha giống một state machine,
+    // nhưng trạng thái được TÍNH từ t chứ không lưu: vẽ lại bất kỳ frame nào cũng ra đúng cảnh.
+    // 🧪 Thử: đổi các mốc 2/4/9/10/12 bên dưới (vd 9 → 6) để gián gặm bánh ngắn hơn và bỏ chạy sớm.
     // miếng bánh (bị gặm dần)
     var bites = cyc < 4 ? 0 : cyc < 9 ? Math.floor((cyc - 4) / 1.25) : cyc < 13.5 ? 3 : 0;
     ctx.save(); ctx.translate(18, 0);
@@ -298,8 +335,9 @@
 
   // Mèo Oggy (bóng xanh) lén thò đầu sau bụi/hộp, nhìn trái phải rồi thụt vào. Gag nền nhỏ.
   def('gagCat', function (ctx, t, o, wx) {
+    // up = 0..1 độ thò đầu theo chu kỳ 9 s: ẩn → nhô lên (0.5 s) → nhìn quanh (2.5 s) → thụt xuống (0.5 s) → ẩn
     var cyc = wrap(t + hash(wx) * 9, 9), up = cyc < 1 ? 0 : cyc < 1.5 ? (cyc - 1) / 0.5 : cyc < 4 ? 1 : cyc < 4.5 ? 1 - (cyc - 4) / 0.5 : 0;
-    // bụi che phía trước được vẽ sau
+    // bụi che phía trước được vẽ sau (painter's algorithm: vẽ sau = nằm trên) nên phần dưới đầu mèo bị bụi che
     if (up > 0.02) {
       ctx.save(); ctx.translate(0, -22 + (1 - up) * 26);
       var c = o.color || '#328be7';
@@ -340,6 +378,7 @@
   // Bình thí nghiệm sủi bọt màu. opts.color dung dịch.
   def('beaker', function (ctx, t, o, wx) {
     var c = o.color || '#7fd08a';
+    // Vẽ hình bình 2 lần: lần 1 làm vùng clip cho dung dịch + bọt bên trong, lần 2 chỉ để viền (viền không bị clip cắt mất nửa nét).
     ctx.beginPath(); ctx.moveTo(-8, -50); ctx.lineTo(-8, -32); ctx.lineTo(-24, -4); ctx.quadraticCurveTo(-26, 0, -20, 0); ctx.lineTo(20, 0); ctx.quadraticCurveTo(26, 0, 24, -4); ctx.lineTo(8, -32); ctx.lineTo(8, -50); ctx.closePath();
     ctx.save(); ctx.clip();
     ctx.fillStyle = 'rgba(230,246,255,0.9)'; ctx.fillRect(-30, -60, 60, 60);
