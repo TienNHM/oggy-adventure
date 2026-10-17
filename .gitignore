@@ -1,3 +1,12 @@
 .claude/settings.json
 # File tạm của công cụ ảnh (dựng lại được từ credits.js)
 assets/photos/*/_entries.json
+
+# Trang học (docs/learn → HTML): thư viện npm chỉ dùng lúc build, và thư mục output
+tools/learn-site/node_modules/
+_site/
+
+# Rác hệ điều hành / editor
+.DS_Store
+Thumbs.db
+*.log
