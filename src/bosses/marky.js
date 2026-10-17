@@ -1,5 +1,17 @@
-/* Trùm 'marky' — Marky, gián cao gầy dùng đồ nghề và bẫy (màn garden).
- * Chủ sở hữu: agent Bosses. Load SAU src/bosses/bosses.js.
+// @ts-check
+/* ============================================================================
+ * OG.Bosses 'marky' — TRÙM MARKY (gián cao gầy dùng đồ nghề và bẫy, màn garden)
+ * ----------------------------------------------------------------------------
+ * Vai trò:      Định nghĩa trùm Marky và đăng ký vào OG.Bosses lúc load. Scene 'boss' gọi
+ *               OG.Bosses.create('marky', arena); trio.js gọi lại OG.Bosses.factories.marky (bản thu nhỏ).
+ * Khái niệm:    boss state machine · telegraph (vùng đỏ điểm rơi, bẫy chưa giương) · bẫy có trạng thái riêng
+ *               (chưa giương → giương → sập) · nhảy tới điểm đích sau T giây (tính vận tốc ngược) ·
+ *               boomerang bằng gia tốc ngược chiều · hitbox đổi theo tư thế (setHeight khi cúi)
+ * Bài học:      docs/learn/09-ai-ke-dich-boss.md · docs/learn/07-ve-canvas-procedural-cache.md (vẽ đồ nghề)
+ * Phụ thuộc:    LÚC LOAD: OG.Bosses.kit (load SAU src/bosses/bosses.js), OG.util. LÚC CHẠY: (không thêm)
+ * Event:        phát: (chỉ các event chung của kit: 'boss:phase', 'boss:hit' khi cờ lê phản trúng) · nghe: (không)
+ * API công khai: OG.Bosses.factories.marky(arena, cfg) · đăng ký trùm id 'marky' · K.drawers.wrench/wave/trap
+ * Đọc tiếp:     src/bosses/trio.js (ghép 3 trùm) → src/game/boss-scene.js
  *
  * Đòn đánh (mỗi đòn đều báo trước):
  *   trap   — quỳ xuống đặt bẫy kẹp ở chỗ người chơi đứng (pha 2+: thêm 2 bẫy hai bên).
@@ -10,7 +22,9 @@
  *   slam2  — (pha 3) đập liên tiếp 2 lần, lần 2 mới bị kẹt búa.
  *   wrench — (pha 2+) ném cờ lê kiểu boomerang bay sát sàn rồi quay về.
  *            Nhấn E/J (✦) khi cờ lê ở gần để ĐÁNH BẬT nó trúng Marky.
- * Điểm yếu: giẫm đầu khi búa kẹt (hoặc phản cờ lê). Marky cao nên lúc bình thường không giẫm được. */
+ * Điểm yếu: giẫm đầu khi búa kẹt (hoặc phản cờ lê). Marky cao nên lúc bình thường không giẫm được.
+ * Trạng thái: intro · idle · walk · trapWind → trapDone · slamWind → slamAir → (slamWind | stuck) · wrenchWind → wrenchOut
+ * ========================================================================== */
 (function () {
   'use strict';
   var OG = window.OG;
@@ -18,6 +32,7 @@
   var K = OG.Bosses.kit;
   var U = OG.util;
 
+  /** @type {BossSpec} */
   var SPEC = {
     id: 'marky', name: 'Marky', charId: 'marky', maxHp: 6, scale: 1.75, baseW: 30, baseH: 60,
     phaseAt: [4, 2],
@@ -32,13 +47,34 @@
     }
   };
 
-  // ---- Vẽ đồ nghề ----
+  var MAX_TRAPS = 4;          // số bẫy chưa sập tối đa trên sân
+  var TRAP_MIN_GAP = 40;      // px: không đặt bẫy mới chồng lên bẫy cũ
+  var TRAP_ARM_TIME = 0.8;    // giây từ lúc đặt tới lúc bẫy giương (nguy hiểm) — chính là telegraph của bẫy
+  var TRAP_SIDE_OFFSET = 150; // px: pha 2+ đặt thêm 2 bẫy cách người chơi chừng này về hai bên
+  var SLAM_FLIGHT_TIME = 0.7; // giây bay của cú nhảy đập búa
+  var SLAM_GRAVITY = 1500;    // px/giây²: trọng lực dùng để tính vận tốc nhảy đập búa
+  var WRENCH_PULL = 820;      // px/giây²: gia tốc kéo cờ lê quay về (boomerang)
+  var CROUCH_RATIO = 0.64;    // chiều cao hitbox khi cúi (búa kẹt) so với chiều cao đầy đủ
+
+  // ---------------------------------------------------------------------------
+  // Vẽ đồ nghề (gốc toạ độ tự đặt; bosses.js bọc save/restore quanh mỗi hàm trong K.drawers)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Vẽ búa gỗ: (x, y) = điểm cầm ở ĐÁY cán, angle = góc xoay (radian), s = tỉ lệ.
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {number} x
+   * @param {number} y
+   * @param {number} angle
+   * @param {number} [s=1]
+   */
   function drawMallet(ctx, x, y, angle, s) {
     s = s || 1;
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(angle);
     ctx.scale(s, s);
+    // cán gỗ → đầu búa kim loại → vệt sáng
     U.fillRound(ctx, -3, -44, 6, 46, 3, '#8a5a2b');
     U.fillRound(ctx, -15, -58, 30, 18, 6, '#8d98a8');
     ctx.strokeStyle = '#17233d'; ctx.lineWidth = 2;
@@ -47,6 +83,7 @@
     ctx.restore();
   }
 
+  // Hình cờ lê nằm ngang quanh gốc (0, 0), dài 2r; bên gọi tự translate/rotate trước.
   function drawWrenchShape(ctx, r, color) {
     ctx.fillStyle = color; ctx.strokeStyle = '#17233d'; ctx.lineWidth = 1.5;
     U.roundRectPath(ctx, -r, -3.5, r * 2, 7, 3); ctx.fill(); ctx.stroke();
@@ -62,12 +99,13 @@
     drawWrenchShape(ctx, p.r * 0.8, p.reflected ? '#7fe0ff' : '#aeb7c4');
   };
 
-  // Sóng xung kích: vòng cung đất/bụi chạy dọc sàn.
+  // Sóng xung kích: vòng cung đất/bụi chạy dọc sàn. Gốc = (p.x, mặt sàn); lật theo hướng chạy.
   K.drawers.wave = function (ctx, p) {
     var h = p.hgt, dir = p.vx < 0 ? -1 : 1;
     ctx.translate(p.x, p.floorY);
     ctx.scale(dir, 1);
-    ctx.globalAlpha = Math.min(1, p.life * 2);
+    ctx.globalAlpha = Math.min(1, p.life * 2); // mờ dần trong 0,5 s cuối đời
+    // khối đất + lõi sáng
     ctx.fillStyle = '#c98a4b';
     ctx.strokeStyle = '#17233d'; ctx.lineWidth = 2;
     ctx.beginPath();
@@ -84,7 +122,8 @@
     }
   };
 
-  // Bẫy kẹp: chưa giương thì mờ, giương rồi có đèn đỏ nhấp nháy, sập thì khép hàm.
+  // Bẫy kẹp: chưa giương thì mờ, giương rồi có đèn đỏ nhấp nháy, sập thì khép hàm. Gốc = (p.x, mặt sàn).
+  // Hình ảnh phản ánh đúng 3 trạng thái của bẫy (armed / snapped / chưa giương) → người chơi "đọc" được luật.
   K.drawers.trap = function (ctx, p, t) {
     ctx.translate(p.x, p.floorY);
     var armed = p.armed, snapped = p.snapped;
@@ -92,6 +131,7 @@
     U.fillRound(ctx, -20, -5, 40, 6, 3, '#5b6472');
     ctx.strokeStyle = '#17233d'; ctx.lineWidth = 2;
     ctx.fillStyle = '#aeb7c4';
+    // hai hàm kẹp đối xứng: vẽ một bên rồi scale(-1, 1) để có bên kia; open = độ mở hàm
     var open = snapped ? 0.15 : 1;
     for (var side = -1; side <= 1; side += 2) {
       ctx.save();
@@ -119,14 +159,20 @@
     }
   };
 
+  /**
+   * Tạo một Marky (dùng cho trận đơn và cho trio).
+   * @param {Object} arena  đấu trường (Arena)
+   * @param {BossCfg} [cfg]
+   * @returns {Object} BossInstance
+   */
   function create(arena, cfg) {
     cfg = cfg || {};
     var b = K.createBase(SPEC, arena, cfg);
     var floorY = K.floorY(arena);
-    var crouchH = Math.round(b.fullH * 0.64);
-    b.slamTx = 0;
-    b.slamsLeft = 0;
-    b.wrenchOut = null;
+    var crouchH = Math.round(b.fullH * CROUCH_RATIO);
+    b.slamTx = 0;        // tâm x điểm đáp của cú đập búa (px, thế giới)
+    b.slamsLeft = 0;     // số cú đập còn lại trong chuỗi (slam = 1, slam2 = 2)
+    b.wrenchOut = null;  // cờ lê đang bay (BossProjectile) — Marky đứng chờ cho tới khi nó quay về
 
     function spd(arr) { return b.byPhase(arr) * b.speedMul; }
 
@@ -136,23 +182,30 @@
       return n;
     }
 
+    /**
+     * Đặt một bẫy kẹp tại x (bỏ qua nếu đã đủ MAX_TRAPS hoặc đã có bẫy gần đó).
+     * 💡 Khái niệm: bẫy là một state machine thu nhỏ gắn trong dữ liệu đạn: chưa giương (armed=false, vô hại,
+     *   đếm ngược armT) → giương (armed=true, chạm là đau) → sập (snapped, tự biến mất sau 0,6 s).
+     *   kit.updateProjectiles chỉ gây thương khi armed !== false nên bẫy chưa giương an toàn.
+     */
     function placeTrap(arena, x) {
       var W = K.width(arena);
       x = U.clamp(x, 30, W - 30);
-      if (countTraps() >= 4) return;
+      if (countTraps() >= MAX_TRAPS) return;
       // không đặt chồng bẫy
       for (var i = 0; i < b.projectiles.length; i++) {
         var q = b.projectiles[i];
-        if (q.kind === 'trap' && Math.abs(q.x - x) < 40) return;
+        if (q.kind === 'trap' && Math.abs(q.x - x) < TRAP_MIN_GAP) return;
       }
       K.spawnProj(b, {
         kind: 'trap', x: x, y: floorY - 6, r: 10, floorY: floorY, life: 7,
-        armT: 0.8, armMax: 0.8, armed: false, snapped: false,
+        armT: TRAP_ARM_TIME, armMax: TRAP_ARM_TIME, armed: false, snapped: false,
         rect: function (p) { return { x: p.x - 16, y: floorY - 12, w: 32, h: 12 }; },
         update: function (p, dt) {
           if (!p.armed && !p.snapped) { p.armT -= dt; if (p.armT <= 0) p.armed = true; }
         },
         onHitPlayer: function (p, arena) {
+          // Sập rồi thì vô hại (armed = false) — chỉ cắn một lần.
           p.armed = false; p.snapped = true; p.life = 0.6;
           K.text(arena, p.x, floorY - 30, 'Sập bẫy!', '#e5484d');
         }
@@ -160,6 +213,7 @@
       K.puff(arena, x, floorY - 4, '#aeb7c4', 6, 90);
     }
 
+    // Hai sóng xung kích chạy ra hai bên từ chỗ búa đập; cao & nhanh dần theo pha.
     function spawnWaves(arena) {
       var hgt = b.byPhase([26, 30, 34]);
       var sp = spd([300, 360, 420]);
@@ -168,6 +222,7 @@
         K.spawnProj(b, {
           kind: 'wave', x: b.cx() + dir * (b.w / 2), y: floorY - hgt / 2, r: 14, vx: dir * sp, hgt: hgt, floorY: floorY, life: 4,
           rect: function (p) { return { x: p.x - 14, y: floorY - p.hgt, w: 28, h: p.hgt }; },
+          // update riêng: chỉ chạy ngang dọc sàn (không trọng lực, không nảy như vật lý mặc định)
           update: function (p, dt) {
             p.x += p.vx * dt;
             if (p.x < -30 || p.x > W + 30) p.dead = true;
@@ -177,20 +232,26 @@
       }
     }
 
+    /**
+     * Ném cờ lê boomerang về hướng mặt.
+     * 💡 Khái niệm: boomerang = gia tốc NGƯỢC chiều vận tốc ban đầu (ax = −dir · WRENCH_PULL). Cờ lê chậm dần,
+     *   dừng lại rồi tự bay ngược về — không cần trạng thái "đi"/"về" riêng, chỉ một công thức vật lý.
+     */
     function throwWrench(arena) {
       var dir = b.face;
       var W = K.width(arena);
       var v0 = spd([520, 560, 620]);
       b.wrenchOut = K.spawnProj(b, {
-        kind: 'wrench', x: b.cx() + dir * b.w * 0.5, y: floorY - 32, r: 14, vx: dir * v0, ax: -dir * 820,
+        kind: 'wrench', x: b.cx() + dir * b.w * 0.5, y: floorY - 32, r: 14, vx: dir * v0, ax: -dir * WRENCH_PULL,
         life: 4.5, reflectable: true,
         update: function (p, dt, arena, bb) {
           p.vx += (p.ax || 0) * dt;
           p.x += p.vx * dt;
           p.y += p.vy * dt;
           if (p.reflected) return;
+          // Chạm tường: dội lại (mất 20% tốc độ) và đảo gia tốc để vẫn quay về phía Marky.
           if ((p.x < p.r && p.vx < 0) || (p.x > W - p.r && p.vx > 0)) { p.vx = -p.vx * 0.8; p.ax = -p.ax; }
-          // Quay về tay Marky thì bắt lấy.
+          // Quay về tay Marky thì bắt lấy (p.t > 0.5 để không "bắt" ngay lúc vừa ném ra).
           if (p.t > 0.5 && Math.abs(p.x - bb.cx()) < bb.w * 0.6) {
             p.dead = true;
             K.puff(arena, p.x, p.y, '#aeb7c4', 4, 60);
@@ -225,6 +286,7 @@
       }
     };
 
+    // Chốt điểm đáp (tại chỗ người chơi, ngoài vùng dưới bục) rồi vào trạng thái báo trước 'slamWind'.
     function beginSlam(arena, wind) {
       var W = K.width(arena);
       b.slamTx = U.clamp(K.pcx(arena), b.w / 2 + 4, W - b.w / 2 - 4);
@@ -261,7 +323,7 @@
           if (b.stateDone()) {
             var px = K.pcx(arena);
             placeTrap(arena, px);
-            if (b.p() >= 2) { placeTrap(arena, px - 150); placeTrap(arena, px + 150); }
+            if (b.p() >= 2) { placeTrap(arena, px - TRAP_SIDE_OFFSET); placeTrap(arena, px + TRAP_SIDE_OFFSET); }
             b.setState('trapDone', 0.35);
           }
           break;
@@ -272,8 +334,12 @@
         case 'slamWind':
           b.vx = 0; b.setAnim('attack');
           if (b.stateDone()) {
-            var T = 0.7;
-            b.vy = -0.5 * 1500 * T;
+            // 💡 Khái niệm: nhảy tới đích sau đúng T giây. Lên rồi xuống về cùng độ cao mất T giây khi
+            //   vy0 = −½·g·T; vận tốc ngang vx = quãng đường / T. Điểm đáp luôn trùng vùng đỏ đã báo trước.
+            // ⚠️ Bẫy: SLAM_GRAVITY phải bằng trọng lực thật trong b.physics (OG.Config.GRAVITY, mặc định 1500).
+            //   Đổi một bên mà quên bên kia → Marky đáp lệch khỏi vùng cảnh báo.
+            var T = SLAM_FLIGHT_TIME;
+            b.vy = -0.5 * SLAM_GRAVITY * T;
             b.vx = (b.slamTx - b.cx()) / T;
             b.setState('slamAir', 3);
           }
@@ -286,6 +352,7 @@
             K.puff(arena, b.cx(), floorY - 6, '#c98a4b', 16, 240);
             spawnWaves(arena);
             b.slamsLeft--;
+            // Còn cú đập → telegraph ngắn (0,45 s) cho cú tiếp; hết → búa kẹt: cúi thấp (hitbox thấp) và choáng.
             if (b.slamsLeft > 0) beginSlam(arena, 0.45);
             else { b.setHeight(crouchH); b.setState('stuck', b.byPhase([2.0, 1.7, 1.4]) / b.speedMul); }
           }
@@ -293,6 +360,8 @@
         case 'stuck':
           b.vx = 0; b.setAnim('stunned');
           if (b.stateDone()) {
+            // ⚠️ Bẫy: luôn trả hitbox về chiều cao đầy đủ khi rời trạng thái cúi (ở đây, onHurt, và kit khi đổi pha/gục);
+            //   quên một chỗ là Marky "lùn" vĩnh viễn và weakspot/hurtbox lệch so với hình vẽ.
             b.setHeight(b.fullH);
             K.puff(arena, b.cx() + b.face * 30, floorY - 6, '#c98a4b', 6, 100);
             b.choose(arena);
@@ -318,6 +387,7 @@
       b.setState('recoil', 0.7);
     };
 
+    // Lớp sau thân: vùng đỏ tại điểm đáp (đậm dần, giữ đậm nhất khi đang bay) + dải mờ báo sóng dọc sàn.
     b.drawBehind = function (ctx, arena, t) {
       if (b.state === 'slamWind' || b.state === 'slamAir') {
         var k = b.state === 'slamAir' ? 1 : b.stateT / Math.max(0.01, b.stateDur);
@@ -331,7 +401,7 @@
       }
     };
 
-    // Thân: cúi thấp khi búa kẹt; búa vẽ kèm theo trạng thái.
+    // Thân: cúi thấp khi búa kẹt (scale dọc theo h / fullH khớp với hitbox); búa vẽ kèm theo trạng thái.
     b.drawBody = function (ctx, arena, alpha) {
       var s = b.state;
       ctx.save();
@@ -342,8 +412,10 @@
       }
       K.drawSprite(ctx, b, b.anim, { alpha: alpha });
       ctx.restore();
+      // Đồ nghề cầm tay — vẽ SAU thân (đè lên), toạ độ thế giới nên mở save/restore riêng.
       ctx.save();
       if (s === 'slamWind') {
+        // búa vung dần ra sau lưng theo tiến độ telegraph k
         var k = Math.min(1, b.stateT / Math.max(0.01, b.stateDur));
         drawMallet(ctx, b.cx() - b.face * 8, b.y + b.h * 0.35, -b.face * (0.3 + k * 1.6), 1.1);
       } else if (s === 'slamAir') {
@@ -366,6 +438,8 @@
     return b;
   }
 
+  // 🧪 Thử: đổi TRAP_ARM_TIME 0.8 → 2 — bẫy nhấp nháy lâu hơn nhiều trước khi nguy hiểm, dễ nhảy qua.
+  //   Đổi WRENCH_PULL 820 → 400: cờ lê bay xa hơn hẳn trước khi quay về (thường đập tường rồi dội lại).
   OG.Bosses.factories.marky = create;
   OG.Bosses.register({
     id: 'marky', name: 'Marky', maxHp: SPEC.maxHp,

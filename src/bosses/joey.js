@@ -1,5 +1,18 @@
-/* Trùm 'joey' — Joey, thủ lĩnh nhỏ con và nhanh nhẹn (màn roof).
- * Chủ sở hữu: agent Bosses. Load SAU src/bosses/bosses.js.
+// @ts-check
+/* ============================================================================
+ * OG.Bosses 'joey' — TRÙM JOEY (thủ lĩnh nhỏ con, nhanh nhẹn, màn roof)
+ * ----------------------------------------------------------------------------
+ * Vai trò:      Định nghĩa trùm Joey và đăng ký vào OG.Bosses lúc load. Scene 'boss' gọi
+ *               OG.Bosses.create('joey', arena); trio.js gọi lại OG.Bosses.factories.joey (bản thu nhỏ).
+ * Khái niệm:    boss state machine · telegraph (cúi người + mũi tên, giơ nắp chai) · ngắm bắn parabol
+ *               (giải phương trình chuyển động để đạn rơi đúng chỗ sau T giây) · đạn phản được (reflect) ·
+ *               gọi lính có giới hạn (spawn cap) · "chạy trốn" sau khi trúng đòn
+ * Bài học:      docs/learn/09-ai-ke-dich-boss.md
+ * Phụ thuộc:    LÚC LOAD: OG.Bosses.kit (load SAU src/bosses/bosses.js), OG.util. LÚC CHẠY: OG.font,
+ *               arena.spawnEnemy (scene cung cấp; thiếu thì đòn 'summon' đổi thành 'throw').
+ * Event:        phát: (chỉ các event chung của kit: 'boss:phase', 'boss:hit' khi đạn phản trúng) · nghe: (không)
+ * API công khai: OG.Bosses.factories.joey(arena, cfg) · đăng ký trùm id 'joey' · K.drawers.cap
+ * Đọc tiếp:     src/bosses/marky.js (bẫy, sóng, boomerang) → src/bosses/trio.js
  *
  * Đòn đánh (mỗi đòn đều báo trước):
  *   dash   — cúi người + mũi tên đỏ (0,55/0,45/0,35 s) rồi lao vụt qua sân tới tường.
@@ -9,7 +22,9 @@
  *   summon — (pha 2+) thổi còi 📣, gọi 1–2 gián con (tối đa 3 con cùng lúc).
  *   rest   — thở dốc sau chuỗi đòn: cơ hội giẫm đầu.
  * Điểm yếu: giẫm đầu bất cứ lúc nào Joey không lao/nhảy (mũi tên vàng "GIẪM!").
- * Sau khi trúng đòn Joey bật nhảy trốn sang phía bên kia sân. */
+ * Sau khi trúng đòn Joey bật nhảy trốn sang phía bên kia sân.
+ * Trạng thái: intro · idle · dashWind → dash → skid · throwWind → throw · hop · summonWind → summon · rest · flee
+ * ========================================================================== */
 (function () {
   'use strict';
   var OG = window.OG;
@@ -17,6 +32,7 @@
   var K = OG.Bosses.kit;
   var U = OG.util;
 
+  /** @type {BossSpec} */
   var SPEC = {
     id: 'joey', name: 'Joey', charId: 'joey', maxHp: 6, scale: 2, baseW: 30, baseH: 40,
     phaseAt: [4, 2],
@@ -24,6 +40,7 @@
       2: 'Joey nổi điên! Hắn gọi cả đàn gián con!',
       3: 'Joey tăng tốc tối đa! Coi chừng mưa nắp chai!'
     },
+    // Mỗi chuỗi kết thúc bằng 'rest' → luôn có khoảng hở định kỳ, kể cả ở pha 3.
     patterns: {
       1: ['dash', 'throw', 'rest'],
       2: ['dash', 'throw', 'summon', 'dash', 'throw', 'rest'],
@@ -31,14 +48,16 @@
     }
   };
 
-  var CAP_G = 900; // trọng lực riêng của nắp chai (bay vòng cung dễ đọc)
+  var CAP_G = 900;       // px/giây²: trọng lực riêng của nắp chai (bay vòng cung dễ đọc)
+  var MAX_MINIONS = 3;   // số gián con tối đa cùng lúc trên sân
 
-  // Vẽ nắp chai: đĩa bạc viền răng cưa, xoay khi bay.
+  // Vẽ nắp chai: đĩa bạc viền răng cưa, xoay khi bay (chiều xoay theo hướng bay). Gốc = tâm nắp.
   K.drawers.cap = function (ctx, p) {
     ctx.translate(p.x, p.y);
     ctx.rotate(p.t * 14 * (p.vx < 0 ? -1 : 1));
     ctx.fillStyle = p.reflected ? '#7fe0ff' : '#c9ced6';
     ctx.strokeStyle = '#17233d'; ctx.lineWidth = 1.5;
+    // viền răng cưa: 16 đỉnh xen kẽ bán kính r và r − 2,5
     ctx.beginPath();
     for (var k = 0; k < 16; k++) {
       var rr = k % 2 ? p.r : p.r - 2.5, a = k * Math.PI / 8;
@@ -49,24 +68,41 @@
     ctx.beginPath(); ctx.arc(0, 0, p.r * 0.45, 0, Math.PI * 2); ctx.fill();
   };
 
+  /**
+   * Tạo một Joey (dùng cho trận đơn và cho trio).
+   * @param {Object} arena  đấu trường (Arena)
+   * @param {BossCfg} [cfg]  ngoài các field chung còn đọc cfg.summonCount, cfg.capCount
+   * @returns {Object} BossInstance
+   */
   function create(arena, cfg) {
     cfg = cfg || {};
     var b = K.createBase(SPEC, arena, cfg);
     var floorY = K.floorY(arena);
-    b.dashDir = -1;
-    b.thrown = false;
+    b.dashDir = -1;     // hướng lao: 1 = phải, -1 = trái (chốt lúc bắt đầu telegraph)
+    b.thrown = false;   // đòn 'hop' đã rải nắp chai chưa (chỉ rải 1 lần ở đỉnh cú nhảy)
 
     function speed(arr) { return b.byPhase(arr) * b.speedMul; }
 
-    // Tay cầm nắp chai (để ném & vẽ).
+    // Tay cầm nắp chai (để ném & vẽ), toạ độ thế giới.
     function handPos() { return { x: b.cx() + b.face * b.w * 0.35, y: b.y + b.h * 0.2 }; }
 
-    // Ném n nắp chai về phía người chơi theo cung parabol, rải theo khoảng cách spread.
+    /**
+     * Ném n nắp chai về phía người chơi theo cung parabol, rải cách nhau `spread` px quanh vị trí người chơi.
+     * 💡 Khái niệm: ngắm bắn bằng phương trình chuyển động. Muốn đạn tới điểm (tx, py) sau đúng T giây:
+     *   x(T) = x0 + vx·T  →  vx = (tx − x0) / T
+     *   y(T) = y0 + vy·T + ½·g·T²  →  vy = (py − y0 − ½·g·T²) / T
+     *   T cố định nên mọi cú ném có cùng "nhịp" — người chơi đọc được thời điểm né.
+     * @param {Object} arena
+     * @param {number} n  số nắp chai
+     * @param {number} spread  khoảng cách giữa các điểm rơi (px)
+     * @param {number} [flight=0.85]  thời gian bay T (giây)
+     */
     function throwCaps(arena, n, spread, flight) {
       var h = handPos();
       var px = K.pcx(arena), py = K.player(arena).y + K.player(arena).h * 0.5;
       var T = flight || 0.85;
       for (var i = 0; i < n; i++) {
+        // off: lệch đối xứng quanh người chơi, vd n = 3 → −spread, 0, +spread
         var off = (i - (n - 1) / 2) * spread;
         var tx = U.clamp(px + off, 20, K.width(arena) - 20);
         K.spawnProj(b, {
@@ -79,9 +115,10 @@
       K.puff(arena, h.x, h.y, '#ffffff', 4, 80);
     }
 
+    // Gọi lính: số lượng theo pha, nhưng không vượt MAX_MINIONS con sống cùng lúc (spawn cap).
     function summon(arena) {
       var count = b.cfg.summonCount || (b.p() >= 3 ? 2 : 1);
-      var room = Math.max(0, 3 - K.aliveMinions(arena));
+      var room = Math.max(0, MAX_MINIONS - K.aliveMinions(arena));
       count = Math.min(count, room);
       if (!count) { K.text(arena, b.cx(), b.y - 20, 'Hết lính rồi?!', '#ffffff'); return; }
       var W = K.width(arena), px = K.pcx(arena);
@@ -95,6 +132,7 @@
       }
     }
 
+    // Joey dễ giẫm: mọi trạng thái trừ lao / nhảy / chạy trốn.
     b.isVulnerable = function () {
       return ['rest', 'throwWind', 'throw', 'summonWind', 'summon', 'skid', 'wait', 'idle'].indexOf(b.state) >= 0;
     };
@@ -104,6 +142,7 @@
       b.faceToPlayer(arena);
       switch (a) {
         case 'dash':
+          // Chốt hướng lao NGAY lúc telegraph: người chơi né sang chỗ khác thì Joey vẫn lao theo hướng cũ.
           b.dashDir = b.dirToPlayer(arena);
           b.face = b.dashDir;
           b.setState('dashWind', b.byPhase([0.55, 0.45, 0.35]));
@@ -118,7 +157,8 @@
           b.setState('hop', 3);
           break;
         case 'summon':
-          if (K.aliveMinions(arena) >= 3 || typeof arena.spawnEnemy !== 'function') { b.startAction('throw', arena); return; }
+          // Sân đã đủ lính hoặc scene không cho gọi lính → thay bằng đòn ném (AI luôn có phương án dự phòng).
+          if (K.aliveMinions(arena) >= MAX_MINIONS || typeof arena.spawnEnemy !== 'function') { b.startAction('throw', arena); return; }
           b.setState('summonWind', 0.8);
           break;
         case 'rest':
@@ -131,6 +171,7 @@
 
     b.think = function (dt, arena) {
       var s = b.state;
+      // Luôn quay mặt về người chơi, TRỪ khi đang lao / trượt / chạy trốn (hướng đã chốt).
       if (s !== 'dash' && s !== 'flee' && s !== 'skid') b.faceToPlayer(arena);
       switch (s) {
         case 'intro':
@@ -161,6 +202,7 @@
           }
           break;
         case 'skid':
+          // Phanh gấp: còn 1% vận tốc sau 1 giây (damping độc lập frame rate).
           b.vx *= Math.pow(0.01, dt); b.setAnim('idle');
           if (b.stateDone()) { b.vx = 0; b.choose(arena); }
           break;
@@ -179,6 +221,7 @@
         case 'hop':
           b.vx = 0;
           b.setAnim(b.vy < 0 ? 'jump' : 'fall');
+          // vy đổi dấu từ âm sang ≥ 0 = vừa qua ĐỈNH cú nhảy → rải nắp chai đúng một lần (cờ b.thrown).
           if (!b.thrown && b.vy >= 0) { b.thrown = true; throwCaps(arena, 3, 110, 0.6); }
           if (b.ground && b.stateT > 0.15) { K.call(arena, 'shake', 3, 0.15); b.setState('idle', 0.3); }
           break;
@@ -204,7 +247,7 @@
       }
     };
 
-    // Trúng đòn: bật nhảy trốn sang phía có nhiều chỗ trống hơn.
+    // Trúng đòn: bật nhảy trốn sang phía có nhiều chỗ trống hơn (đang ở nửa trái → nhảy sang phải).
     b.onHurt = function (arena) {
       var W = K.width(arena);
       var dir = b.cx() < W / 2 ? 1 : -1;
@@ -214,6 +257,7 @@
       b.setState('flee', 3);
     };
 
+    // Lớp sau thân: vùng đỏ trên đường lao (từ Joey tới tường), đậm dần theo tiến độ telegraph.
     b.drawBehind = function (ctx, arena, t) {
       if (b.state === 'dashWind') {
         var k = b.stateT / Math.max(0.01, b.stateDur);
@@ -223,6 +267,7 @@
       }
     };
 
+    // Lớp trước thân: bong bóng, mũi tên, nắp chai trên tay, nốt nhạc còi, giọt mồ hôi.
     b.drawFront = function (ctx, arena, t) {
       var s = b.state;
       if (s === 'dashWind') {
@@ -231,19 +276,22 @@
       } else if (s === 'throwWind') {
         K.drawBubble(ctx, b.cx(), b.y - 10, t, '!');
         var h = handPos();
-        ctx.save(); // drawers.cap tự translate/rotate nên phải bọc save/restore
+        // ⚠️ Bẫy: drawers.cap tự translate/rotate mà không restore → phải bọc save/restore, nếu không
+        //   mọi thứ vẽ sau (thanh máu, đạn) sẽ bị lệch và xoay theo.
+        ctx.save();
         K.drawers.cap(ctx, { x: h.x, y: h.y - 6 - Math.sin(b.stateT * 20) * 3, r: 9, t: 0, vx: 0 });
         ctx.restore();
       } else if (s === 'summonWind') {
         K.drawBubble(ctx, b.cx(), b.y - 10, t, '📣', '#17233d');
         ctx.save();
         ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#17233d'; ctx.lineWidth = 3;
-        ctx.font = 'bold 18px "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif'; ctx.textAlign = 'center';
+        ctx.font = OG.font(18, 'bold'); ctx.textAlign = 'center';
+        // nốt nhạc bay chéo lên theo stateT
         var nx = b.cx() + b.face * (30 + b.stateT * 50), ny = b.y + 6 - b.stateT * 30;
         ctx.strokeText('♪', nx, ny); ctx.fillText('♪', nx, ny);
         ctx.restore();
       } else if (s === 'rest') {
-        // giọt mồ hôi
+        // giọt mồ hôi chảy xuống, lặp mỗi 20 px
         ctx.save();
         ctx.fillStyle = '#9ce7f1';
         var dy = (b.stateT * 40) % 20;
@@ -255,6 +303,8 @@
     return b;
   }
 
+  // 🧪 Thử: đổi CAP_G 900 → 300 — nắp chai bay theo cung PHẲNG hơn nhưng vẫn rơi đúng chỗ người chơi sau
+  //   cùng T giây (vì vy được tính lại theo g). Đổi MAX_MINIONS 3 → 1 để trận pha 2 bớt rối.
   OG.Bosses.factories.joey = create;
   OG.Bosses.register({
     id: 'joey', name: 'Joey', maxHp: SPEC.maxHp,
